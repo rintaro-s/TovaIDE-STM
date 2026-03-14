@@ -1,0 +1,20 @@
+{
+  "displayName": "STM32 AI",
+  "description": "TovaIDE向けSTM32 AIアシスタントと自動化ワークフロー",
+  "command.openAssistantPanel.title": "AIアシスタントパネルを開く",
+  "command.openChat.title": "STM32 AIチャットを開く",
+  "command.runSemiAutoFlow.title": "半自動STM32フローを実行",
+  "command.runAutoUntilFlash.title": "書込み直前までSTM32フローを実行",
+  "command.runFullAutoFlow.title": "全自動STM32フローを実行",
+  "command.fixBuildError.title": "AIでビルドエラーを修正",
+  "command.analyzeHardFault.title": "AIでHardFaultを解析",
+  "command.startMcpServer.title": "STM32 MCPサーバーを起動",
+  "command.stopMcpServer.title": "STM32 MCPサーバーを停止",
+  "configuration.title": "STM32 AI",
+  "configuration.includeRegenerate.description": "STM32自動フローでIOCコード再生成を含めます。",
+  "configuration.requireFlashConfirmation.description": "全自動フローの書込み前に確認ダイアログを必須にします。",
+  "configuration.defaultPrompt.description": "STM32 AIチャット開始時に使う初期プロンプト。",
+  "configuration.mcpAutoStart.description": "拡張起動時に組み込みSTM32 MCPサーバーを自動起動します。",
+  "configuration.mcpHost.description": "STM32 MCPサーバーがバインドするホスト。",
+  "configuration.mcpPort.description": "STM32 MCPサーバーが使用するポート。"
+}

@@ -1,0 +1,8 @@
+{
+  "undeclared": "未宣言の識別子です。ioc設定で対象ペリフェラルが有効か確認してください。",
+  "No such file or directory": "ヘッダまたはソースが見つかりません。インクルードパスと生成コードを確認してください。",
+  "undefined reference": "リンカエラーです。ソース未追加、または関数シグネチャ不一致の可能性があります。",
+  "multiple definition": "同一シンボルが複数定義されています。重複実装や重複リンクを確認してください。",
+  "collect2: error": "リンク工程で失敗しました。直前の undefined reference や section overflow を確認してください。",
+  "region .* overflowed": "メモリ領域を超過しました。不要機能の削減、最適化、リンカ配置の見直しが必要です。"
+}

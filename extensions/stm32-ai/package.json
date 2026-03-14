@@ -1,0 +1,214 @@
+{
+  "name": "stm32-ai",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.0.1",
+  "publisher": "tova",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "enabledApiProposals": [
+    "chatParticipantAdditions"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension",
+  "activationEvents": [
+    "onCommand:stm32ai.openAssistantPanel",
+    "onCommand:stm32ai.openChat",
+    "onCommand:stm32ai.runSemiAutoFlow",
+    "onCommand:stm32ai.runAutoUntilFlash",
+    "onCommand:stm32ai.runFullAutoFlow",
+    "onCommand:stm32ai.fixBuildError",
+    "onCommand:stm32ai.analyzeHardFault",
+    "onCommand:stm32ai.startMcpServer",
+    "onCommand:stm32ai.stopMcpServer",
+    "onView:stm32-ai.assistantView"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": "limited"
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "stm32ai.openAssistantPanel",
+        "title": "%command.openAssistantPanel.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.openChat",
+        "title": "%command.openChat.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.runSemiAutoFlow",
+        "title": "%command.runSemiAutoFlow.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.runAutoUntilFlash",
+        "title": "%command.runAutoUntilFlash.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.runFullAutoFlow",
+        "title": "%command.runFullAutoFlow.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.fixBuildError",
+        "title": "%command.fixBuildError.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.analyzeHardFault",
+        "title": "%command.analyzeHardFault.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.startMcpServer",
+        "title": "%command.startMcpServer.title%",
+        "category": "STM32 AI"
+      },
+      {
+        "command": "stm32ai.stopMcpServer",
+        "title": "%command.stopMcpServer.title%",
+        "category": "STM32 AI"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stm32-ai-assistant",
+          "title": "STM32 AI",
+          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+        }
+      ]
+    },
+    "views": {
+      "stm32-ai-assistant": [
+        {
+          "id": "stm32-ai.assistantView",
+          "name": "AIアシスタント",
+          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+        }
+      ]
+    },
+    "languageModelTools": [
+      {
+        "name": "stm32Build",
+        "displayName": "STM32 Build",
+        "toolReferenceName": "stm32Build",
+        "canBeReferencedInPrompt": true,
+        "modelDescription": "Build STM32 Debug target using stm32-core extension.",
+        "userDescription": "STM32プロジェクトをビルドします。",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "stm32Flash",
+        "displayName": "STM32 Flash",
+        "toolReferenceName": "stm32Flash",
+        "canBeReferencedInPrompt": true,
+        "modelDescription": "Flash latest STM32 build using stm32-core extension.",
+        "userDescription": "STM32へ書き込みます。",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "stm32RegenerateCode",
+        "displayName": "STM32 Regenerate Code",
+        "toolReferenceName": "stm32RegenerateCode",
+        "canBeReferencedInPrompt": true,
+        "modelDescription": "Regenerate STM32 code from ioc while preserving USER CODE blocks.",
+        "userDescription": "iocからコード再生成します。",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "stm32AnalyzeHardFault",
+        "displayName": "STM32 HardFault Analysis",
+        "toolReferenceName": "stm32AnalyzeHardFault",
+        "canBeReferencedInPrompt": true,
+        "modelDescription": "Analyze HardFault registers and explain causes.",
+        "userDescription": "HardFaultを解析します。",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cfsr": {
+              "type": "string",
+              "description": "CFSR value in hex, e.g. 0x00008200"
+            },
+            "hfsr": {
+              "type": "string",
+              "description": "HFSR value in hex, e.g. 0x40000000"
+            }
+          },
+          "required": [
+            "cfsr",
+            "hfsr"
+          ]
+        }
+      }
+    ],
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "stm32ai.autoFlow.includeRegenerate": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.includeRegenerate.description%"
+        },
+        "stm32ai.autoFlow.requireFlashConfirmation": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.requireFlashConfirmation.description%"
+        },
+        "stm32ai.chat.defaultPrompt": {
+          "type": "string",
+          "default": "現在のSTM32プロジェクトをレビューして、次の作業を提案してください。",
+          "markdownDescription": "%configuration.defaultPrompt.description%"
+        },
+        "stm32ai.mcp.autoStartServer": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.mcpAutoStart.description%"
+        },
+        "stm32ai.mcp.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "markdownDescription": "%configuration.mcpHost.description%"
+        },
+        "stm32ai.mcp.port": {
+          "type": "number",
+          "default": 3737,
+          "minimum": 1024,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.mcpPort.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:stm32-ai",
+    "watch": "gulp watch-extension:stm32-ai"
+  },
+  "devDependencies": {
+    "@types/node": "22.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/vscode.git"
+  }
+}

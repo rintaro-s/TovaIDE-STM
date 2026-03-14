@@ -1,0 +1,339 @@
+{
+  "name": "stm32-core",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.0.1",
+  "publisher": "tova",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension",
+  "activationEvents": [
+    "onCommand:stm32.detectCubeCLT",
+    "onCommand:stm32.buildDebug",
+    "onCommand:stm32.flash",
+    "onCommand:stm32.buildAndFlash",
+    "onCommand:stm32.checkStLink",
+    "onCommand:stm32.openCubeMX",
+    "onCommand:stm32.jumpToFirstBuildError",
+    "onCommand:stm32.startDebug",
+    "onCommand:stm32.stopDebug",
+    "onCommand:stm32.newProject",
+    "onCommand:stm32.importCubeIDE",
+    "onCommand:stm32.openIocEditor",
+    "onCommand:stm32.regenerateCode",
+    "onCommand:stm32.showCodeSizeAnalysis",
+    "onCommand:stm32.showFaultAnalyzer",
+    "onCommand:stm32.swv.start",
+    "onCommand:stm32.swv.stop",
+    "onCommand:stm32.swv.showLog",
+    "onCommand:stm32.ioc.previewDiff",
+    "onCommand:stm32.liveExpressions.add",
+    "onCommand:stm32.liveExpressions.refresh",
+    "onCommand:stm32.liveExpressions.remove",
+    "onCommand:stm32.liveExpressions.moveUp",
+    "onCommand:stm32.liveExpressions.moveDown",
+    "onCommand:stm32.debug.refreshRegisters",
+    "onCustomEditor:stm32.iocEditor"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": "limited"
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "stm32.newProject",
+        "title": "%command.newProject.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.importCubeIDE",
+        "title": "%command.importCubeIDE.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.detectCubeCLT",
+        "title": "%command.detectCubeCLT.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.buildDebug",
+        "title": "%command.buildDebug.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.flash",
+        "title": "%command.flash.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.buildAndFlash",
+        "title": "%command.buildAndFlash.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.checkStLink",
+        "title": "%command.checkStLink.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.openCubeMX",
+        "title": "%command.openCubeMX.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.jumpToFirstBuildError",
+        "title": "%command.jumpToFirstBuildError.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.startDebug",
+        "title": "%command.startDebug.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.stopDebug",
+        "title": "%command.stopDebug.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.openIocEditor",
+        "title": "%command.openIocEditor.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.regenerateCode",
+        "title": "%command.regenerateCode.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.showCodeSizeAnalysis",
+        "title": "%command.showCodeSizeAnalysis.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.showFaultAnalyzer",
+        "title": "%command.showFaultAnalyzer.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.swv.start",
+        "title": "%command.startSwv.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.swv.stop",
+        "title": "%command.stopSwv.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.swv.showLog",
+        "title": "%command.showSwvLog.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.ioc.previewDiff",
+        "title": "%command.previewIocDiff.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.liveExpressions.add",
+        "title": "%command.addLiveExpression.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.liveExpressions.refresh",
+        "title": "%command.refreshLiveExpressions.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.liveExpressions.remove",
+        "title": "%command.removeLiveExpression.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.liveExpressions.moveUp",
+        "title": "%command.moveUpLiveExpression.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.liveExpressions.moveDown",
+        "title": "%command.moveDownLiveExpression.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32.debug.refreshRegisters",
+        "title": "%command.refreshRegisters.title%",
+        "category": "STM32"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stm32-pin",
+          "title": "STM32 Pin",
+          "icon": "./media/icons/stm32-pin.svg"
+        },
+        {
+          "id": "stm32-build",
+          "title": "STM32 Build",
+          "icon": "./media/icons/stm32-build.svg"
+        },
+        {
+          "id": "stm32-ai",
+          "title": "STM32 AI",
+          "icon": "./media/icons/stm32-ai.svg"
+        },
+        {
+          "id": "stm32-debug",
+          "title": "STM32 Debug",
+          "icon": "./media/icons/stm32-build.svg"
+        }
+      ]
+    },
+    "views": {
+      "stm32-pin": [
+        {
+          "id": "stm32-pin.quickActions",
+          "name": "ピン設定クイック操作",
+          "icon": "./media/icons/stm32-pin.svg"
+        }
+      ],
+      "stm32-build": [
+        {
+          "id": "stm32-build.quickActions",
+          "name": "ビルドクイック操作",
+          "icon": "./media/icons/stm32-build.svg"
+        }
+      ],
+      "stm32-ai": [
+        {
+          "id": "stm32-ai.quickActions",
+          "name": "AIクイック操作",
+          "icon": "./media/icons/stm32-ai.svg"
+        }
+      ],
+      "stm32-debug": [
+        {
+          "id": "stm32-debug.registers",
+          "name": "SVDレジスタ",
+          "icon": "./media/icons/stm32-build.svg"
+        },
+        {
+          "id": "stm32-debug.liveExpressions",
+          "name": "Live Expressions",
+          "icon": "./media/icons/stm32-build.svg"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "stm32.iocEditor",
+        "displayName": "STM32 IOC Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.ioc"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "stm32.cubeclt.metadataPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%configuration.cubecltMetadataPath.description%"
+        },
+        "stm32.cubemx.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%configuration.cubemxPath.description%"
+        },
+        "stm32.cubemx.generateCliArgsTemplate": {
+          "type": "string",
+          "default": "-q \"{ioc}\" -s",
+          "markdownDescription": "%configuration.cubemxGenerateArgsTemplate.description%"
+        },
+        "stm32.build.jobs": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "markdownDescription": "%configuration.buildJobs.description%"
+        },
+        "stm32.flash.frequencyKHz": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 100,
+          "markdownDescription": "%configuration.flashFrequency.description%"
+        },
+        "stm32.debug.gdbServerPort": {
+          "type": "number",
+          "default": 61234,
+          "minimum": 1024,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.gdbServerPort.description%"
+        },
+        "stm32.debug.svdPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%configuration.svdPath.description%"
+        },
+        "stm32.debug.liveExpressions": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "%configuration.liveExpressions.description%"
+        },
+        "stm32.debug.swv.startCommands": {
+          "type": "array",
+          "default": [
+            "monitor SWV enable",
+            "monitor ITM port 0 on"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "%configuration.swvStartCommands.description%"
+        },
+        "stm32.debug.swv.stopCommands": {
+          "type": "array",
+          "default": [
+            "monitor ITM port 0 off",
+            "monitor SWV disable"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "%configuration.swvStopCommands.description%"
+        },
+        "stm32.status.autoCheckStLink": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.autoCheckStLink.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:stm32-core",
+    "watch": "gulp watch-extension:stm32-core"
+  },
+  "devDependencies": {
+    "@types/node": "22.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/vscode.git"
+  }
+}

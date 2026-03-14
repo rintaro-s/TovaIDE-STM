@@ -1,0 +1,28 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+:root {
+	--cf-bg-base: #0c0e14;
+	--cf-bg-surface: #13151e;
+	--cf-bg-elevated: #1b1e2b;
+	--cf-bg-overlay: #222537;
+	--cf-border: #2a2d3e;
+	--cf-border-focus: #6366f1;
+	--cf-text-primary: #e8eaed;
+	--cf-text-secondary: #9196a8;
+	--cf-text-muted: #5a5f74;
+	--cf-accent: #6366f1;
+	--cf-accent-hover: #4f52d9;
+	--cf-accent-subtle: #6366f11a;
+	--cf-success: #22c55e;
+	--cf-warning: #f59e0b;
+	--cf-error: #ef4444;
+	--cf-info: #3b82f6;
+}
+
+.monaco-workbench {
+	background: radial-gradient(120% 80% at 20% 0%, color-mix(in srgb, var(--cf-accent) 12%, transparent), transparent 45%),
+		linear-gradient(180deg, var(--cf-bg-base), #0b0d12 48%, #0a0c11 100%);
+}

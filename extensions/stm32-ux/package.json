@@ -1,0 +1,104 @@
+{
+  "name": "stm32-ux",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.0.1",
+  "publisher": "tova",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension",
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:stm32-ux.onboardingView",
+    "onCommand:stm32ux.openWelcomeWizard",
+    "onCommand:stm32ux.startBlinkTutorial",
+    "onCommand:stm32ux.openTemplateGallery",
+    "onCommand:stm32ux.runEnvironmentCheck",
+    "onCommand:stm32ux.explainLatestError",
+    "onCommand:stm32ux.openPinVisualizer"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": "limited"
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "stm32ux.openWelcomeWizard",
+        "title": "%command.openWelcomeWizard.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.startBlinkTutorial",
+        "title": "%command.startBlinkTutorial.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.openTemplateGallery",
+        "title": "%command.openTemplateGallery.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.runEnvironmentCheck",
+        "title": "%command.runEnvironmentCheck.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.explainLatestError",
+        "title": "%command.explainLatestError.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.openPinVisualizer",
+        "title": "%command.openPinVisualizer.title%",
+        "category": "STM32"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stm32-ux",
+          "title": "STM32 Start",
+          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+        }
+      ]
+    },
+    "views": {
+      "stm32-ux": [
+        {
+          "id": "stm32-ux.onboardingView",
+          "name": "オンボーディング",
+          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "stm32ux.autoOpenWelcome": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.autoOpenWelcome.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:stm32-ux",
+    "watch": "gulp watch-extension:stm32-ux"
+  },
+  "devDependencies": {
+    "@types/node": "22.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/vscode.git"
+  }
+}

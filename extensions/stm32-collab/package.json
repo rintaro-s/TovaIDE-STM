@@ -1,0 +1,101 @@
+{
+  "name": "stm32-collab",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.0.1",
+  "publisher": "tova",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension",
+  "activationEvents": [
+    "onCommand:stm32collab.startSession",
+    "onCommand:stm32collab.joinSession",
+    "onCommand:stm32collab.startLanShare",
+    "onCommand:stm32collab.stopLanShare",
+    "onCommand:stm32collab.exportProjectZip",
+    "onCommand:stm32collab.openPanel"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": "limited"
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "stm32collab.openPanel",
+        "title": "%command.openPanel.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.startSession",
+        "title": "%command.startSession.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.joinSession",
+        "title": "%command.joinSession.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.startLanShare",
+        "title": "%command.startLanShare.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.stopLanShare",
+        "title": "%command.stopLanShare.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.exportProjectZip",
+        "title": "%command.exportProjectZip.title%",
+        "category": "STM32"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stm32-collab",
+          "title": "STM32 Collab",
+          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+        }
+      ]
+    },
+    "views": {
+      "stm32-collab": [
+        {
+          "id": "stm32-collab.panel",
+          "name": "共同作業",
+          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "stm32collab.sharePort": {
+          "type": "number",
+          "default": 8080,
+          "minimum": 1024,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.sharePort.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:stm32-collab",
+    "watch": "gulp watch-extension:stm32-collab"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/vscode.git"
+  }
+}

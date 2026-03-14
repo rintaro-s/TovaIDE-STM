@@ -1,0 +1,12 @@
+{
+  "displayName": "STM32 UX",
+  "description": "Beginner onboarding and migration UX for STM32 in TovaIDE",
+  "command.openWelcomeWizard.title": "Open STM32 Welcome Wizard",
+  "command.startBlinkTutorial.title": "Start STM32 Blink Tutorial",
+  "command.openTemplateGallery.title": "Open STM32 Template Gallery",
+  "command.runEnvironmentCheck.title": "Run STM32 Environment Check",
+  "command.explainLatestError.title": "Explain Latest Build Error",
+  "command.openPinVisualizer.title": "Open STM32 Pin Visualizer",
+  "configuration.title": "STM32 UX",
+  "configuration.autoOpenWelcome.description": "Automatically show STM32 onboarding panel when opening a workspace for the first time."
+}

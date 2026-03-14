@@ -1,0 +1,20 @@
+{
+  "displayName": "STM32 AI",
+  "description": "AI assistant and automation workflow for STM32 in TovaIDE",
+  "command.openAssistantPanel.title": "Open AI Assistant Panel",
+  "command.openChat.title": "Open STM32 AI Chat",
+  "command.runSemiAutoFlow.title": "Run Semi-Auto STM32 Flow",
+  "command.runAutoUntilFlash.title": "Run STM32 Flow Until Flash",
+  "command.runFullAutoFlow.title": "Run Full-Auto STM32 Flow",
+  "command.fixBuildError.title": "Fix Build Error with AI",
+  "command.analyzeHardFault.title": "Analyze HardFault with AI",
+  "command.startMcpServer.title": "Start STM32 MCP Server",
+  "command.stopMcpServer.title": "Stop STM32 MCP Server",
+  "configuration.title": "STM32 AI",
+  "configuration.includeRegenerate.description": "Include IOC code regeneration in automatic STM32 workflow.",
+  "configuration.requireFlashConfirmation.description": "Require explicit confirmation before flashing in full-auto flow.",
+  "configuration.defaultPrompt.description": "Default initial prompt used when opening STM32 AI chat.",
+  "configuration.mcpAutoStart.description": "Automatically start the embedded STM32 MCP server when the extension activates.",
+  "configuration.mcpHost.description": "Host interface bound by the STM32 MCP server.",
+  "configuration.mcpPort.description": "Port used by the STM32 MCP server."
+}

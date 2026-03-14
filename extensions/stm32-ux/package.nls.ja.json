@@ -1,0 +1,12 @@
+{
+  "displayName": "STM32 UX",
+  "description": "TovaIDE向けSTM32初心者導線と移行UX",
+  "command.openWelcomeWizard.title": "STM32ウェルカムウィザードを開く",
+  "command.startBlinkTutorial.title": "STM32 Lチカチュートリアルを開始",
+  "command.openTemplateGallery.title": "STM32テンプレートギャラリーを開く",
+  "command.runEnvironmentCheck.title": "STM32環境チェックを実行",
+  "command.explainLatestError.title": "最新ビルドエラーを解説",
+  "command.openPinVisualizer.title": "STM32ピンビジュアライザを開く",
+  "configuration.title": "STM32 UX",
+  "configuration.autoOpenWelcome.description": "ワークスペース初回オープン時にSTM32オンボーディングを自動表示します。"
+}
