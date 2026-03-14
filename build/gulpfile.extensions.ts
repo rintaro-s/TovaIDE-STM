@@ -96,6 +96,12 @@ const compilations = [
 	'.vscode/extensions/vscode-selfhost-test-provider/tsconfig.json',
 	'.vscode/extensions/vscode-selfhost-import-aid/tsconfig.json',
 	'.vscode/extensions/vscode-extras/tsconfig.json',
+
+	// CubeForge IDE — STM32 extensions
+	'extensions/stm32-core/tsconfig.json',
+	'extensions/stm32-ai/tsconfig.json',
+	'extensions/stm32-collab/tsconfig.json',
+	'extensions/stm32-ux/tsconfig.json',
 ];
 
 const getBaseUrl = (out: string) => `https://main.vscode-cdn.net/sourcemaps/${commit}/${out}`;

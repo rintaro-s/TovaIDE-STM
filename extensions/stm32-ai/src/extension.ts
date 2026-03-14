@@ -9,6 +9,7 @@ declare const require: (moduleName: string) => unknown;
 
 const httpModule = require('http') as {
 	createServer: (handler: (req: IncomingMessageLike, res: ServerResponseLike) => void) => HttpServerLike;
+	get: (url: string, callback: (res: { statusCode?: number; on(e: 'data', l: (c: unknown) => void): void; on(e: 'end', l: () => void): void; }) => void) => { on(e: 'error', l: (e: Error) => void): void; end(): void };
 };
 const cryptoModule = require('crypto') as {
 	randomBytes: (size: number) => { toString: (encoding: string) => string };
@@ -57,6 +58,8 @@ let extensionContextRef: vscode.ExtensionContext | undefined;
 let mcpServer: HttpServerLike | undefined;
 let mcpServerHost = '127.0.0.1';
 let mcpServerPort = 3737;
+let activeAssistantView: vscode.WebviewView | undefined;
+let mcpPollTimer: ReturnType<typeof setInterval> | undefined;
 
 const MCP_TOKEN_SECRET_KEY = 'stm32ai.mcp.token';
 
@@ -87,6 +90,37 @@ export function activate(context: vscode.ExtensionContext): void {
 	if (autoStartServer) {
 		void startMcpServer(context);
 	}
+
+	startMcpStatusPolling();
+	context.subscriptions.push({ dispose: () => { if (mcpPollTimer !== undefined) { clearInterval(mcpPollTimer); } } });
+}
+
+function pollMcpHealth(): void {
+	const url = `http://${mcpServerHost}:${mcpServerPort}/health`;
+	const req = httpModule.get(url, res => {
+		const ok = (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300;
+		res.on('data', () => { });
+		res.on('end', () => {
+			if (activeAssistantView) {
+				activeAssistantView.webview.postMessage({
+					type: 'mcpStatus',
+					running: ok,
+					url: ok ? `${mcpServerHost}:${mcpServerPort}` : ''
+				});
+			}
+		});
+	});
+	req.on('error', () => {
+		if (activeAssistantView) {
+			activeAssistantView.webview.postMessage({ type: 'mcpStatus', running: false, url: '' });
+		}
+	});
+}
+
+function startMcpStatusPolling(): void {
+	if (mcpPollTimer !== undefined) { return; }
+	pollMcpHealth();
+	mcpPollTimer = setInterval(pollMcpHealth, 10000);
 }
 
 export function deactivate(): void {
@@ -98,6 +132,8 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	public resolveWebviewView(webviewView: vscode.WebviewView): void {
+		activeAssistantView = webviewView;
+		webviewView.onDidDispose(() => { activeAssistantView = undefined; });
 		webviewView.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [this.extensionUri],
@@ -151,50 +187,133 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>STM32 AI Assistant</title>
 	<style>
-		body { font: 13px/1.5 var(--vscode-font-family); padding: 12px; color: var(--vscode-foreground); }
-		h1 { font-size: 14px; margin: 0 0 10px; }
-		.buttons { display: grid; gap: 8px; }
-		button {
-			background: var(--vscode-button-background);
-			color: var(--vscode-button-foreground);
-			border: 1px solid transparent;
-			padding: 8px;
-			border-radius: 6px;
-			cursor: pointer;
-			text-align: left;
+		*{box-sizing:border-box;margin:0;padding:0}
+		:root{
+			--bg:var(--vscode-editor-background,#0d0e14);
+			--sf:var(--vscode-sideBar-background,#13151e);
+			--bd:var(--vscode-panel-border,#1e2030);
+			--tx:var(--vscode-editor-foreground,#e8eaed);
+			--mt:var(--vscode-descriptionForeground,#6b7280);
+			--ac:#6366f1;--ac2:rgba(99,102,241,.14);
+			--ok:#22c55e;--wn:#f59e0b;--er:#ef4444;
 		}
-		button.secondary {
-			background: var(--vscode-editor-background);
-			color: var(--vscode-foreground);
-			border-color: var(--vscode-panel-border);
-		}
-		#status { min-height: 1.2em; margin-top: 8px; color: var(--vscode-descriptionForeground); }
+		body{font:12px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);padding:8px 6px;background:var(--sf);color:var(--tx);}
+		.sec{margin-bottom:10px}
+		.sec-hd{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mt);padding:0 4px 5px}
+		.btn{display:flex;align-items:center;gap:7px;width:100%;padding:6px 9px;margin-bottom:3px;background:transparent;border:1px solid var(--bd);border-radius:6px;color:var(--tx);cursor:pointer;font:inherit;text-align:left;transition:background .1s,border-color .1s}
+		.btn:hover{background:var(--ac2);border-color:rgba(99,102,241,.45)}
+		.btn:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+		.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
+		.btn.pri:hover{background:#4f52d9;border-color:#4f52d9}
+		.btn.wn{border-color:rgba(245,158,11,.3)}
+		.btn.wn:hover{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.6)}
+		.ic{width:15px;text-align:center;flex-shrink:0;font-style:normal}
+		.lbl{flex:1;font-size:12px}
+		.badge{font-size:9px;padding:1px 5px;border-radius:8px;background:var(--ac2);color:var(--ac);font-weight:700;letter-spacing:.03em}
+		.mcp-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;margin-bottom:4px}
+		.dot{width:7px;height:7px;border-radius:50%;background:var(--mt);flex-shrink:0;transition:background .3s}
+		.dot.on{background:var(--ok);box-shadow:0 0 5px var(--ok)}
+		.mcp-info{flex:1;font-size:11px;color:var(--mt);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+		.mcp-url{color:var(--tx);font-weight:500}
+		.mcp-btn{font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--bd);background:transparent;color:var(--mt);cursor:pointer;white-space:nowrap}
+		.mcp-btn:hover{color:var(--tx);border-color:var(--tx)}
+		#log{padding:6px 8px;border-radius:5px;background:var(--bg);border:1px solid var(--bd);font-size:10.5px;color:var(--mt);font-family:var(--vscode-editor-font-family,monospace);word-break:break-all;min-height:28px;max-height:72px;overflow:auto;line-height:1.4}
 	</style>
 </head>
 <body>
-	<h1>STM32 AI Assistant</h1>
-	<div class="buttons" role="group" aria-label="STM32 AI actions">
-		<button id="openChat" aria-label="AIチャットを開く">AIチャットを開く</button>
-		<button id="semiAuto" aria-label="半自動フローを実行">半自動フロー (再生成→ビルド)</button>
-		<button id="autoUntilFlash" aria-label="書込み直前まで自動実行">書込み直前まで自動 (再生成→ビルド)</button>
-		<button id="fullAuto" aria-label="全自動フローを実行">全自動フロー (再生成→ビルド→書込み→デバッグ)</button>
-		<button id="fixBuild" aria-label="ビルドエラーをAIで修正">ビルドエラーをAIで修正</button>
-		<button id="hardFault" aria-label="HardFaultをAI解析">HardFaultをAI解析</button>
-		<button id="startMcp" aria-label="MCPサーバーを起動" class="secondary">MCPサーバーを起動</button>
-		<button id="stopMcp" aria-label="MCPサーバーを停止" class="secondary">MCPサーバーを停止</button>
+
+<div class="sec">
+	<div class="sec-hd">MCP サーバー</div>
+	<div class="mcp-row">
+		<div class="dot" id="mcpDot"></div>
+		<div class="mcp-info" id="mcpInfo">停止中</div>
+		<button class="mcp-btn" id="mcpToggle" aria-label="MCPサーバーを切り替え">起動</button>
 	</div>
-	<p id="status" role="status" aria-live="polite"></p>
-	<script>
-		const vscode = acquireVsCodeApi();
-		for (const id of ['openChat','semiAuto','autoUntilFlash','fullAuto','fixBuild','hardFault','startMcp','stopMcp']) {
-			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
-		}
-		window.addEventListener('message', event => {
-			if (event.data?.type === 'status') {
-				document.getElementById('status').textContent = String(event.data.message || '');
-			}
+</div>
+
+<div class="sec">
+	<div class="sec-hd">AI チャット</div>
+	<button class="btn pri" id="openChat" aria-label="AIチャットを開く">
+		<i class="ic">◎</i>
+		<span class="lbl">AIチャットを開く</span>
+		<span class="badge">@stm32</span>
+	</button>
+</div>
+
+<div class="sec">
+	<div class="sec-hd">AI 自動化フロー</div>
+	<button class="btn" id="semiAuto" aria-label="半自動フローを実行">
+		<i class="ic">▶</i>
+		<span class="lbl">半自動 (再生成→ビルド)</span>
+	</button>
+	<button class="btn" id="autoUntilFlash" aria-label="書込み直前まで自動実行">
+		<i class="ic">⏩</i>
+		<span class="lbl">書込み直前まで自動</span>
+	</button>
+	<button class="btn wn" id="fullAuto" aria-label="全自動フローを実行">
+		<i class="ic">⚡</i>
+		<span class="lbl">全自動 (→書込み→デバッグ)</span>
+	</button>
+</div>
+
+<div class="sec">
+	<div class="sec-hd">AI 診断</div>
+	<button class="btn" id="fixBuild" aria-label="ビルドエラーをAIで修正">
+		<i class="ic">🔧</i>
+		<span class="lbl">ビルドエラーをAI修正</span>
+	</button>
+	<button class="btn" id="hardFault" aria-label="HardFaultをAI解析">
+		<i class="ic">⚠</i>
+		<span class="lbl">HardFault AI 解析</span>
+	</button>
+</div>
+
+<div class="sec">
+	<div class="sec-hd">ステータス</div>
+	<div id="log" role="status" aria-live="polite">準備完了</div>
+</div>
+
+<script>
+	const vscode = acquireVsCodeApi();
+	let mcpOn = false;
+	const mcpDot = document.getElementById('mcpDot');
+	const mcpInfo = document.getElementById('mcpInfo');
+	const mcpToggle = document.getElementById('mcpToggle');
+	const log = document.getElementById('log');
+
+	function setMcp(on, url) {
+		mcpOn = on;
+		mcpDot.className = 'dot' + (on ? ' on' : '');
+		mcpInfo.innerHTML = on
+			? '起動中&nbsp;<span class="mcp-url">' + (url||'') + '</span>'
+			: '停止中';
+		mcpToggle.textContent = on ? '停止' : '起動';
+	}
+	function setLog(msg) { log.textContent = msg; }
+
+	mcpToggle.addEventListener('click', () => {
+		if (mcpOn) { vscode.postMessage({type:'stopMcp'}); setLog('MCPサーバーを停止中...'); }
+		else { vscode.postMessage({type:'startMcp'}); setLog('MCPサーバーを起動中...'); }
+	});
+
+	const actionMap = {
+		openChat:'AIチャット',semiAuto:'半自動フロー',autoUntilFlash:'書込み直前まで自動',
+		fullAuto:'全自動フロー',fixBuild:'ビルドエラーAI修正',hardFault:'HardFault解析'
+	};
+	for (const [id, label] of Object.entries(actionMap)) {
+		document.getElementById(id).addEventListener('click', () => {
+			setLog(label + ' を実行中...');
+			vscode.postMessage({type: id});
 		});
-	</script>
+	}
+
+	window.addEventListener('message', e => {
+		const d = e.data;
+		if (!d) return;
+		if (d.type === 'status') setLog(String(d.message || ''));
+		if (d.type === 'mcpStatus') { setMcp(d.running, d.url); if (d.message) setLog(String(d.message)); }
+	});
+</script>
 </body>
 </html>`;
 	}
@@ -362,7 +481,9 @@ async function startMcpServer(context: vscode.ExtensionContext): Promise<void> {
 	});
 
 	mcpServer.listen(mcpServerPort, mcpServerHost, () => {
-		assistantOutput.appendLine(`[STM32-AI] MCP server started at http://${mcpServerHost}:${mcpServerPort}/mcp`);
+		const url = `http://${mcpServerHost}:${mcpServerPort}/mcp`;
+		assistantOutput.appendLine(`[STM32-AI] MCP server started at ${url}`);
+		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `MCPサーバー起動: ${url}` });
 	});
 }
 
@@ -374,6 +495,7 @@ function stopMcpServer(): void {
 	mcpServer.close();
 	mcpServer = undefined;
 	assistantOutput.appendLine('[STM32-AI] MCP server stopped.');
+	activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: false, url: '', message: 'MCPサーバーを停止しました。' });
 }
 
 async function handleMcpHttpRequest(req: IncomingMessageLike, res: ServerResponseLike, token: string): Promise<void> {

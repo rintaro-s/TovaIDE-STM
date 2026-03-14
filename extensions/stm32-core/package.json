@@ -245,6 +245,12 @@
         "priority": "default"
       }
     ],
+    "snippets": [
+      {
+        "language": "c",
+        "path": "../../resources/stm32/snippets/hal-c.json"
+      }
+    ],
     "configuration": {
       "title": "%configuration.title%",
       "properties": {

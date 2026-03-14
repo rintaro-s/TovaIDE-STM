@@ -66,7 +66,7 @@
         {
           "id": "stm32-ux",
           "title": "STM32 Start",
-          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+          "icon": "../stm32-core/media/icons/stm32-ux.svg"
         }
       ]
     },
@@ -75,7 +75,7 @@
         {
           "id": "stm32-ux.onboardingView",
           "name": "オンボーディング",
-          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+          "icon": "../stm32-core/media/icons/stm32-ux.svg"
         }
       ]
     },

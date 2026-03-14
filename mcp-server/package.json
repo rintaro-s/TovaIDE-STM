@@ -1,0 +1,15 @@
+{
+  "name": "cubeforge-mcp-server",
+  "version": "1.0.0",
+  "description": "CubeForge IDE standalone MCP server for STM32 AI tooling",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "start:dev": "node index.js --port 3737 --verbose"
+  },
+  "keywords": ["stm32", "mcp", "cubeforge", "ai"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -24,5 +24,10 @@
 			]
 		}
 	},
-	"inputs": []
+	"inputs": [],
+	"_cubeforge_note": "CubeForge MCP server — start via: node mcp-server/index.js --workspace ${workspaceFolder}",
+	"cubeforge-stm32": {
+		"type": "http",
+		"url": "http://127.0.0.1:3737/mcp"
+	}
 }

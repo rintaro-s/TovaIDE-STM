@@ -12,6 +12,7 @@
   "private": true,
   "scripts": {
     "test": "echo Please run any of the test scripts from the scripts folder.",
+    "test:stm32": "cd test/smoke && node ../../node_modules/typescript/bin/tsc --noEmit && node ../node_modules/mocha/bin/mocha --grep \"STM32 Extensions\" --timeout 30000 src/main.js",
     "test-browser": "npx playwright install && node test/unit/browser/index.js",
     "test-browser-no-install": "node test/unit/browser/index.js",
     "test-node": "mocha test/unit/node/index.js --delay --ui=tdd --timeout=5000 --exit",

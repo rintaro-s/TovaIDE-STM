@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { registerPhase2Features } from './phase2';
 
 declare const require: (moduleName: string) => any;
-declare const process: { platform: string };
+declare const process: { platform: string; env: Record<string, string | undefined> };
 declare function setInterval(handler: () => void, timeout?: number): number;
 declare function clearInterval(id: number): void;
 
@@ -22,10 +22,12 @@ const childProcess = require('child_process') as {
 	};
 };
 const fsModule = require('fs') as {
+	constants: { F_OK: number };
 	promises: {
+		access: (path: string, mode?: number) => Promise<void>;
 		readFile: (path: string, encoding: string) => Promise<string>;
 		unlink: (path: string) => Promise<void>;
-		readdir: (path: string, options?: unknown) => Promise<Array<{ isFile: () => boolean; name: string }>>;
+		readdir: (path: string, options?: unknown) => Promise<Array<{ isFile: () => boolean; isDirectory: () => boolean; name: string }>>;
 	};
 };
 const osModule = require('os') as { tmpdir: () => string };
@@ -133,6 +135,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	registerBranchStatus(context);
 	startStLinkAutoPolling();
+	void autoDetectToolPaths();
 }
 
 export function deactivate(): void {
@@ -594,6 +597,65 @@ function registerBranchStatus(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(gitApi.onDidCloseRepository(update));
 		update();
 	}).then(undefined, () => undefined);
+}
+
+async function autoDetectToolPaths(): Promise<void> {
+	if (process.platform !== 'win32') {
+		return;
+	}
+
+	const config = vscode.workspace.getConfiguration('stm32');
+	const localApp = process.env['LOCALAPPDATA'] ?? 'C:\\Users\\Public';
+	const programFiles = process.env['ProgramFiles'] ?? 'C:\\Program Files';
+	const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
+
+	if (!config.get<string>('cubemx.path', '').trim()) {
+		const cubeMxCandidates = [
+			join(localApp, 'Programs', 'STM32CubeMX', 'STM32CubeMX.exe'),
+			join(programFiles, 'STMicroelectronics', 'STM32Cube', 'STM32CubeMX', 'STM32CubeMX.exe'),
+			join(programFilesX86, 'STMicroelectronics', 'STM32Cube', 'STM32CubeMX', 'STM32CubeMX.exe'),
+			'C:\\ST\\STM32CubeMX\\STM32CubeMX.exe',
+		];
+		for (const candidate of cubeMxCandidates) {
+			const found = await probeFilePath(candidate);
+			if (found) {
+				await config.update('cubemx.path', candidate, vscode.ConfigurationTarget.Global);
+				outputChannel.appendLine(`[STM32] Auto-detected CubeMX at: ${candidate}`);
+				break;
+			}
+		}
+	}
+
+	if (!config.get<string>('cubeclt.metadataPath', '').trim()) {
+		const cltRoots = [
+			join('C:', 'ST'),
+			join(programFiles, 'STMicroelectronics'),
+			join(programFilesX86, 'STMicroelectronics'),
+		];
+		const metadataExe = 'STM32CubeCLT_metadata.exe';
+		for (const root of cltRoots) {
+			const dirs = await fs.readdir(root, { withFileTypes: true }).catch(() => [] as Array<{ isFile: () => boolean; isDirectory: () => boolean; name: string }>);
+			const cltDir = dirs.find(d => d.isDirectory() && d.name.startsWith('STM32CubeCLT'));
+			if (cltDir) {
+				const exePath = join(root, cltDir.name, metadataExe);
+				const found = await probeFilePath(exePath);
+				if (found) {
+					await config.update('cubeclt.metadataPath', exePath, vscode.ConfigurationTarget.Global);
+					outputChannel.appendLine(`[STM32] Auto-detected CubeCLT at: ${exePath}`);
+					break;
+				}
+			}
+		}
+	}
+}
+
+async function probeFilePath(filePath: string): Promise<boolean> {
+	try {
+		await fsModule.promises.access(filePath, fsModule.constants.F_OK);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function startStLinkAutoPolling(): void {

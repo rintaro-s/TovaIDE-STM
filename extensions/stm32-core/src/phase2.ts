@@ -200,19 +200,6 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 	}
 
 	private getHtml(webview: vscode.Webview): string {
-		const heading = vscode.l10n.t('STM32 IOC Editor');
-		const summaryTitle = vscode.l10n.t('概要');
-		const mcuTitle = vscode.l10n.t('MCU');
-		const boardTitle = vscode.l10n.t('ボード');
-		const projectTitle = vscode.l10n.t('プロジェクト');
-		const peripheralTitle = vscode.l10n.t('有効ペリフェラル');
-		const clockTitle = vscode.l10n.t('クロックメモ');
-		const openCubeMxLabel = vscode.l10n.t('CubeMXを起動');
-		const regenerateLabel = vscode.l10n.t('コード再生成');
-		const previewDiffLabel = vscode.l10n.t('差分プレビュー');
-		const saveLabel = vscode.l10n.t('保存');
-		const editorLabel = vscode.l10n.t('IOC Raw Editor');
-		const iocPlaceholder = vscode.l10n.t('ここに .ioc の内容が表示されます');
 		const noneLabel = vscode.l10n.t('なし');
 		const csp = webview.cspSource;
 
@@ -222,172 +209,154 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>${escapeHtml(heading)}</title>
+	<title>IOC Editor</title>
 	<style>
-		:root {
-			color-scheme: dark light;
-			--bg: var(--vscode-editor-background);
-			--fg: var(--vscode-editor-foreground);
-			--muted: var(--vscode-descriptionForeground);
-			--border: var(--vscode-panel-border);
-			--accent: var(--vscode-button-background);
-			--accent-foreground: var(--vscode-button-foreground);
-			--surface: var(--vscode-sideBar-background);
+		*{box-sizing:border-box;margin:0;padding:0}
+		:root{
+			--bg:var(--vscode-editor-background,#0d0e14);
+			--sf:var(--vscode-sideBar-background,#13151e);
+			--bd:var(--vscode-panel-border,#1e2030);
+			--tx:var(--vscode-editor-foreground,#e8eaed);
+			--mt:var(--vscode-descriptionForeground,#6b7280);
+			--ac:#6366f1;--ac2:rgba(99,102,241,.12);
+			--ok:#22c55e;--wn:#f59e0b;
+			--font-mono:var(--vscode-editor-font-family,monospace);
 		}
-		* { box-sizing: border-box; }
-		body {
-			margin: 0;
-			padding: 16px;
-			background: var(--bg);
-			color: var(--fg);
-			font: 13px/1.5 var(--vscode-font-family);
-		}
-		.layout {
-			display: grid;
-			grid-template-columns: 320px minmax(320px, 1fr);
-			gap: 16px;
-		}
-		@media (max-width: 900px) {
-			.layout {
-				grid-template-columns: 1fr;
-			}
-		}
-		.card {
-			border: 1px solid var(--border);
-			border-radius: 8px;
-			background: var(--surface);
-			padding: 12px;
-		}
-		h1 {
-			margin: 0 0 12px;
-			font-size: 16px;
-		}
-		h2 {
-			margin: 0 0 8px;
-			font-size: 13px;
-			color: var(--muted);
-		}
-		.row {
-			display: flex;
-			justify-content: space-between;
-			gap: 12px;
-			padding: 4px 0;
-			border-bottom: 1px dashed var(--border);
-		}
-		.row:last-child { border-bottom: 0; }
-		.label { color: var(--muted); }
-		.value { font-weight: 600; }
-		ul {
-			margin: 0;
-			padding-left: 18px;
-		}
-		.actions {
-			display: flex;
-			gap: 8px;
-			margin-bottom: 10px;
-			flex-wrap: wrap;
-		}
-		button {
-			border: 1px solid transparent;
-			border-radius: 6px;
-			padding: 6px 10px;
-			background: var(--accent);
-			color: var(--accent-foreground);
-			cursor: pointer;
-		}
-		button.secondary {
-			background: transparent;
-			border-color: var(--border);
-			color: var(--fg);
-		}
-		textarea {
-			width: 100%;
-			height: 70vh;
-			border-radius: 8px;
-			border: 1px solid var(--border);
-			background: var(--bg);
-			color: var(--fg);
-			font: 12px/1.5 var(--vscode-editor-font-family);
-			padding: 12px;
-			resize: vertical;
-		}
+		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+		.topbar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--bd);background:var(--sf);flex-shrink:0;flex-wrap:wrap}
+		.topbar-title{font-size:13px;font-weight:600;margin-right:4px}
+		.topbar-mcu{font-size:11px;color:var(--mt);font-family:var(--font-mono);background:var(--bg);border:1px solid var(--bd);border-radius:4px;padding:2px 7px}
+		.spacer{flex:1}
+		.btn{padding:5px 12px;border-radius:5px;cursor:pointer;font:600 11px/1 var(--vscode-font-family,'Segoe UI',sans-serif);border:1px solid transparent;transition:background .1s}
+		.btn:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+		.btn-pri{background:var(--ac);color:#fff}
+		.btn-pri:hover{background:#4f52d9}
+		.btn-sec{background:transparent;border-color:var(--bd);color:var(--tx)}
+		.btn-sec:hover{background:var(--ac2);border-color:rgba(99,102,241,.4)}
+		.btn-ok{background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.4);color:var(--ok)}
+		.btn-ok:hover{background:rgba(34,197,94,.25)}
+		.layout{display:grid;grid-template-columns:280px 1fr;flex:1;overflow:hidden}
+		@media(max-width:780px){.layout{grid-template-columns:1fr}}
+		.sidebar{border-right:1px solid var(--bd);overflow-y:auto;padding:12px}
+		.sec-hd{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mt);margin:12px 0 6px}
+		.sec-hd:first-child{margin-top:0}
+		.info-row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--bd)}
+		.info-row:last-child{border-bottom:none}
+		.info-key{color:var(--mt);font-size:12px}
+		.info-val{font-size:12px;font-weight:600;max-width:55%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+		.badge-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+		.badge{font-size:10px;padding:2px 6px;border-radius:4px;background:var(--ac2);color:var(--ac);font-weight:600}
+		.badge.clock{background:rgba(245,158,11,.12);color:var(--wn)}
+		.editor-pane{display:flex;flex-direction:column;overflow:hidden}
+		.editor-toolbar{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--bd);background:var(--sf);flex-shrink:0}
+		.editor-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mt)}
+		.editor-spacer{flex:1}
+		textarea{flex:1;width:100%;border:none;background:var(--bg);color:var(--tx);font:12px/1.6 var(--font-mono);padding:12px;resize:none;outline:none;overflow:auto}
+		textarea::selection{background:rgba(99,102,241,.3)}
+		.dirty-dot{width:6px;height:6px;border-radius:50%;background:var(--wn);display:none;flex-shrink:0}
+		.dirty-dot.visible{display:block}
 	</style>
 </head>
 <body>
-	<h1>${escapeHtml(heading)}</h1>
-	<div class="layout">
-		<section class="card" aria-label="summary">
-			<h2>${escapeHtml(summaryTitle)}</h2>
-			<div class="row"><span class="label">${escapeHtml(mcuTitle)}</span><span id="mcu" class="value">-</span></div>
-			<div class="row"><span class="label">${escapeHtml(boardTitle)}</span><span id="board" class="value">-</span></div>
-			<div class="row"><span class="label">${escapeHtml(projectTitle)}</span><span id="project" class="value">-</span></div>
-			<h2 style="margin-top: 12px;">${escapeHtml(peripheralTitle)}</h2>
-			<ul id="peripherals"><li>${escapeHtml(noneLabel)}</li></ul>
-			<h2 style="margin-top: 12px;">${escapeHtml(clockTitle)}</h2>
-			<ul id="clockHints"><li>${escapeHtml(noneLabel)}</li></ul>
-		</section>
-		<section class="card">
-			<div class="actions">
-				<button id="openCubeMx">${escapeHtml(openCubeMxLabel)}</button>
-				<button id="regenerateCode" class="secondary">${escapeHtml(regenerateLabel)}</button>
-				<button id="previewDiff" class="secondary">${escapeHtml(previewDiffLabel)}</button>
-				<button id="save">${escapeHtml(saveLabel)}</button>
-			</div>
-			<h2>${escapeHtml(editorLabel)}</h2>
-			<textarea id="iocText" spellcheck="false" placeholder="${escapeHtml(iocPlaceholder)}"></textarea>
-		</section>
+
+<div class="topbar">
+	<span class="topbar-title">IOC Editor</span>
+	<span class="topbar-mcu" id="topMcu">—</span>
+	<span class="spacer"></span>
+	<button class="btn btn-sec" id="openCubeMx" aria-label="CubeMXを起動">⬡ CubeMXを起動</button>
+	<button class="btn btn-sec" id="regenerateCode" aria-label="コード再生成">↻ コード再生成</button>
+	<button class="btn btn-sec" id="previewDiff" aria-label="差分プレビュー">≠ 差分プレビュー</button>
+	<span class="dirty-dot" id="dirtyDot" title="未保存の変更あり"></span>
+	<button class="btn btn-ok" id="save" aria-label="保存">✓ 保存</button>
+</div>
+
+<div class="layout">
+	<div class="sidebar" role="complementary" aria-label="プロジェクト概要">
+		<div class="sec-hd">プロジェクト情報</div>
+		<div class="info-row"><span class="info-key">MCU</span><span id="mcu" class="info-val">—</span></div>
+		<div class="info-row"><span class="info-key">ボード</span><span id="board" class="info-val">—</span></div>
+		<div class="info-row"><span class="info-key">プロジェクト</span><span id="project" class="info-val">—</span></div>
+
+		<div class="sec-hd">有効ペリフェラル</div>
+		<div class="badge-list" id="peripherals"></div>
+
+		<div class="sec-hd">クロック設定</div>
+		<div class="badge-list" id="clockHints"></div>
 	</div>
-	<script>
-		const vscode = acquireVsCodeApi();
-		const mcuNode = document.getElementById('mcu');
-		const boardNode = document.getElementById('board');
-		const projectNode = document.getElementById('project');
-		const peripheralsNode = document.getElementById('peripherals');
-		const clockHintsNode = document.getElementById('clockHints');
-		const iocTextNode = document.getElementById('iocText');
 
-		const renderList = (node, items, emptyLabel) => {
-			node.innerHTML = '';
-			if (!Array.isArray(items) || items.length === 0) {
-				const li = document.createElement('li');
-				li.textContent = emptyLabel;
-				node.appendChild(li);
-				return;
-			}
-			for (const item of items) {
-				const li = document.createElement('li');
-				li.textContent = String(item);
-				node.appendChild(li);
-			}
-		};
+	<div class="editor-pane">
+		<div class="editor-toolbar">
+			<span class="editor-label">IOC Raw Editor</span>
+			<span class="editor-spacer"></span>
+			<span style="font-size:11px;color:var(--mt)" id="lineCount"></span>
+		</div>
+		<textarea id="iocText" spellcheck="false" aria-label="IOCファイルの内容"></textarea>
+	</div>
+</div>
 
-		window.addEventListener('message', event => {
-			const data = event.data;
-			if (!data || data.type !== 'update') {
-				return;
-			}
-			const summary = data.summary || {};
-			mcuNode.textContent = summary.mcu || '-';
-			boardNode.textContent = summary.board || '-';
-			projectNode.textContent = summary.projectName || '-';
-			renderList(peripheralsNode, summary.usedPeripherals, ${JSON.stringify(noneLabel)});
-			renderList(clockHintsNode, summary.clockHints, ${JSON.stringify(noneLabel)});
-			iocTextNode.value = data.iocText || '';
-		});
+<script>
+	const vscode = acquireVsCodeApi();
+	const mcuEl = document.getElementById('mcu');
+	const boardEl = document.getElementById('board');
+	const projectEl = document.getElementById('project');
+	const topMcuEl = document.getElementById('topMcu');
+	const peripheralsEl = document.getElementById('peripherals');
+	const clockHintsEl = document.getElementById('clockHints');
+	const iocTextEl = document.getElementById('iocText');
+	const lineCountEl = document.getElementById('lineCount');
+	const dirtyDot = document.getElementById('dirtyDot');
+	let dirty = false;
 
-		document.getElementById('save').addEventListener('click', () => {
-			vscode.postMessage({ type: 'save', iocText: iocTextNode.value });
-		});
-		document.getElementById('openCubeMx').addEventListener('click', () => {
-			vscode.postMessage({ type: 'openCubeMx' });
-		});
-		document.getElementById('regenerateCode').addEventListener('click', () => {
-			vscode.postMessage({ type: 'regenerateCode' });
-		});
-		document.getElementById('previewDiff').addEventListener('click', () => {
-			vscode.postMessage({ type: 'previewDiff' });
-		});
-	</script>
+	function renderBadges(el, items, cls) {
+		el.innerHTML = '';
+		if (!Array.isArray(items) || items.length === 0) {
+			el.innerHTML = '<span style="font-size:11px;color:var(--mt)">${escapeHtml(noneLabel)}</span>';
+			return;
+		}
+		for (const item of items) {
+			const b = document.createElement('span');
+			b.className = 'badge' + (cls ? ' ' + cls : '');
+			b.textContent = String(item);
+			el.appendChild(b);
+		}
+	}
+
+	function updateLineCount() {
+		const lines = iocTextEl.value.split('\\n').length;
+		lineCountEl.textContent = lines + ' 行';
+	}
+
+	iocTextEl.addEventListener('input', () => {
+		dirty = true;
+		dirtyDot.className = 'dirty-dot visible';
+		updateLineCount();
+	});
+
+	window.addEventListener('message', event => {
+		const data = event.data;
+		if (!data || data.type !== 'update') return;
+		const s = data.summary || {};
+		mcuEl.textContent = s.mcu || '—';
+		boardEl.textContent = s.board || '—';
+		projectEl.textContent = s.projectName || '—';
+		topMcuEl.textContent = s.mcu || '—';
+		renderBadges(peripheralsEl, s.usedPeripherals, null);
+		renderBadges(clockHintsEl, s.clockHints, 'clock');
+		iocTextEl.value = data.iocText || '';
+		dirty = false;
+		dirtyDot.className = 'dirty-dot';
+		updateLineCount();
+	});
+
+	document.getElementById('save').addEventListener('click', () => {
+		vscode.postMessage({ type: 'save', iocText: iocTextEl.value });
+		dirty = false;
+		dirtyDot.className = 'dirty-dot';
+	});
+	document.getElementById('openCubeMx').addEventListener('click', () => vscode.postMessage({ type: 'openCubeMx' }));
+	document.getElementById('regenerateCode').addEventListener('click', () => vscode.postMessage({ type: 'regenerateCode' }));
+	document.getElementById('previewDiff').addEventListener('click', () => vscode.postMessage({ type: 'previewDiff' }));
+</script>
 </body>
 </html>`;
 	}

@@ -375,6 +375,26 @@
 			}
 		},
 		{
+			"label": "CubeForge: Start MCP Server",
+			"type": "shell",
+			"command": "node",
+			"args": ["mcp-server/index.js", "--workspace", "${workspaceFolder}", "--verbose"],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "silent",
+				"panel": "dedicated",
+				"close": false
+			},
+			"problemMatcher": {
+				"owner": "cubeforge-mcp",
+				"pattern": { "regexp": "^$" },
+				"background": {
+					"beginsPattern": ".*CubeForge MCP.*",
+					"endsPattern": ".*listening on.*"
+				}
+			}
+		},
+		{
 			"label": "Launch MCP Server",
 			"type": "shell",
 			"command": "cd test/mcp && npm run compile && npm run start-http",

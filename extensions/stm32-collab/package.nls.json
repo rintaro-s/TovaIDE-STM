@@ -4,9 +4,19 @@
   "command.openPanel.title": "Open STM32 Collaboration Panel",
   "command.startSession.title": "Start STM32 Collaboration Session",
   "command.joinSession.title": "Join STM32 Collaboration Session",
+  "command.discoverSessions.title": "Discover STM32 Collaboration Sessions",
+  "command.startRealtimeSync.title": "Start STM32 Realtime Sync",
+  "command.stopRealtimeSync.title": "Stop STM32 Realtime Sync",
   "command.startLanShare.title": "Start STM32 LAN Share",
   "command.stopLanShare.title": "Stop STM32 LAN Share",
+  "command.startGitDaemon.title": "Start STM32 Git Daemon",
+  "command.stopGitDaemon.title": "Stop STM32 Git Daemon",
+  "command.shareDebugSnapshot.title": "Share STM32 Debug Snapshot (Read-only)",
+  "command.runQualityAudit.title": "Run STM32 Quality Audit",
   "command.exportProjectZip.title": "Export STM32 Project as ZIP",
   "configuration.title": "STM32 Collaboration",
-  "configuration.sharePort.description": "Port used by the STM32 LAN share server."
+  "configuration.sharePort.description": "Port used by the STM32 LAN share server.",
+  "configuration.discoveryPort.description": "UDP multicast port used for session discovery.",
+  "configuration.syncPort.description": "UDP multicast port used for realtime collaboration sync.",
+  "configuration.gitPort.description": "Port used by the local Git daemon for LAN sharing."
 }

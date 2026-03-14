@@ -15,8 +15,15 @@
   "activationEvents": [
     "onCommand:stm32collab.startSession",
     "onCommand:stm32collab.joinSession",
+    "onCommand:stm32collab.discoverSessions",
+    "onCommand:stm32collab.startRealtimeSync",
+    "onCommand:stm32collab.stopRealtimeSync",
     "onCommand:stm32collab.startLanShare",
     "onCommand:stm32collab.stopLanShare",
+    "onCommand:stm32collab.startGitDaemon",
+    "onCommand:stm32collab.stopGitDaemon",
+    "onCommand:stm32collab.shareDebugSnapshot",
+    "onCommand:stm32collab.runQualityAudit",
     "onCommand:stm32collab.exportProjectZip",
     "onCommand:stm32collab.openPanel"
   ],
@@ -49,13 +56,58 @@
         "category": "STM32"
       },
       {
+        "command": "stm32collab.discoverSessions",
+        "title": "%command.discoverSessions.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.startRealtimeSync",
+        "title": "%command.startRealtimeSync.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.stopRealtimeSync",
+        "title": "%command.stopRealtimeSync.title%",
+        "category": "STM32"
+      },
+      {
         "command": "stm32collab.stopLanShare",
         "title": "%command.stopLanShare.title%",
         "category": "STM32"
       },
       {
+        "command": "stm32collab.startGitDaemon",
+        "title": "%command.startGitDaemon.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.stopGitDaemon",
+        "title": "%command.stopGitDaemon.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.shareDebugSnapshot",
+        "title": "%command.shareDebugSnapshot.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.runQualityAudit",
+        "title": "%command.runQualityAudit.title%",
+        "category": "STM32"
+      },
+      {
         "command": "stm32collab.exportProjectZip",
         "title": "%command.exportProjectZip.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.startWsSync",
+        "title": "%command.startWsSync.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32collab.stopWsSync",
+        "title": "%command.stopWsSync.title%",
         "category": "STM32"
       }
     ],
@@ -64,7 +116,7 @@
         {
           "id": "stm32-collab",
           "title": "STM32 Collab",
-          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+          "icon": "../stm32-core/media/icons/stm32-collab.svg"
         }
       ]
     },
@@ -73,7 +125,7 @@
         {
           "id": "stm32-collab.panel",
           "name": "共同作業",
-          "icon": "../stm32-core/media/icons/stm32-ai.svg"
+          "icon": "../stm32-core/media/icons/stm32-collab.svg"
         }
       ]
     },
@@ -86,6 +138,34 @@
           "minimum": 1024,
           "maximum": 65535,
           "markdownDescription": "%configuration.sharePort.description%"
+        },
+        "stm32collab.discoveryPort": {
+          "type": "number",
+          "default": 5353,
+          "minimum": 1024,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.discoveryPort.description%"
+        },
+        "stm32collab.syncPort": {
+          "type": "number",
+          "default": 40123,
+          "minimum": 1024,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.syncPort.description%"
+        },
+        "stm32collab.gitPort": {
+          "type": "number",
+          "default": 9418,
+          "minimum": 1024,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.gitPort.description%"
+        },
+        "stm32collab.wsSyncPort": {
+          "type": "number",
+          "default": 40200,
+          "minimum": 1024,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.wsSyncPort.description%"
         }
       }
     }

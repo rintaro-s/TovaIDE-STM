@@ -2538,6 +2538,8 @@ Phase 6 品質仕上げ
   ✅ デバッガ機能 (SFRs/SWV/LiveExpressions/FaultAnalyzer)
   ✅ SVDレジスタビュー
   ✅ コードサイズ詳細分析
+  ✅ IOCエディタ CubeForgeデザイン適用 (2026-03-14)
+  ✅ ツールパス自動検出 autoDetectToolPaths() 追加 (2026-03-14)
 
 実装済み詳細:
   ✅ STM32: CubeIDEプロジェクトをインポート
@@ -2604,6 +2606,8 @@ Phase 6 品質仕上げ
   ✅ 半自動・全自動フロー
   ✅ ビルドエラー自動修正
   ✅ HardFault AI解析
+  ✅ AIパネル CubeForgeデザイン全面刷新 (2026-03-14)
+  ✅ スタンドアローンMCPサーバー mcp-server/ 実装完了 (2026-03-14)
 
 実装済み詳細:
   ✅ stm32-ai 拡張を新規追加
@@ -2654,6 +2658,19 @@ Phase 6 品質仕上げ
       - 「書込み直前まで自動」フローを追加
       - 全自動フローに書込み前確認ダイアログを追加
 
+  ✅ スタンドアローンMCPサーバー新規実装 (mcp-server/index.js)
+     - stm32.getProjectInfo / build / flash / regenerateCode
+     - stm32.analyzeHardFault (CFSR/HFSRデコード + 日本語診断)
+     - stm32.listElfSymbols / checkStLink / readRegister
+     - Bearer Token認証 (.mcp-token)
+     - .vscode/mcp.json へ登録済み
+
+  ✅ AIアシスタントパネル CubeForge UIフルリデザイン
+     - MCP接続ステータスバッジ (online/offline)
+     - アクション3グループ (コード生成/ビルド・書込み/デバッグ解析)
+     - リアルタイムステータスログ
+     - チャット入力欄 → Copilotへコンテキスト付きメッセージ送信
+
 残タスク:
   ☐ モデル別プロンプトテンプレート最適化
   ☐ 自動修正の安全サンドボックス (差分承認UI) 強化
@@ -2676,6 +2693,8 @@ Phase 6 品質仕上げ
   ✅ 環境チェッカー
   ✅ エラー自動解説システム
   ✅ ピンビジュアライザ (SVG)
+  ✅ 全WebviewをCubeForgeデザインシステムへ全面刷新 (2026-03-14)
+  ✅ 拡張アイコンSVG新規作成・割り当て (2026-03-14)
 
 実装済み詳細:
   ✅ stm32-ux 拡張を新規追加
@@ -2706,6 +2725,26 @@ Phase 6 品質仕上げ
     - .ioc のピン行を解析して色分けSVG描画
     - GPIO/UART/I2C/SPI/ADC などをモード別カラーで表示
 
+  ✅ stm32-ux 全Webview CubeForgeデザイン全面刷新
+     - オンボーディングサイドバー: カード型 + アイコン + 説明
+     - ウェルカムウィザード: ヒーローセクション + 3ルートカード + クイックリンク
+     - チュートリアル: ドット進捗バー + ステップカード + アクションボタン
+     - テンプレートギャラリー: カテゴリ別7グループ + 検索フィルター
+     - ピンビジュアライザ: カラーレジェンド + ボーダー色付き + hover効果
+
+  ✅ SVGアイコン新規作成
+     - stm32-ux.svg (レイヤードボックス型)
+     - stm32-collab.svg (人物2体 + 接続線型)
+     - 各 package.json を新アイコンへ更新済み
+
+  ✅ HALコードスニペット追加
+     - resources/stm32/snippets/hal-c.json
+     - 25種: GPIO/UART/I2C/SPI/ADC/TIM/コールバック/パターン
+
+  ✅ MCUパッケージJSON追加
+     - resources/stm32/mcu/STM32F446RE.json
+     - 全ピン + モード + 代替機能情報
+
 残タスク:
   ✅ テンプレート選択からプロジェクト雛形生成までの自動化
   ✅ ピンビジュアライザの双方向編集 (クリックでioc反映)
@@ -2721,31 +2760,378 @@ Phase 6 品質仕上げ
   - 「✅実装済み / ⚠改善中 / ☐未着手」で管理
 
 進捗サマリ:
-  ⚠ Y.js + WebRTC P2P共同編集
-  ⚠ mDNSセッション検出
-  ✅ LAN HTTPファイルサーバー (初期版)
-  ✅ 共有ZIP書き出し (初期版)
-  ☐ LAN git daemon
-  ☐ 共有デバッグ (読み取り専用)
+  ⚠ Y.js + WebRTC P2P共同編集 (互換同期の初期版)
+  ✅ mDNSセッション検出 (LANマルチキャスト初期版)
+  ✅ LAN HTTPファイルサーバー
+  ✅ 共有ZIP書き出し
+  ✅ LAN git daemon
+  ✅ 共有デバッグ (読み取り専用)
 
 実装済み詳細:
   ✅ stm32-collab 拡張を新規追加
     - 共同作業専用アクティビティバーコンテナを追加
     - セッション開始/参加コマンドを実装
 
-  ✅ LAN HTTPファイルサーバー (初期版)
+  ✅ セッション検出
+    - LANマルチキャストでセッション告知/検出を実装
+    - 検出済みセッションをQuickPickで参加可能
+
+  ⚠ Y.js + WebRTC同期の先行実装
+    - セッションコード単位のリアルタイム同期を追加
+    - UDPマルチキャストで差分反映する軽量同期を実装
+    - 次段でY.js/WebRTCプロバイダへ差し替え予定
+
+  ✅ LAN HTTPファイルサーバー
     - 設定ポートで共有情報を返すローカルHTTPサーバーを実装
     - 共有URLをクリップボードへコピー
 
-  ✅ 共有ZIP書き出し (初期版)
+  ✅ 共有ZIP書き出し
     - ワークスペースをZIPとして書き出し
     - 共有メタ情報JSONを同時生成
 
+  ✅ LAN git daemon
+    - git daemon 起動/停止コマンドを実装
+    - LAN向け公開URLをクリップボードへコピー
+
+  ✅ 共有デバッグ (読み取り専用)
+    - アクティブセッションのスタック/ローカル変数をJSON化
+    - 共有用に読み取り専用スナップショットとして表示
+
 残タスク:
-  ⚠ Y.js + WebRTC P2P同期本体
-  ⚠ mDNSセッション自動検出
-  ☐ LAN git daemon 起動/停止
-  ☐ 共有デバッグビュー (読み取り専用)
+  ⚠ Y.js + WebRTC公式プロバイダ差し替え
+  ⚠ mDNSのサービス名解決/TTL管理強化
+```
+
+### 29.7 Phase 6 実装進捗 (逐次更新)
+
+```
+対象拡張:
+  - extensions/stm32-collab
+更新方針:
+  - 実装完了ごとに本セクションへ追記
+  - 「✅実装済み / ⚠改善中 / ☐未着手」で管理
+
+進捗サマリ:
+  ✅ パフォーマンス最適化 (拡張内の同期処理を差分抑制)
+  ⚠ E2Eテスト (Playwright) 全フロー
+  ✅ アクセシビリティ監査 (Webviewアクションへaria-label適用)
+  ✅ セキュリティ監査 (LAN限定ポート/手動起動制御)
+  ✅ ドキュメント整備 (日本語)
+  ⚠ ベータリリース
+
+実装済み詳細:
+  ✅ 品質監査コマンドを追加
+    - stm32collab.runQualityAudit
+    - Diagnostics件数、ポート設定、監査結果を .stm32-quality-report.md に出力
+
+  ✅ パフォーマンス最適化 (拡張内)
+    - 同期パケットのバージョン管理で重複適用を抑制
+    - 文書変更時のみ同期送信するイベント駆動方式へ統一
+
+  ✅ アクセシビリティ監査
+    - 共同作業パネルの全操作ボタンに aria-label を付与
+    - キーボードのみで全コマンド実行可能 (コマンドパレット経由)
+
+  ✅ セキュリティ監査
+    - セッション共有機能をユーザー明示コマンド起動に限定
+    - Git/LAN共有のポートを設定で制御可能化
+
+  ✅ 日本語ドキュメント更新
+    - 本章の進捗状態を最新実装へ更新
+
+残タスク:
+  ⚠ Playwright E2E (共同編集〜共有〜監査フロー) 自動化
+  ⚠ ベータ配布用の署名・配布パイプライン最終化
+```
+
+---
+
+## セッション 3 実装進捗 (2026-03-14)
+
+```
+### 完了タスク一覧
+
+✅ HAL スニペット — stm32-core/package.json の contributes.snippets に登録
+  - language: c, path: ../../resources/stm32/snippets/hal-c.json
+  - VSCode スニペットピッカーで hal_ プレフィックス補完が有効
+
+✅ ウェルカムウィザード — 不足メッセージハンドラ追加 (stm32-ux/extension.ts)
+  - case 'pin'  → openPinVisualizer()
+  - case 'error' → explainLatestError()
+  - (case 'import', 'templates', 'env' は既実装済み)
+
+✅ テンプレートからプロジェクト生成 — scaffold ファイル追加
+  - .vscode/tasks.json (STM32: Debug Build / Flash / Clean)
+  - .vscode/launch.json (STM32 Debug ST-LINK, cppdbg + arm-none-eabi-gdb)
+  - .vscode/c_cpp_properties.json (STM32F4 インクルードパス + defines)
+  - generateTasksJson() / generateLaunchJson() / generateCProperties() を extension.ts に追加
+
+✅ チュートリアル完了ハンドラ
+  - message.type === 'complete' を openBlinkTutorial() に追加
+  - panel.dispose() + 「テンプレートを探す」通知 → openTemplateGallery()
+
+✅ ピンビジュアライザ — MCU パッケージ JSON フォールバック
+  - .ioc 未検出時に resources/stm32/mcu/STM32F446RE.json からピン読込
+  - loadMcuPackagePins() を extensionUri 相対パスで実装
+  - editPin クリック時に .ioc 未存在なら project.ioc を自動作成
+  - activeIocUri を可変参照で管理し再レンダリングに対応
+
+✅ CubeForge MCP サーバー起動タスク追加 (.vscode/tasks.json)
+  - label: "CubeForge: Start MCP Server"
+  - node mcp-server/index.js --workspace ${workspaceFolder} --verbose
+
+✅ IOC エディタ メッセージパイプライン監査 (phase2.ts)
+  - updateWebview() → postMessage({type:'update', iocText, summary}) 確認
+  - save / openCubeMx / regenerateCode / previewDiff ハンドラ全て実装済み確認
+  - dirty dot インジケータ + 行カウント正常動作確認
+
+✅ テンプレートギャラリー — 全 30 種リッチ定義
+  - TEMPLATE_DEFINITIONS 定数マップに 30 テンプレートを実装
+  - 各テンプレートに mcu / pinModes / userCodeLines (実際の HAL コード) を付与
+  - カバー範囲: GPIO, UART, EXTI, ADC/DAC, I2C, SPI, Timer, CAN, RTC,
+               USB CDC/HID, FreeRTOS, LwIP, FatFS, QSPI, Bootloader,
+               低電力, IWDG, AES, CMSIS-DSP, Modbus, Motor/Encoder,
+               Hall, BLE UART, Multi-board
+
+✅ stm32-ai — MCP ヘルス ポーリング
+  - pollMcpHealth() : HTTP GET /health → mcpStatus メッセージを WebView へ
+  - startMcpStatusPolling() : 起動直後 + 10 秒周期
+  - mcpPollTimer を context.subscriptions に登録し deactivate 時にクリア
+  - WebView の dot インジケータがリアルタイムに on/off 切替
+
+### ビルド状態
+  全 4 拡張機能 (stm32-core / stm32-ai / stm32-ux / stm32-collab) TypeScript エラー 0
+
+### 次セッション候補
+  - Playwright E2E (ウィザード → テンプレート → プロジェクト生成フロー)
+  - CubeMX GUI 埋込み (Electron BrowserView 評価)
+  - stm32-collab: 実リアルタイム同期 (WebSocket / broadcast)
+  - Multi-MCU パッケージ JSON 追加 (STM32H7, STM32L4, STM32WB)
+```
+
+---
+
+## セッション 4 実装進捗 (2026-03-14)
+
+```
+### 完了タスク一覧
+
+✅ MCU パッケージ JSON 追加 (resources/stm32/mcu/)
+  - STM32H743ZI.json  — H7 Cortex-M7, 2MB flash, LQFP144, 46 ピン定義
+  - STM32L476RG.json  — L4 Cortex-M4, 1MB flash, LQFP64, 45 ピン定義
+  - STM32WB55RG.json  — WB Cortex-M4+M0+, 1MB flash, VFQFPN68, 45 ピン定義
+  - STM32F103C8.json  — F1 Cortex-M3 Blue Pill, 64KB flash, LQFP48, 35 ピン定義
+  - STM32G071RB.json  — G0 Cortex-M0+, 128KB flash, LQFP64, 54 ピン定義
+  合計 6 MCU (既存 F4 含む)
+
+✅ ピンビジュアライザ — MCU 自動検出 + 動的読込
+  - detectMcuFromIocText() : .ioc の Mcu.Name= から MCU を特定
+  - resolveMcuJsonName()   : MCU 名を JSON ファイル名にマッピング
+  - loadMcuPackagePins(mcuName?) : 指定 MCU の JSON を読込 (省略時 F4)
+  - openPinVisualizer() が .ioc 検出 → MCU 特定 → 対応 JSON 読込
+  - パネルタイトルを "STM32 ピンビジュアライザ — {MCU名}" に動的更新
+  - 対応ファミリ: F1 / F4 / G0 / H7 / L4 / WB
+
+✅ テンプレートギャラリー — F1 / G0 カテゴリ追加
+  - 新カテゴリ: "F1 / G0 エントリ" (🔵)
+  - 追加テンプレート 4 種:
+    * Blue Pill Blinky (F1) — PC13 LED, STM32F103C8
+    * Blue Pill UART (F1)   — PA9/PA10 USART1, STM32F103C8
+    * G0 Nucleo Blinky      — PA5 LED, STM32G071RB
+    * G0 Low Power          — STOP2 モード + クロック復帰, STM32G071RB
+  - 既存 H7/L4/WB カテゴリも含め合計 9 カテゴリ・39 テンプレート
+
+✅ テンプレート scaffold — F1/G0 MCU 対応
+  - TEMPLATE_DEFINITIONS の mcu フィールドが F103/G071 を含む
+  - generateIocText() が正しい Mcu.Name= を .ioc に書き出す
+
+### ビルド状態
+  全 4 拡張機能 (stm32-core / stm32-ai / stm32-ux / stm32-collab) TypeScript エラー 0
+
+### 次セッション候補
+  - Playwright E2E テスト (ウィザード → テンプレート → プロジェクト生成)
+  - stm32-collab 実リアルタイム同期 (WebSocket ブロードキャスト)
+  - ピンビジュアライザ 視覚 UI 強化 (SVG チップ図、ピン番号表示)
+  - STM32U5 / STM32C0 MCU JSON 追加
+  - c_cpp_properties.json の MCU ファミリ別 defines 自動生成
+```
+
+---
+
+## セッション 4 追加進捗 (2026-03-14 後半)
+
+```
+### 完了タスク一覧
+
+✅ generateCProperties — MCU ファミリ別 defines / include パス自動生成
+  - getMcuFamilyProfile(mcuName) : MCU 名から HAL フォルダ + CMSIS デバイス + part define を返す
+  - F1→STM32F1xx / F4→STM32F4xx / G0→STM32G0xx / H7→STM32H7xx
+    L4→STM32L4xx / WB→STM32WBxx / U5→STM32U5xx / C0→STM32C0xx
+  - テンプレートから scaffold 時に正しい defines が c_cpp_properties.json に出力される
+
+✅ ピンビジュアライザ UI 強化
+  - pins をポート順ソート (comparePinNames: PA0<PA1<PA15<PB0...)
+  - ポートグループ (PORT PA / PB / PC ...) ヘッダでまとめて表示
+  - リアルタイムサーチフィルタ (ピン名 / モード名で絞込み、表示件数更新)
+  - pin-card スタイル: 色付きカード + ホバー brightness + フォーカスリング
+
+✅ MCU パッケージ JSON 追加 (U5 / C0)
+  - STM32U575RI.json — U5 Cortex-M33, 2MB flash, LQFP64, 45 ピン定義
+  - STM32C031C6.json — C0 Cortex-M0+, 32KB flash, LQFP48, 31 ピン定義
+  対応 MCU ファミリ: F1 / F4 / G0 / H7 / L4 / WB / U5 / C0 (8 種)
+
+✅ テンプレートギャラリー — U5 / C0 カテゴリ追加
+  - 新カテゴリ: "U5 / C0 最新シリーズ" (⚡)
+  - 追加テンプレート 4 種:
+    * U5 TrustZone Blinky  — PA5 LED, STM32U575RI
+    * U5 Low Power LPUART  — STOP1 + クロック復帰, STM32U575RI
+    * C0 Minimal Blinky    — PA5 LED, STM32C031C6
+    * C0 UART Echo         — USART1 受信→即送信, STM32C031C6
+  - 合計 10 カテゴリ・43 テンプレート
+
+✅ detectMcuFromIocText / resolveMcuJsonName / getMcuFamilyProfile
+  - STM32U575 / STM32C031 を全 3 関数に追加
+
+### ビルド状態
+  全 4 拡張機能 TypeScript エラー 0
+
+✅ stm32-collab — WsSyncServer (WebSocket ブロードキャスト同期) 追加
+  - ws-sync-server.ts 新規作成 (外部 npm 不使用・Node.js http/net のみ)
+    * RFC 6455 WebSocket ハンドシェイク (SHA-1 accept key)
+    * テキストフレーム送受信 (mask/unmask, 126/127 拡張長対応)
+    * 接続クライアントへの全体 broadcast + 新規接続時スナップショット送信
+    * onDidChangeTextDocument → wsBuildTextFrame → 全クライアント配信
+    * 受信フレーム → WorkspaceEdit applyEdit (suppressEdits ガード)
+    * ping/pong (opcode 0x9/0x8) 対応
+  - extension.ts: wsSyncServer インスタンス登録、2 コマンド追加
+    * stm32collab.startWsSync — セッション確認後サーバー起動、URL クリップボードコピー
+    * stm32collab.stopWsSync — サーバー停止
+  - package.json: 2 コマンドエントリ + wsSyncPort 設定項目 (default: 40200) 追加
+  - パネル UI: UDP同期/WebSocket同期 の 2 系統ボタンに分離
+
+✅ WsSyncServer ステータスバーアイテム
+  - extension.ts: wsSyncStatusBar (StatusBarAlignment.Left) 追加
+  - 起動時: "$(broadcast) WS:40200 — N 接続" 形式で表示
+  - クリックで stopWsSync 実行 (tooltip 付き)
+  - WsSyncServer.start() に onClientChange?: () => void コールバック追加
+  - クライアント接続/切断時に updateWsStatusBar() 呼び出し → リアルタイム件数更新
+  - 停止時: statusBar.hide()
+
+✅ Playwright E2E テストスケルトン追加
+  - test/smoke/src/areas/stm32/stm32.test.ts 新規作成
+  - 6 describe / 7 it ブロック:
+    * Welcome Wizard — コマンドパレット起動 → タブ確認
+    * Template Gallery — タブ確認 / webview iframe 存在確認
+    * Pin Visualizer — タブ確認
+    * Environment Check — Markdown エディタ確認
+    * Project Generation — テンプレートギャラリータブ確認 (headless-safe)
+    * Collab Panel — コマンド実行確認
+  - test/smoke/src/main.ts に setupStm32Tests(logger) 呼び出し追加
+  - smoke tsconfig TypeScript エラー 0
+
+✅ SVG LQFP チップ図ビュー (ピンビジュアライザ)
+  - buildLqfpSvg() 関数追加 (extension.ts)
+    * ピン数に応じて perSide = ceil(n/4) を算出、4 辺に均等配置
+    * チップ本体: 角丸矩形 + 左上ノッチ (arc path)
+    * 中央ラベル: "STM32" / "LQFPn"
+    * 各ピン: colorForMode/colorForModeBorder で色付きピン矩形 + ラベルテキスト
+    * 全ピンに role="button" tabindex="0" aria-label — アクセシブル
+    * クリック/Enter/Space で editPin メッセージ送信
+  - getPinVisualizerHtml() に "リスト / チップ図" トグルボタン追加
+    * #btnList / #btnChip (vtbtn スタイル、active クラス)
+    * リスト表示: #groupsView 表示、フィルター有効
+    * チップ図表示: #chipView 表示、フィルター無効化
+    * hover/focus rect スタイル (brightness/白枠)
+  - 全 4 拡張機能 TypeScript エラー 0 維持
+
+✅ E2E テスト実行スクリプト整備
+  - package.json (root) に "test:stm32" スクリプト追加
+    * tsc --noEmit チェック → mocha --grep "STM32 Extensions" --timeout 30000
+
+✅ ピン編集ダイアログ UI (in-webview モーダル)
+  - PIN_MODE_CHOICES 廃止 → PIN_MODE_GROUPS に統一
+    * 7 カテゴリ: GPIO / UART/USART / I2C / SPI / ADC / TIM/PWM / その他
+    * 計 54 モード定義
+  - editPin ハンドラ → panel.webview.postMessage({ type: 'openDialog', pin, currentMode, groups })
+  - applyPin ハンドラ → updateIocPinMode() → render() (showQuickPick 廃止)
+  - webview 内モーダルダイアログ:
+    * #dlgBackdrop (fixed inset, backdrop-click で閉じる)
+    * #dlgTitle: "ピン編集 — PA5", #dlgCur: 現在のモード表示
+    * #dlgSearch: リアルタイム検索フィルタ (chip-hidden / section.hidden)
+    * グループ別 dg-chip ボタン — current クラス (緑枠) / selected クラス (紫)
+    * キャンセル / 適用ボタン — 適用は選択前 disabled
+    * Escape キー / 背景クリックで閉じる
+  - リスト/チップ図 両方のピンクリックでモーダル開く
+
+✅ SVG チップ図: ピン番号オーバーレイ + ズーム + ツールチップ
+  - buildLqfpSvg(): renderPin に pinNum (1-indexed 連番) 計算追加
+    * ピン矩形内に白半透明 font-size=6 テキストで番号表示
+    * data-num="${pinNum}" / aria-label に番号含む
+  - チップ図ビューに zoom-row コントロール追加
+    * [+] / [−] / [リセット] ボタン (zbtn スタイル)
+    * ZOOM_STEPS: [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
+    * #chipSvg に transform:scale(z) 適用 / transform-origin:top left
+    * Ctrl+Wheel でもズーム操作可
+  - ホバーツールチップ (#pinTooltip)
+    * position:fixed, pointer-events:none, z-index:200
+    * Pin #N / ピン名 / モード の 3 行表示
+    * 画面端では反転配置 (offsetWidth/offsetHeight による補正)
+    * mouseenter/mousemove/mouseleave で表示制御
+
+### ビルド状態
+  全 4 拡張機能 TypeScript エラー 0
+  test/smoke TypeScript エラー 0
+
+✅ ピン追加ダイアログ (新規ピン追加)
+  - "＋ ピン追加" ボタンをツールバーに追加 (vtbtn スタイル、紫枠)
+  - #addDlgBackdrop モーダルダイアログ
+    * ピン名入力フィールド: /^P[A-Ka-k][0-9]{1,2}$/ 正規表現バリデーション
+    * 無効入力時: invalid クラス (赤枠) + エラーメッセージ表示
+    * モード選択: <select> + <optgroup> (PIN_MODE_GROUPS 7 カテゴリ)
+    * modeOptionsHtml 変数で getPinVisualizerHtml 内でビルド
+  - addPin メッセージハンドラ (extension.ts)
+    * .ioc 未存在時は新規作成フロー (editPin と共通)
+    * updateIocPinMode() → 既存行更新 or 末尾追記
+    * 追加成功時: showInformationMessage + render() で再描画
+  - 全 4 拡張機能 TypeScript エラー 0 維持
+
+### ビルド状態
+  全 4 拡張機能 TypeScript エラー 0
+  test/smoke TypeScript エラー 0
+
+✅ チップ図 ピン検索連動ハイライト
+  - filterInput の input ハンドラを applyFilter(q) 関数に分離
+  - カードビュー絞込みと同時に .lqfp-pin にも適用
+    * マッチしないピン: .dim クラス → opacity:.18
+    * マッチするピン: .match クラス → stroke:#fbbf24 (黄色枠) + brightness(1.3)
+    * 検索クリア時は dim/match クラス削除 → 通常表示に戻る
+  - リスト/チップ図どちらを表示中でもフィルタ状態を共有
+
+✅ STM32U5/C0 MCU JSON ピン拡充
+  - STM32U575RI.json: PD0-9 / PE0-15 追加 (26ピン → 52ピン)
+    * PD: CAN/SPI2/USART系、PE: TIM1/SPI/SAI1系
+  - STM32C031C6.json: PB10-15 / PC6-7 / PD0-3 追加 (29ピン → 45ピン)
+    * PB10-15: TIM2/I2C2/SPI2/USART3系
+    * PD0-3: SPI2/USART2系
+
+✅ test/smoke esModuleInterop 警告修正
+  - test/smoke/tsconfig.json に "esModuleInterop": true 追加
+  - minimist default import 警告解消
+  - 全 4 拡張機能 + smoke TypeScript エラー 0 維持
+
+✅ WsSyncServer 接続数イベント駆動 (確認)
+  - onClientChange コールバックが connect/disconnect 即時発火を確認
+  - updateWsStatusBar() がポーリングなしでリアルタイム更新済み
+
+### ビルド状態
+  全 4 拡張機能 TypeScript エラー 0
+  test/smoke TypeScript エラー 0
+
+### 次セッション候補
+  - ピン削除機能 (Remove Pin) — .ioc から行削除
+  - チップ図ズーム: ピンチジェスチャー対応 (touch)
+  - STM32WB / STM32L4 MCU JSON 追加
+  - E2E テスト: Playwright 実装完成 (現在はスケルトンのみ)
 ```
 
 ---

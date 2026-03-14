@@ -4,9 +4,19 @@
   "command.openPanel.title": "STM32共同作業パネルを開く",
   "command.startSession.title": "STM32共同作業セッションを開始",
   "command.joinSession.title": "STM32共同作業セッションに参加",
+  "command.discoverSessions.title": "STM32共同作業セッションを検出",
+  "command.startRealtimeSync.title": "STM32リアルタイム同期を開始",
+  "command.stopRealtimeSync.title": "STM32リアルタイム同期を停止",
   "command.startLanShare.title": "STM32 LAN共有を開始",
   "command.stopLanShare.title": "STM32 LAN共有を停止",
+  "command.startGitDaemon.title": "STM32 git daemon を開始",
+  "command.stopGitDaemon.title": "STM32 git daemon を停止",
+  "command.shareDebugSnapshot.title": "STM32デバッグ状態を共有 (読み取り専用)",
+  "command.runQualityAudit.title": "STM32品質監査を実行",
   "command.exportProjectZip.title": "STM32プロジェクトをZIPで書き出す",
   "configuration.title": "STM32 Collaboration",
-  "configuration.sharePort.description": "STM32 LAN共有サーバーが使用するポート番号です。"
+  "configuration.sharePort.description": "STM32 LAN共有サーバーが使用するポート番号です。",
+  "configuration.discoveryPort.description": "セッション検出で使用するUDPマルチキャストポートです。",
+  "configuration.syncPort.description": "リアルタイム同期で使用するUDPマルチキャストポートです。",
+  "configuration.gitPort.description": "LAN共有で利用するローカルgit daemonのポート番号です。"
 }
