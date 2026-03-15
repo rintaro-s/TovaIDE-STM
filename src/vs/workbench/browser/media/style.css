@@ -67,6 +67,19 @@ body {
 	--vscode-shadow-depth-y: 0 5px 10px -4px rgba(0, 0, 0, 0.04);
 }
 
+.monaco-workbench .workbench-wallpaper-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background-position: center;
+	background-repeat: no-repeat;
+	background-size: cover;
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+	will-change: opacity;
+	z-index: 5000;
+}
+
 .monaco-workbench.web {
 	touch-action: none; /* Disable browser handling of all panning and zooming gestures. Removes 300ms touch delay. */
 	overscroll-behavior: none; /* Prevent bounce effect */

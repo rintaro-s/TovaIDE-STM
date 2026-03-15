@@ -31,6 +31,26 @@ const registry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Con
 	registry.registerConfiguration({
 		...workbenchConfigurationNodeBase,
 		'properties': {
+			'workbench.wallpaper.enabled': {
+				type: 'boolean',
+				default: false,
+				description: localize('workbench.wallpaper.enabled', "Controls whether a custom wallpaper image is shown behind the entire workbench."),
+				scope: ConfigurationScope.APPLICATION,
+			},
+			'workbench.wallpaper.image': {
+				type: 'string',
+				default: '',
+				markdownDescription: localize('workbench.wallpaper.image', "Wallpaper image source for the entire workbench. Supports `https://`, `file:///`, and `data:image/...` URLs."),
+				scope: ConfigurationScope.APPLICATION,
+			},
+			'workbench.wallpaper.opacity': {
+				type: 'number',
+				default: 0.2,
+				minimum: 0,
+				maximum: 1,
+				description: localize('workbench.wallpaper.opacity', "Opacity of the wallpaper image. 0 is fully transparent, 1 is fully visible."),
+				scope: ConfigurationScope.APPLICATION,
+			},
 			'workbench.externalBrowser': {
 				type: 'string',
 				markdownDescription: localize('browser', "Configure the browser to use for opening http or https links externally. This can either be the name of the browser (`edge`, `chrome`, `firefox`) or an absolute path to the browser's executable. Will use the system default if not set."),

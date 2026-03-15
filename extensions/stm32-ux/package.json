@@ -24,7 +24,8 @@
     "onCommand:stm32ux.openBoardConfigurator",
     "onCommand:stm32ux.runEnvironmentCheck",
     "onCommand:stm32ux.explainLatestError",
-    "onCommand:stm32ux.openPinVisualizer"
+    "onCommand:stm32ux.openPinVisualizer",
+    "onCommand:stm32ux.configureGlobalWallpaper"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -82,6 +83,11 @@
       {
         "command": "stm32ux.openPinVisualizer",
         "title": "%command.openPinVisualizer.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.configureGlobalWallpaper",
+        "title": "%command.configureGlobalWallpaper.title%",
         "category": "STM32"
       }
     ],

@@ -136,6 +136,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.runEnvironmentCheck', () => runEnvironmentCheck()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.explainLatestError', () => explainLatestError()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPinVisualizer', () => openPinVisualizer()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.configureGlobalWallpaper', () => configureGlobalWallpaper()));
 
 	const shouldOpenWelcome = vscode.workspace.getConfiguration('stm32ux').get<boolean>('autoOpenWelcome', true);
 	if (shouldOpenWelcome) {
@@ -144,6 +145,98 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
+}
+
+async function configureGlobalWallpaper(): Promise<void> {
+	const action = await vscode.window.showQuickPick([
+		{ label: '画像ファイルを選択して適用', value: 'file' },
+		{ label: '画像 URL を入力して適用', value: 'url' },
+		{ label: '壁紙をクリア', value: 'clear' },
+	], { placeHolder: 'IDE 全体の壁紙設定を選択' });
+
+	if (!action) {
+		return;
+	}
+
+	const config = vscode.workspace.getConfiguration();
+
+	if (action.value === 'clear') {
+		await config.update('workbench.wallpaper.enabled', false, vscode.ConfigurationTarget.Global);
+		await config.update('workbench.wallpaper.image', '', vscode.ConfigurationTarget.Global);
+		vscode.window.showInformationMessage(vscode.l10n.t('IDE 全体の壁紙をクリアしました。'));
+		return;
+	}
+
+	let imageSource = '';
+	if (action.value === 'file') {
+		const pick = await vscode.window.showOpenDialog({
+			canSelectFiles: true,
+			canSelectFolders: false,
+			canSelectMany: false,
+			openLabel: vscode.l10n.t('壁紙として使用'),
+			filters: {
+				Images: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg']
+			}
+		});
+		if (!pick || pick.length === 0) {
+			return;
+		}
+		imageSource = pick[0].toString();
+	} else {
+		const raw = await vscode.window.showInputBox({
+			title: vscode.l10n.t('壁紙 URL'),
+			prompt: vscode.l10n.t('https://... / file:///... / data:image/... / ローカル絶対パス'),
+			placeHolder: 'https://example.com/wallpaper.jpg',
+			ignoreFocusOut: true,
+		});
+		if (!raw?.trim()) {
+			return;
+		}
+		imageSource = normalizeWallpaperInput(raw.trim());
+	}
+
+	const currentOpacity = config.get<number>('workbench.wallpaper.opacity', 0.2);
+	const opacityRaw = await vscode.window.showInputBox({
+		title: vscode.l10n.t('壁紙の透明度'),
+		prompt: vscode.l10n.t('0〜1 または 0〜100(%) で入力'),
+		value: String(currentOpacity),
+		ignoreFocusOut: true,
+	});
+	if (!opacityRaw?.trim()) {
+		return;
+	}
+
+	let opacity = Number(opacityRaw.trim());
+	if (!Number.isFinite(opacity)) {
+		vscode.window.showErrorMessage(vscode.l10n.t('透明度の数値が不正です。'));
+		return;
+	}
+	if (opacity > 1) {
+		opacity = opacity / 100;
+	}
+	opacity = Math.min(1, Math.max(0, opacity));
+
+	await config.update('workbench.wallpaper.image', imageSource, vscode.ConfigurationTarget.Global);
+	await config.update('workbench.wallpaper.opacity', opacity, vscode.ConfigurationTarget.Global);
+	await config.update('workbench.wallpaper.enabled', true, vscode.ConfigurationTarget.Global);
+
+	vscode.window.showInformationMessage(vscode.l10n.t('IDE 全体の壁紙を更新しました。'));
+}
+
+function normalizeWallpaperInput(value: string): string {
+	if (/^(https?:|file:|data:image\/|vscode-file:|vscode-remote:)/i.test(value)) {
+		return value;
+	}
+
+	if (/^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value)) {
+		return vscode.Uri.file(value).toString();
+	}
+
+	if (value.startsWith('/')) {
+		return vscode.Uri.file(value).toString();
+	}
+
+	return value;
 }
 
 class OnboardingViewProvider implements vscode.WebviewViewProvider {
@@ -2554,7 +2647,7 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
 		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:22px 24px;max-width:960px}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:22px 24px;max-width:960px}
 		h1{font-size:20px;font-weight:700;margin-bottom:6px}
 		.sub{font-size:12px;color:var(--mt);margin-bottom:16px}
 		.notice{font-size:12px;color:#cbd5e1;background:#121826;border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin-bottom:14px}
@@ -2802,7 +2895,7 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
 		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14)}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:18px}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:18px}
 		h1{font-size:18px;margin-bottom:4px}
 		.sub{font-size:11px;color:var(--mt);margin-bottom:14px}
 		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
@@ -2853,7 +2946,7 @@ function getWorkflowStudioHtml(webview: vscode.Webview): string {
 			--mt:var(--vscode-descriptionForeground,#6b7280);
 			--ac:#0f766e;--ac2:rgba(15,118,110,.14);
 		}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:22px 24px;max-width:980px}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:22px 24px;max-width:980px}
 		h1{font-size:20px;font-weight:700;margin-bottom:6px}
 		.sub{font-size:12px;color:var(--mt);margin-bottom:18px}
 		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
@@ -2919,7 +3012,8 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<style>
 		*{box-sizing:border-box}
-		body{font:13px/1.65 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);margin:0;padding:24px 28px}
+		html,body{background:transparent !important}
+		body{font:13px/1.65 var(--vscode-font-family,'Segoe UI',sans-serif);color:var(--vscode-editor-foreground);margin:0;padding:24px 28px}
 		h1{font-size:22px;font-weight:700;margin:0 0 4px}
 		.sub{color:var(--vscode-descriptionForeground);margin:0 0 20px;max-width:920px}
 		h2{font-size:13px;font-weight:700;margin:22px 0 10px;color:var(--vscode-descriptionForeground);text-transform:uppercase;letter-spacing:.06em}
@@ -3011,7 +3105,7 @@ function getTutorialHtml(webview: vscode.Webview): string {
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
 		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14);--ok:#22c55e}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:24px 28px;max-width:700px}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:24px 28px;max-width:700px}
 		h1{font-size:18px;font-weight:700;margin-bottom:4px}
 		.sub{font-size:12px;color:var(--mt);margin-bottom:20px}
 		.tracker{display:flex;gap:4px;margin-bottom:20px;align-items:center}
@@ -3134,7 +3228,7 @@ function getTemplateGalleryHtml(webview: vscode.Webview): string {
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
 		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14)}
-		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:24px 28px}
+		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:24px 28px}
 		.page-hd{margin-bottom:20px}
 		h1{font-size:18px;font-weight:700;margin-bottom:4px}
 		.sub{font-size:12px;color:var(--mt)}
@@ -3431,7 +3525,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
 		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e}
-		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:16px 20px}
+		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:16px 20px}
 		/* ---- settings tab bar ---- */
 		.stab-bar{display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
 		.stab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--mt);padding:7px 14px;font-size:12px;cursor:pointer;margin-bottom:-1px;white-space:nowrap}

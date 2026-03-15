@@ -50,6 +50,8 @@ import { AccessibleViewRegistry } from '../../platform/accessibility/browser/acc
 import { NotificationAccessibleView } from './parts/notifications/notificationAccessibleView.js';
 import { IMarkdownRendererService } from '../../platform/markdown/browser/markdownRenderer.js';
 import { EditorMarkdownCodeBlockRenderer } from '../../editor/browser/widget/markdownRenderer/browser/editorMarkdownCodeBlockRenderer.js';
+import { FileAccess, Schemas } from '../../base/common/network.js';
+import { URI } from '../../base/common/uri.js';
 
 export interface IWorkbenchOptions {
 
@@ -66,6 +68,8 @@ export interface IWorkbenchOptions {
 
 export class Workbench extends Layout {
 
+	private readonly wallpaperLayer: HTMLDivElement;
+
 	private readonly _onWillShutdown = this._register(new Emitter<WillShutdownEvent>());
 	readonly onWillShutdown = this._onWillShutdown.event;
 
@@ -79,6 +83,8 @@ export class Workbench extends Layout {
 		logService: ILogService
 	) {
 		super(parent, { resetLayout: Boolean(options?.resetLayout) });
+		this.wallpaperLayer = document.createElement('div');
+		this.wallpaperLayer.classList.add('workbench-wallpaper-layer');
 
 		// Perf: measure workbench startup time
 		mark('code/willStartWorkbench');
@@ -231,7 +237,10 @@ export class Workbench extends Layout {
 	private registerListeners(lifecycleService: ILifecycleService, storageService: IStorageService, configurationService: IConfigurationService, hostService: IHostService, dialogService: IDialogService): void {
 
 		// Configuration changes
-		this._register(configurationService.onDidChangeConfiguration(e => this.updateFontAliasing(e, configurationService)));
+		this._register(configurationService.onDidChangeConfiguration(e => {
+			this.updateFontAliasing(e, configurationService);
+			this.updateWorkbenchWallpaper(e, configurationService);
+		}));
 
 		// Font Info
 		if (isNative) {
@@ -268,6 +277,42 @@ export class Workbench extends Layout {
 	}
 
 	private fontAliasing: 'default' | 'antialiased' | 'none' | 'auto' | undefined;
+	private updateWorkbenchWallpaper(e: IConfigurationChangeEvent | undefined, configurationService: IConfigurationService): void {
+		if (e && !e.affectsConfiguration('workbench.wallpaper.enabled') && !e.affectsConfiguration('workbench.wallpaper.image') && !e.affectsConfiguration('workbench.wallpaper.opacity')) {
+			return;
+		}
+
+		const enabled = configurationService.getValue<boolean>('workbench.wallpaper.enabled');
+		const image = (configurationService.getValue<string>('workbench.wallpaper.image') || '').trim();
+		const opacityConfig = configurationService.getValue<number>('workbench.wallpaper.opacity');
+		const opacity = Math.max(0, Math.min(1, Number.isFinite(opacityConfig) ? opacityConfig : 0));
+
+		if (!enabled || !image) {
+			this.wallpaperLayer.style.opacity = '0';
+			this.wallpaperLayer.style.backgroundImage = '';
+			return;
+		}
+
+		let cssImageUrl = image;
+		try {
+			const isWindowsAbsolutePath = /^[A-Za-z]:[\\/]/.test(image) || /^\\\\/.test(image);
+			if (isWindowsAbsolutePath) {
+				cssImageUrl = FileAccess.uriToBrowserUri(URI.file(image)).toString(true);
+			} else {
+				const parsed = URI.parse(image);
+				if (!parsed.scheme || parsed.scheme === Schemas.file) {
+					const fileUri = parsed.scheme === Schemas.file ? parsed : URI.file(image);
+					cssImageUrl = FileAccess.uriToBrowserUri(fileUri).toString(true);
+				}
+			}
+		} catch {
+			// Keep raw string for non-file URL forms.
+		}
+
+		this.wallpaperLayer.style.backgroundImage = `url("${cssImageUrl.replace(/"/g, '%22')}")`;
+		this.wallpaperLayer.style.opacity = String(opacity);
+	}
+
 	private updateFontAliasing(e: IConfigurationChangeEvent | undefined, configurationService: IConfigurationService) {
 		if (!isMacintosh) {
 			return; // macOS only
@@ -335,9 +380,11 @@ export class Workbench extends Layout {
 		]);
 
 		this.mainContainer.classList.add(...workbenchClasses);
+		this.mainContainer.appendChild(this.wallpaperLayer);
 
 		// Apply font aliasing
 		this.updateFontAliasing(undefined, configurationService);
+		this.updateWorkbenchWallpaper(undefined, configurationService);
 
 		// Warm up font cache information before building up too many dom elements
 		this.restoreFontInfo(storageService, configurationService);

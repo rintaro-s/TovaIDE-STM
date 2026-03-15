@@ -11,6 +11,7 @@
   "command.runEnvironmentCheck.title": "Run STM32 Environment Check",
   "command.explainLatestError.title": "Explain Latest Build Error",
   "command.openPinVisualizer.title": "Open STM32 Pin Visualizer",
+  "command.configureGlobalWallpaper.title": "Configure Global IDE Wallpaper",
   "configuration.title": "TovaIDE-STM UX",
   "configuration.autoOpenWelcome.description": "Automatically show STM32 onboarding panel when opening a workspace for the first time."
 }
