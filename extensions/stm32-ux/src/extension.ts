@@ -650,14 +650,17 @@ async function getBoardProfilesFromCatalog(): Promise<BoardProfile[]> {
 	}
 
 	let boardCatalog = extensionContextRef.globalState.get<CubeMxBoardCatalogItem[]>(CUBEMX_BOARD_CATALOG_KEY, []);
-	if (boardCatalog.length < 20) {
-		const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
-		for (const candidate of buildCubeMxBoardDbCandidates(configured)) {
-			if (await fileExists(candidate)) {
-				boardCatalog = await scanCubeMxBoardProfiles(vscode.Uri.file(candidate));
+	const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
+	for (const candidate of buildCubeMxBoardDbCandidates(configured)) {
+		if (await fileExists(candidate)) {
+			const scannedBoardCatalog = await scanCubeMxBoardProfiles(vscode.Uri.file(candidate));
+			const shouldUpdate = scannedBoardCatalog.length > boardCatalog.length
+				|| (boardCatalog.length < 180 && scannedBoardCatalog.length > 0);
+			if (shouldUpdate) {
+				boardCatalog = scannedBoardCatalog;
 				await extensionContextRef.globalState.update(CUBEMX_BOARD_CATALOG_KEY, boardCatalog);
-				break;
 			}
+			break;
 		}
 	}
 	for (const item of boardCatalog) {
@@ -696,7 +699,7 @@ async function getMcuSelectorNamesFromCatalog(profiles: BoardProfile[]): Promise
 	}
 
 	let syncedMcu = extensionContextRef.globalState.get<string[]>(CUBEMX_MCU_CATALOG_KEY, []);
-	if (syncedMcu.length < 2000) {
+	if (syncedMcu.length < 4500) {
 		const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
 		for (const candidate of buildCubeMxMcuDbCandidates(configured)) {
 			if (await fileExists(candidate)) {
@@ -816,10 +819,13 @@ function buildCubeMxBoardDbCandidates(configuredPath: string): string[] {
 
 /** STM32C011F(4-6)Px → ['STM32C011F4PX', 'STM32C011F6PX'] */
 function expandMcuVariantName(name: string): string[] {
-	const parenRe = /\(([A-Z0-9](?:-[A-Z0-9])+)\)/i;
+	const parenRe = /\(([A-Z0-9][A-Z0-9,-]*)\)/i;
 	const m = name.match(parenRe);
 	if (!m) { return [name.toUpperCase()]; }
-	const chars = m[1].split('-');
+	const chars = m[1]
+		.split(/[,-]/)
+		.map(part => part.trim())
+		.filter(part => part.length > 0);
 	const results: string[] = [];
 	for (const ch of chars) {
 		results.push(...expandMcuVariantName(name.replace(m[0], ch)));
@@ -830,24 +836,39 @@ function expandMcuVariantName(name: string): string[] {
 async function scanCubeMxMcuNames(root: vscode.Uri): Promise<string[]> {
 	const names = new Set<string>();
 
-	// 1. Parse families.xml first — this contains all MCU CPN variants
+	// 1) Parse families.xml and collect Name/RefName/RPN.
+	// CubeMX UI count is closer to this union than Name-only parsing.
 	const familiesUri = vscode.Uri.joinPath(root, 'families.xml');
 	try {
 		const familiesBytes = await vscode.workspace.fs.readFile(familiesUri);
 		let familiesText = '';
 		for (const v of familiesBytes) { familiesText += String.fromCharCode(v); }
-		const mcuNameRe = /<Mcu\b[^>]*\bName="([^"]+)"/gi;
-		let fm: RegExpExecArray | null;
-		while ((fm = mcuNameRe.exec(familiesText)) !== null) {
-			for (const expanded of expandMcuVariantName(fm[1])) {
-				names.add(expanded);
+		const mcuTagRe = /<Mcu\b[^>]*>/gi;
+		let tagMatch: RegExpExecArray | null;
+		while ((tagMatch = mcuTagRe.exec(familiesText)) !== null) {
+			const tag = tagMatch[0];
+			const nameAttr = tag.match(/\bName="([^"]+)"/i)?.[1];
+			if (nameAttr) {
+				for (const expanded of expandMcuVariantName(nameAttr)) {
+					names.add(expanded.toUpperCase());
+				}
+			}
+
+			const refNameAttr = tag.match(/\bRefName="([^"]+)"/i)?.[1];
+			if (refNameAttr && refNameAttr.toUpperCase().startsWith('STM32')) {
+				names.add(refNameAttr.toUpperCase());
+			}
+
+			const rpnAttr = tag.match(/\bRPN="([^"]+)"/i)?.[1];
+			if (rpnAttr && rpnAttr.toUpperCase().startsWith('STM32')) {
+				names.add(rpnAttr.toUpperCase());
 			}
 		}
 	} catch {
 		// families.xml not found — fall through to file scan
 	}
 
-	// 2. Also scan XML filenames (expands multi-variant file names)
+	// 2) Also scan XML filenames (expands multi-variant file names)
 	let entries: [string, vscode.FileType][] = [];
 	try { entries = await vscode.workspace.fs.readDirectory(root); } catch { /* ignore */ }
 	for (const [name, type] of entries) {
@@ -886,7 +907,8 @@ async function scanCubeMxBoardProfiles(root: vscode.Uri): Promise<CubeMxBoardCat
 				queue.push(vscode.Uri.joinPath(current, name));
 				continue;
 			}
-			if (type !== vscode.FileType.File || !name.toLowerCase().endsWith('.xml')) {
+			const lowerName = name.toLowerCase();
+			if (type !== vscode.FileType.File || (!lowerName.endsWith('.xml') && !lowerName.endsWith('.ioc'))) {
 				continue;
 			}
 
@@ -903,6 +925,42 @@ async function scanCubeMxBoardProfiles(root: vscode.Uri): Promise<CubeMxBoardCat
 			}
 
 			const fileStem = name.slice(0, -4);
+
+			// A) Prefer *_Board.ioc (the richest board source; includes much more than *_Configs.xml)
+			if (lowerName.endsWith('.ioc') && /_board(?:_allconfig)?$/i.test(fileStem)) {
+				const normalizedStem = fileStem
+					.replace(/_trustzoneenabled/ig, '')
+					.replace(/_allconfig/ig, '');
+				const id = `cubemx-board-${normalizedStem.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+				if (seen.has(id)) {
+					continue;
+				}
+
+				const mcuNameMatch = content.match(/^Mcu\.Name\s*=\s*(STM32[A-Z0-9()_-]+)/mi);
+				const genericMcuMatch = content.match(/\bSTM32[A-Z0-9()_-]+\b/i);
+				const mcu = (mcuNameMatch?.[1] ?? genericMcuMatch?.[0] ?? '').toUpperCase();
+				if (!mcu) {
+					continue;
+				}
+
+				const displayName = normalizedStem
+					.replace(/^[A-Z0-9]+_/, '')
+					.replace(/_STM32[A-Z0-9()_-]+_Board$/i, '')
+					.replace(/_Board$/i, '')
+					.replace(/_/g, ' ')
+					.trim();
+
+				seen.add(id);
+				results.push({
+					id,
+					name: displayName || normalizedStem,
+					mcu,
+					description: 'CubeMX Board DB (.ioc)'
+				});
+				continue;
+			}
+
+			// B) Fallback: *_Configs.xml / *_Modes.xml
 			if (!/_(Configs|Modes)_?$/i.test(fileStem)) {
 				continue;
 			}
@@ -2992,11 +3050,11 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 	if (n === 0) { return '<text x="10" y="20" fill="#6B7280" font-size="12">ピンなし</text>'; }
 
 	const perSide = Math.ceil(n / 4);
-	const PIN_PITCH = 28;
-	const PIN_LEN = 22;
-	const PIN_W = 8;
-	const CHIP_SIZE = perSide * PIN_PITCH + 24;
-	const OFFSET = PIN_LEN + 4;
+	const PIN_PITCH = n > 120 ? 18 : n > 80 ? 20 : 22;
+	const PIN_LEN = n > 120 ? 14 : 16;
+	const PIN_W = n > 120 ? 5 : 6;
+	const CHIP_SIZE = perSide * PIN_PITCH + 14;
+	const OFFSET = PIN_LEN + 2;
 	const TOTAL = CHIP_SIZE + OFFSET * 2;
 
 	const sides: Array<{ pin: string; mode: string }[]> = [[], [], [], []];
@@ -3007,19 +3065,19 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 	let elements = '';
 
 	// chip body
-	elements += `<rect x="${OFFSET}" y="${OFFSET}" width="${CHIP_SIZE}" height="${CHIP_SIZE}" rx="6" fill="#1a1d2e" stroke="#374151" stroke-width="1.5"/>`;
+	elements += `<rect x="${OFFSET}" y="${OFFSET}" width="${CHIP_SIZE}" height="${CHIP_SIZE}" rx="4" fill="#1a1d2e" stroke="#374151" stroke-width="1.2"/>`;
 	// notch top-left
 	elements += `<path d="M${OFFSET + 12},${OFFSET} A12,12 0 0,0 ${OFFSET},${OFFSET + 12}" fill="#0d0e14" stroke="#374151" stroke-width="1"/>`;
 	// chip label
-	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 - 8}" text-anchor="middle" fill="#9ca3af" font-size="11" font-family="Segoe UI,sans-serif">STM32</text>`;
-	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 + 8}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="Segoe UI,sans-serif">LQFP${n}</text>`;
+	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 - 6}" text-anchor="middle" fill="#9ca3af" font-size="9" font-family="Segoe UI,sans-serif">STM32</text>`;
+	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 + 6}" text-anchor="middle" fill="#6b7280" font-size="8" font-family="Segoe UI,sans-serif">LQFP${n}</text>`;
 
 	const renderPin = (item: { pin: string; mode: string }, index: number, side: number) => {
 		const isUnused = item.mode === '未使用';
 		const fill = isUnused ? '#161820' : colorForMode(item.mode);
 		const stroke = isUnused ? '#2a2d3a' : colorForModeBorder(item.mode);
 		const label = item.pin.length > 6 ? item.pin.slice(0, 5) + '…' : item.pin;
-		const pos = 12 + index * PIN_PITCH + PIN_PITCH / 2;
+		const pos = 7 + index * PIN_PITCH + PIN_PITCH / 2;
 
 		let rx = 0, ry = 0, anchor = 'middle', lx = 0, ly = 0;
 		if (side === 0) { // bottom
@@ -3045,8 +3103,8 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 
 		return `<g class="lqfp-pin" data-pin="${escapeHtml(item.pin)}" data-mode="${escapeHtml(item.mode)}" data-num="${pinNum}" role="button" tabindex="0" aria-label="${pinNum}: ${escapeHtml(item.pin)}: ${escapeHtml(item.mode)}">`
 			+ pinRect
-			+ `<text x="${nx}" y="${ny}" text-anchor="${nanchor}" fill="rgba(255,255,255,.75)" font-size="6" font-family="Segoe UI,sans-serif" pointer-events="none">${pinNum}</text>`
-			+ `<text x="${lx}" y="${ly}" text-anchor="${anchor}" fill="#d1d5db" font-size="8" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(label)}</text>`
+			+ `<text x="${nx}" y="${ny}" text-anchor="${nanchor}" fill="rgba(255,255,255,.75)" font-size="5" font-family="Segoe UI,sans-serif" pointer-events="none">${pinNum}</text>`
+			+ `<text x="${lx}" y="${ly}" text-anchor="${anchor}" fill="#d1d5db" font-size="7" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(label)}</text>`
 			+ `</g>`;
 	};
 
@@ -3270,20 +3328,20 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		.legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:9px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--sf)}
 		.lg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mt)}
 		.lg-dot{width:10px;height:10px;border-radius:3px;border:1.5px solid;flex-shrink:0}
-		.port-group{margin-bottom:18px}
+		.port-group{margin-bottom:10px}
 		.port-group.hidden{display:none}
-		.port-hd{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+		.port-hd{display:flex;align-items:center;gap:6px;margin-bottom:4px}
 		.port-badge{font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:4px;background:var(--sf);border:1px solid var(--bd);color:var(--mt)}
-		.port-count{font-size:11px;color:var(--mt)}
-		.pin-grid{display:flex;flex-wrap:wrap;gap:6px}
-		.pin-card{display:flex;flex-direction:column;align-items:flex-start;padding:6px 9px;border:1.5px solid;border-radius:7px;cursor:pointer;min-width:104px;text-align:left;transition:filter .1s,box-shadow .1s}
+		.port-count{font-size:10px;color:var(--mt)}
+		.pin-grid{display:flex;flex-wrap:wrap;gap:3px}
+		.pin-card{display:flex;flex-direction:column;align-items:flex-start;padding:3px 6px;border:1.2px solid;border-radius:5px;cursor:pointer;min-width:76px;text-align:left;transition:filter .1s,box-shadow .1s}
 		.pin-card:hover{filter:brightness(1.18);box-shadow:0 0 0 2px rgba(255,255,255,.08)}
 		.pin-card:focus{outline:2px solid #fff;outline-offset:2px}
-		.pin-name{font-size:12px;font-weight:700;color:#e8eaed}
-		.pin-mode{font-size:10px;color:rgba(232,234,237,.65);margin-top:1px}
+		.pin-name{font-size:11px;font-weight:700;color:#e8eaed;line-height:1.15}
+		.pin-mode{font-size:9px;color:rgba(232,234,237,.65);margin-top:0;line-height:1.1}
 		.empty-msg{color:var(--mt);font-size:13px;margin-top:20px}
 		.hint{font-size:11px;color:var(--mt);margin-bottom:14px}
-		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:10px;background:#13151e;padding:12px;display:block}
+		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#13151e;padding:6px;display:block}
 		#chipView .lqfp-pin{cursor:pointer}
 		#chipView .lqfp-pin:focus rect{stroke:#fff;stroke-width:2}
 		#chipView .lqfp-pin:hover rect{filter:brightness(1.25)}
@@ -3748,11 +3806,16 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		const btnList = document.getElementById('btnList');
 		const btnChip = document.getElementById('btnChip');
 		const hasChipPins = document.querySelectorAll('.lqfp-pin').length > 0;
+		const shouldStartList = document.querySelectorAll('.pin-card').length > 120;
 		if (!hasChipPins) {
 			groupsView.style.display = ''; chipView.style.display = 'none';
 			btnList.classList.add('active'); btnList.setAttribute('aria-pressed', 'true');
 			btnChip.classList.remove('active'); btnChip.setAttribute('aria-pressed', 'false');
 			btnChip.disabled = true;
+		} else if (shouldStartList) {
+			groupsView.style.display = ''; chipView.style.display = 'none';
+			btnList.classList.add('active'); btnList.setAttribute('aria-pressed', 'true');
+			btnChip.classList.remove('active'); btnChip.setAttribute('aria-pressed', 'false');
 		}
 		btnList.addEventListener('click', () => {
 			groupsView.style.display = ''; chipView.style.display = 'none';
