@@ -33,6 +33,18 @@
     }
   },
   "contributes": {
+    "customEditors": [
+      {
+        "viewType": "tova.iocEditor",
+        "displayName": "TovaIDE STM32 Configurator",
+        "selector": [
+          {
+            "filenamePattern": "*.ioc"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "commands": [
       {
         "command": "stm32ux.openWorkflowStudio",
@@ -125,5 +137,10 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/microsoft/vscode.git"
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   }
 }

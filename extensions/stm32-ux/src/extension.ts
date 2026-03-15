@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { IocEditorProvider } from './webview/IocEditorProvider';
 
 declare const require: (moduleName: string) => unknown;
 declare const process: { platform: string };
@@ -124,11 +125,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	extensionUri = context.extensionUri;
 	extensionContextRef = context;
 	context.subscriptions.push(outputChannel);
+        
+        // Custom Editor Registration
+        context.subscriptions.push(IocEditorProvider.register(context));
 
-	context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ux.onboardingView', new OnboardingViewProvider()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWorkflowStudio', () => openWorkflowStudio()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWelcomeWizard', () => openWelcomeWizard()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openMcpOperationDesk', () => openMcpOperationDesk()));
+        context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ux.onboardingView', new OnboardingViewProvider()));
+        context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWorkflowStudio', () => openWorkflowStudio()));
+        context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWelcomeWizard', () => openWelcomeWizard()));
+        context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openMcpOperationDesk', () => openMcpOperationDesk()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.syncMcuCatalogFromCubeMX', () => syncMcuCatalogFromCubeMX()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.startBlinkTutorial', () => openBlinkTutorial()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openTemplateGallery', () => openTemplateGallery()));
@@ -3050,11 +3054,11 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 	if (n === 0) { return '<text x="10" y="20" fill="#6B7280" font-size="12">ピンなし</text>'; }
 
 	const perSide = Math.ceil(n / 4);
-	const PIN_PITCH = n > 120 ? 18 : n > 80 ? 20 : 22;
-	const PIN_LEN = n > 120 ? 14 : 16;
+	const PIN_PITCH = n > 160 ? 11 : n > 120 ? 12 : n > 80 ? 13 : 14;
+	const PIN_LEN = n > 120 ? 12 : 14;
 	const PIN_W = n > 120 ? 5 : 6;
-	const CHIP_SIZE = perSide * PIN_PITCH + 14;
-	const OFFSET = PIN_LEN + 2;
+	const CHIP_SIZE = perSide * PIN_PITCH + 18;
+	const OFFSET = PIN_LEN + 4;
 	const TOTAL = CHIP_SIZE + OFFSET * 2;
 
 	const sides: Array<{ pin: string; mode: string }[]> = [[], [], [], []];
@@ -3065,29 +3069,28 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 	let elements = '';
 
 	// chip body
-	elements += `<rect x="${OFFSET}" y="${OFFSET}" width="${CHIP_SIZE}" height="${CHIP_SIZE}" rx="4" fill="#1a1d2e" stroke="#374151" stroke-width="1.2"/>`;
+	elements += `<rect x="${OFFSET}" y="${OFFSET}" width="${CHIP_SIZE}" height="${CHIP_SIZE}" rx="6" fill="#171a26" stroke="#3b4155" stroke-width="1.2"/>`;
 	// notch top-left
-	elements += `<path d="M${OFFSET + 12},${OFFSET} A12,12 0 0,0 ${OFFSET},${OFFSET + 12}" fill="#0d0e14" stroke="#374151" stroke-width="1"/>`;
-	// chip label
-	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 - 6}" text-anchor="middle" fill="#9ca3af" font-size="9" font-family="Segoe UI,sans-serif">STM32</text>`;
-	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 + 6}" text-anchor="middle" fill="#6b7280" font-size="8" font-family="Segoe UI,sans-serif">LQFP${n}</text>`;
+	elements += `<path d="M${OFFSET + 9},${OFFSET} A9,9 0 0,0 ${OFFSET},${OFFSET + 9}" fill="#0d0e14" stroke="#3b4155" stroke-width="1"/>`;
+	// center label
+	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 - 5}" text-anchor="middle" fill="#aeb6cb" font-size="9" font-family="Segoe UI,sans-serif">STM32</text>`;
+	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 + 8}" text-anchor="middle" fill="#77809b" font-size="8" font-family="Segoe UI,sans-serif">${n} pins</text>`;
 
 	const renderPin = (item: { pin: string; mode: string }, index: number, side: number) => {
 		const isUnused = item.mode === '未使用';
 		const fill = isUnused ? '#161820' : colorForMode(item.mode);
 		const stroke = isUnused ? '#2a2d3a' : colorForModeBorder(item.mode);
-		const label = item.pin.length > 6 ? item.pin.slice(0, 5) + '…' : item.pin;
-		const pos = 7 + index * PIN_PITCH + PIN_PITCH / 2;
+		const pos = 9 + index * PIN_PITCH + PIN_PITCH / 2;
 
-		let rx = 0, ry = 0, anchor = 'middle', lx = 0, ly = 0;
+		let rx = 0, ry = 0;
 		if (side === 0) { // bottom
-			rx = OFFSET + pos - PIN_W / 2; ry = OFFSET + CHIP_SIZE; lx = OFFSET + pos; ly = OFFSET + CHIP_SIZE + PIN_LEN + 12; anchor = 'middle';
+			rx = OFFSET + pos - PIN_W / 2; ry = OFFSET + CHIP_SIZE;
 		} else if (side === 1) { // left
-			rx = 0; ry = OFFSET + pos - PIN_W / 2; lx = PIN_LEN - 4; ly = OFFSET + pos + 4; anchor = 'end';
+			rx = 0; ry = OFFSET + pos - PIN_W / 2;
 		} else if (side === 2) { // top
-			rx = OFFSET + CHIP_SIZE - pos - PIN_W / 2; ry = 0; lx = OFFSET + CHIP_SIZE - pos; ly = PIN_LEN - 4; anchor = 'middle';
+			rx = OFFSET + CHIP_SIZE - pos - PIN_W / 2; ry = 0;
 		} else { // right
-			rx = OFFSET + CHIP_SIZE; ry = OFFSET + CHIP_SIZE - pos - PIN_W / 2; lx = TOTAL - PIN_LEN + 4; ly = OFFSET + CHIP_SIZE - pos + 4; anchor = 'start';
+			rx = OFFSET + CHIP_SIZE; ry = OFFSET + CHIP_SIZE - pos - PIN_W / 2;
 		}
 
 		const pinRect = (side === 0 || side === 2)
@@ -3103,8 +3106,7 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 
 		return `<g class="lqfp-pin" data-pin="${escapeHtml(item.pin)}" data-mode="${escapeHtml(item.mode)}" data-num="${pinNum}" role="button" tabindex="0" aria-label="${pinNum}: ${escapeHtml(item.pin)}: ${escapeHtml(item.mode)}">`
 			+ pinRect
-			+ `<text x="${nx}" y="${ny}" text-anchor="${nanchor}" fill="rgba(255,255,255,.75)" font-size="5" font-family="Segoe UI,sans-serif" pointer-events="none">${pinNum}</text>`
-			+ `<text x="${lx}" y="${ly}" text-anchor="${anchor}" fill="#d1d5db" font-size="7" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(label)}</text>`
+			+ `<text x="${nx}" y="${ny}" text-anchor="${nanchor}" fill="rgba(255,255,255,.75)" font-size="4.8" font-family="Segoe UI,sans-serif" pointer-events="none">${pinNum}</text>`
 			+ `</g>`;
 	};
 
@@ -3313,42 +3315,42 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		.s-add-btn{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;margin-top:8px}
 		.s-add-btn:hover{border-color:var(--ac)}
 		/* ---- pin view ---- */
-		.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+		.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 		.chip-hdr{flex:1;min-width:0}
-		.chip-hdr h1{font-size:15px;font-weight:700;margin-bottom:2px}
+		.chip-hdr h1{font-size:14px;font-weight:700;margin-bottom:1px}
 		.chip-hdr .path{font-size:11px;color:var(--mt);font-family:var(--vscode-editor-font-family,monospace);word-break:break-all}
 		.search-wrap{position:relative}
-		.search-wrap input{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 10px 5px 30px;font-size:12px;outline:none;width:180px}
+		.search-wrap input{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 10px 5px 30px;font-size:12px;outline:none;width:210px}
 		.search-wrap input:focus{border-color:var(--ac)}
 		.search-wrap .ic{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--mt);font-size:13px;pointer-events:none}
 		.pin-count{font-size:11px;color:var(--mt);white-space:nowrap}
 		.view-toggle{display:flex;gap:4px}
 		.vtbtn{background:var(--sf);border:1px solid var(--bd);color:var(--mt);border-radius:5px;padding:4px 10px;font-size:11px;cursor:pointer}
 		.vtbtn.active{background:var(--ac);border-color:var(--ac);color:#fff}
-		.legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:9px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--sf)}
+		.legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;padding:7px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--sf)}
 		.lg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mt)}
 		.lg-dot{width:10px;height:10px;border-radius:3px;border:1.5px solid;flex-shrink:0}
-		.port-group{margin-bottom:10px}
+		.port-group{margin-bottom:8px}
 		.port-group.hidden{display:none}
-		.port-hd{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+		.port-hd{display:flex;align-items:center;gap:6px;margin-bottom:3px}
 		.port-badge{font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:4px;background:var(--sf);border:1px solid var(--bd);color:var(--mt)}
 		.port-count{font-size:10px;color:var(--mt)}
-		.pin-grid{display:flex;flex-wrap:wrap;gap:3px}
-		.pin-card{display:flex;flex-direction:column;align-items:flex-start;padding:3px 6px;border:1.2px solid;border-radius:5px;cursor:pointer;min-width:76px;text-align:left;transition:filter .1s,box-shadow .1s}
+		.pin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px}
+		.pin-card{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border:1.2px solid;border-radius:6px;cursor:pointer;min-width:0;text-align:left;transition:filter .1s,box-shadow .1s}
 		.pin-card:hover{filter:brightness(1.18);box-shadow:0 0 0 2px rgba(255,255,255,.08)}
 		.pin-card:focus{outline:2px solid #fff;outline-offset:2px}
-		.pin-name{font-size:11px;font-weight:700;color:#e8eaed;line-height:1.15}
-		.pin-mode{font-size:9px;color:rgba(232,234,237,.65);margin-top:0;line-height:1.1}
+		.pin-name{font-size:12px;font-weight:700;color:#e8eaed;line-height:1.1;font-family:var(--vscode-editor-font-family,monospace)}
+		.pin-mode{font-size:10px;color:rgba(232,234,237,.7);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64%}
 		.empty-msg{color:var(--mt);font-size:13px;margin-top:20px}
-		.hint{font-size:11px;color:var(--mt);margin-bottom:14px}
-		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#13151e;padding:6px;display:block}
+		.hint{font-size:11px;color:var(--mt);margin-bottom:8px}
+		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#13151e;padding:8px;display:block}
 		#chipView .lqfp-pin{cursor:pointer}
 		#chipView .lqfp-pin:focus rect{stroke:#fff;stroke-width:2}
 		#chipView .lqfp-pin:hover rect{filter:brightness(1.25)}
 		#chipView .lqfp-pin.dim{opacity:.18}
 		#chipView .lqfp-pin.match rect{stroke:#fbbf24;stroke-width:2;filter:brightness(1.3)}
-		#chipWrap{overflow:auto}
-		#chipSvg{transform-origin:top left;transition:transform .15s}
+		#chipWrap{overflow:auto;max-height:68vh}
+		#chipSvg{transform-origin:top left;transition:transform .12s;display:inline-block}
 		.zoom-row{display:flex;gap:6px;align-items:center;margin-bottom:8px}
 		.zbtn{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:5px;width:28px;height:28px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
 		.zbtn:hover{border-color:var(--ac)}
