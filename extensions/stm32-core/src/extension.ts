@@ -195,7 +195,8 @@ async function detectCubeCLTMetadata(): Promise<CubeMetadata | undefined> {
 
 	try {
 		outputChannel.appendLine(`[STM32] Detecting metadata using ${metadataExecutable}`);
-		await execFileAsync(metadataExecutable, ['-j', tempJsonPath], { cwd: workspaceRoot });
+		const needsShell = metadataExecutable.endsWith('.bat') || metadataExecutable.endsWith('.sh');
+		await execFileAsync(metadataExecutable, ['-j', tempJsonPath], { cwd: workspaceRoot, shell: needsShell });
 		const raw = await fs.readFile(tempJsonPath, 'utf8');
 		const parsed = JSON.parse(raw) as CubeMetadata;
 		cachedMetadata = parsed;
@@ -386,7 +387,8 @@ async function startDebugSession(): Promise<void> {
 	const port = vscode.workspace.getConfiguration('stm32').get<number>('debug.gdbServerPort', 61234);
 	const gdbServerExecutable = join(metadata.programmer_path, process.platform === 'win32' ? 'ST-LINK_gdbserver.exe' : 'ST-LINK_gdbserver');
 	outputChannel.appendLine(`[STM32] Starting ST-LINK GDB Server on port ${port}`);
-	gdbServerProcess = spawn(gdbServerExecutable, ['-d', '-v', '-t', '-cp', metadata.programmer_path, '-p', String(port)], { cwd: workspaceRoot, windowsHide: true });
+	const needsShell = gdbServerExecutable.endsWith('.bat') || gdbServerExecutable.endsWith('.sh');
+	gdbServerProcess = spawn(gdbServerExecutable, ['-d', '-v', '-t', '-cp', metadata.programmer_path, '-p', String(port)], { cwd: workspaceRoot, windowsHide: true, shell: needsShell });
 
 	gdbServerProcess.stdout?.on('data', (data: unknown) => outputChannel.appendLine(String(data)));
 	gdbServerProcess.stderr?.on('data', (data: unknown) => outputChannel.appendLine(String(data)));
@@ -449,7 +451,8 @@ async function findElfFile(workspaceRoot: string): Promise<string | undefined> {
 }
 
 function runDetached(command: string, args: string[], cwd: string): void {
-	const child = spawn(command, args, { cwd, detached: true, stdio: 'ignore', windowsHide: false });
+	const needsShell = command.endsWith('.bat') || command.endsWith('.sh');
+	const child = spawn(command, args, { cwd, detached: true, stdio: 'ignore', windowsHide: false, shell: needsShell });
 	child.unref();
 }
 
@@ -463,7 +466,8 @@ async function runCliWithProgress(command: string, args: string[], cwd: string, 
 		let stderr = '';
 		let lastProgress = 0;
 
-		const child = spawn(command, args, { cwd, windowsHide: true });
+		const needsShell = command.endsWith('.bat') || command.endsWith('.sh');
+		const child = spawn(command, args, { cwd, windowsHide: true, shell: needsShell });
 		const updateProgress = (text: string) => {
 			const match = text.match(/(\d{1,3})\s*%/);
 			if (match) {
@@ -515,7 +519,8 @@ async function runCli(command: string, args: string[], cwd: string, title: strin
 	outputChannel.appendLine(`[STM32] Command: ${command} ${args.join(' ')}`);
 
 	try {
-		const { stdout, stderr } = await execFileAsync(command, args, { cwd, windowsHide: true });
+		const needsShell = command.endsWith('.bat') || command.endsWith('.sh');
+		const { stdout, stderr } = await execFileAsync(command, args, { cwd, windowsHide: true, shell: needsShell });
 		if (stdout.length > 0) {
 			outputChannel.appendLine(stdout);
 		}
@@ -600,21 +605,21 @@ function registerBranchStatus(context: vscode.ExtensionContext): void {
 }
 
 async function autoDetectToolPaths(): Promise<void> {
-	if (process.platform !== 'win32') {
-		return;
-	}
-
 	const config = vscode.workspace.getConfiguration('stm32');
-	const localApp = process.env['LOCALAPPDATA'] ?? 'C:\\Users\\Public';
-	const programFiles = process.env['ProgramFiles'] ?? 'C:\\Program Files';
-	const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
+	const isWin = process.platform === 'win32';
+	const localApp = process.env['LOCALAPPDATA'] ?? (isWin ? 'C:\\Users\\Public' : '');
+	const programFiles = process.env['ProgramFiles'] ?? (isWin ? 'C:\\Program Files' : '');
+	const programFilesX86 = process.env['ProgramFiles(x86)'] ?? (isWin ? 'C:\\Program Files (x86)' : '');
 
 	if (!config.get<string>('cubemx.path', '').trim()) {
-		const cubeMxCandidates = [
+		const cubeMxCandidates = isWin ? [
 			join(localApp, 'Programs', 'STM32CubeMX', 'STM32CubeMX.exe'),
 			join(programFiles, 'STMicroelectronics', 'STM32Cube', 'STM32CubeMX', 'STM32CubeMX.exe'),
 			join(programFilesX86, 'STMicroelectronics', 'STM32Cube', 'STM32CubeMX', 'STM32CubeMX.exe'),
 			'C:\\ST\\STM32CubeMX\\STM32CubeMX.exe',
+		] : [
+			'/opt/STM32CubeMX/STM32CubeMX',
+			'/usr/local/STMicroelectronics/STM32Cube/STM32CubeMX/STM32CubeMX',
 		];
 		for (const candidate of cubeMxCandidates) {
 			const found = await probeFilePath(candidate);
@@ -627,22 +632,28 @@ async function autoDetectToolPaths(): Promise<void> {
 	}
 
 	if (!config.get<string>('cubeclt.metadataPath', '').trim()) {
-		const cltRoots = [
-			join('C:', 'ST'),
+		const cltRoots = isWin ? [
+			'E:\\installs\\cubeCLT',
+			'C:\\ST',
 			join(programFiles, 'STMicroelectronics'),
 			join(programFilesX86, 'STMicroelectronics'),
+		] : [
+			'/opt/st',
+			'/usr/local/STMicroelectronics',
 		];
-		const metadataExe = 'STM32CubeCLT_metadata.exe';
+		const metadataNames = isWin ? ['STM32CubeCLT_metadata.bat', 'STM32CubeCLT_metadata.exe'] : ['STM32CubeCLT_metadata.sh', 'STM32CubeCLT_metadata'];
 		for (const root of cltRoots) {
 			const dirs = await fs.readdir(root, { withFileTypes: true }).catch(() => [] as Array<{ isFile: () => boolean; isDirectory: () => boolean; name: string }>);
 			const cltDir = dirs.find(d => d.isDirectory() && d.name.startsWith('STM32CubeCLT'));
 			if (cltDir) {
-				const exePath = join(root, cltDir.name, metadataExe);
-				const found = await probeFilePath(exePath);
-				if (found) {
-					await config.update('cubeclt.metadataPath', exePath, vscode.ConfigurationTarget.Global);
-					outputChannel.appendLine(`[STM32] Auto-detected CubeCLT at: ${exePath}`);
-					break;
+				for (const metadataName of metadataNames) {
+					const exePath = join(root, cltDir.name, metadataName);
+					const found = await probeFilePath(exePath);
+					if (found) {
+						await config.update('cubeclt.metadataPath', exePath, vscode.ConfigurationTarget.Global);
+						outputChannel.appendLine(`[STM32] Auto-detected CubeCLT at: ${exePath}`);
+						break;
+					}
 				}
 			}
 		}

@@ -1,0 +1,183 @@
+{
+  "HAL GPIO Toggle": {
+    "prefix": "hal_gpio_toggle",
+    "body": ["HAL_GPIO_TogglePin(${1:GPIOA}, ${2:GPIO_PIN_5});"],
+    "description": "HAL GPIO TogglePin"
+  },
+  "HAL GPIO Write": {
+    "prefix": "hal_gpio_write",
+    "body": ["HAL_GPIO_WritePin(${1:GPIOA}, ${2:GPIO_PIN_5}, ${3:GPIO_PIN_SET});"],
+    "description": "HAL GPIO WritePin"
+  },
+  "HAL GPIO Read": {
+    "prefix": "hal_gpio_read",
+    "body": ["GPIO_PinState ${1:state} = HAL_GPIO_ReadPin(${2:GPIOA}, ${3:GPIO_PIN_0});"],
+    "description": "HAL GPIO ReadPin"
+  },
+  "HAL Delay": {
+    "prefix": "hal_delay",
+    "body": ["HAL_Delay(${1:1000});"],
+    "description": "HAL blocking delay in milliseconds"
+  },
+  "HAL UART Transmit": {
+    "prefix": "hal_uart_tx",
+    "body": [
+      "HAL_UART_Transmit(&${1:huart2}, (uint8_t *)${2:buf}, ${3:strlen(buf)}, ${4:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL UART Transmit (blocking)"
+  },
+  "HAL UART Receive": {
+    "prefix": "hal_uart_rx",
+    "body": [
+      "HAL_UART_Receive(&${1:huart2}, ${2:rxBuf}, ${3:1}, ${4:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL UART Receive (blocking)"
+  },
+  "HAL UART Transmit DMA": {
+    "prefix": "hal_uart_tx_dma",
+    "body": [
+      "HAL_UART_Transmit_DMA(&${1:huart2}, (uint8_t *)${2:buf}, ${3:len});"
+    ],
+    "description": "HAL UART Transmit via DMA"
+  },
+  "HAL I2C Master Transmit": {
+    "prefix": "hal_i2c_tx",
+    "body": [
+      "HAL_I2C_Master_Transmit(&${1:hi2c1}, ${2:0x50 << 1}, ${3:txBuf}, ${4:len}, ${5:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL I2C Master Transmit"
+  },
+  "HAL I2C Master Receive": {
+    "prefix": "hal_i2c_rx",
+    "body": [
+      "HAL_I2C_Master_Receive(&${1:hi2c1}, ${2:0x50 << 1}, ${3:rxBuf}, ${4:len}, ${5:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL I2C Master Receive"
+  },
+  "HAL I2C Mem Write": {
+    "prefix": "hal_i2c_mem_write",
+    "body": [
+      "HAL_I2C_Mem_Write(&${1:hi2c1}, ${2:devAddr}, ${3:memAddr}, I2C_MEMADD_SIZE_8BIT, ${4:pData}, ${5:size}, ${6:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL I2C Mem Write"
+  },
+  "HAL I2C Mem Read": {
+    "prefix": "hal_i2c_mem_read",
+    "body": [
+      "HAL_I2C_Mem_Read(&${1:hi2c1}, ${2:devAddr}, ${3:memAddr}, I2C_MEMADD_SIZE_8BIT, ${4:pData}, ${5:size}, ${6:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL I2C Mem Read"
+  },
+  "HAL SPI Transmit": {
+    "prefix": "hal_spi_tx",
+    "body": [
+      "HAL_SPI_Transmit(&${1:hspi1}, ${2:txBuf}, ${3:len}, ${4:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL SPI Transmit"
+  },
+  "HAL SPI TransmitReceive": {
+    "prefix": "hal_spi_txrx",
+    "body": [
+      "HAL_SPI_TransmitReceive(&${1:hspi1}, ${2:txBuf}, ${3:rxBuf}, ${4:len}, ${5:HAL_MAX_DELAY});"
+    ],
+    "description": "HAL SPI TransmitReceive (full-duplex)"
+  },
+  "HAL ADC Start": {
+    "prefix": "hal_adc_start",
+    "body": [
+      "HAL_ADC_Start(&${1:hadc1});",
+      "HAL_ADC_PollForConversion(&${1:hadc1}, ${2:HAL_MAX_DELAY});",
+      "uint32_t ${3:adcVal} = HAL_ADC_GetValue(&${1:hadc1});",
+      "HAL_ADC_Stop(&${1:hadc1});"
+    ],
+    "description": "HAL ADC polling conversion"
+  },
+  "HAL TIM PWM Start": {
+    "prefix": "hal_tim_pwm_start",
+    "body": [
+      "HAL_TIM_PWM_Start(&${1:htim2}, ${2:TIM_CHANNEL_1});"
+    ],
+    "description": "HAL TIM PWM Start"
+  },
+  "HAL TIM PWM Set Duty": {
+    "prefix": "hal_tim_pwm_duty",
+    "body": [
+      "__HAL_TIM_SET_COMPARE(&${1:htim2}, ${2:TIM_CHANNEL_1}, ${3:dutyCycle});"
+    ],
+    "description": "Set PWM duty cycle via __HAL_TIM_SET_COMPARE"
+  },
+  "HAL TIM Base Start IT": {
+    "prefix": "hal_tim_it",
+    "body": [
+      "HAL_TIM_Base_Start_IT(&${1:htim6});"
+    ],
+    "description": "HAL TIM Base Start with interrupt"
+  },
+  "HAL TIM Period Elapsed Callback": {
+    "prefix": "hal_tim_callback",
+    "body": [
+      "void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {",
+      "\tif (htim->Instance == ${1:TIM6}) {",
+      "\t\t${2:/* USER CODE */}",
+      "\t}",
+      "}"
+    ],
+    "description": "HAL TIM Period Elapsed callback"
+  },
+  "HAL GPIO EXTI Callback": {
+    "prefix": "hal_exti_callback",
+    "body": [
+      "void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {",
+      "\tif (GPIO_Pin == ${1:GPIO_PIN_0}) {",
+      "\t\t${2:/* USER CODE */}",
+      "\t}",
+      "}"
+    ],
+    "description": "HAL GPIO EXTI interrupt callback"
+  },
+  "HAL UART Rx Complete Callback": {
+    "prefix": "hal_uart_rx_callback",
+    "body": [
+      "void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {",
+      "\tif (huart->Instance == ${1:USART2}) {",
+      "\t\t${2:/* process rxBuf */}",
+      "\t\tHAL_UART_Receive_IT(&${3:huart2}, ${4:rxBuf}, ${5:1});",
+      "\t}",
+      "}"
+    ],
+    "description": "HAL UART Rx Complete callback (with re-arm)"
+  },
+  "USER CODE BEGIN": {
+    "prefix": "ucb",
+    "body": ["/* USER CODE BEGIN ${1:Section} */", "${2}", "/* USER CODE END ${1:Section} */"],
+    "description": "STM32CubeMX USER CODE section"
+  },
+  "HAL GetTick": {
+    "prefix": "hal_tick",
+    "body": ["uint32_t ${1:now} = HAL_GetTick();"],
+    "description": "Get current SysTick millisecond counter"
+  },
+  "Non-blocking Delay Pattern": {
+    "prefix": "hal_nonblocking_delay",
+    "body": [
+      "static uint32_t ${1:lastTick} = 0;",
+      "if (HAL_GetTick() - ${1:lastTick} >= ${2:1000}) {",
+      "\t${1:lastTick} = HAL_GetTick();",
+      "\t${3:/* periodic action */}",
+      "}"
+    ],
+    "description": "Non-blocking delay using HAL_GetTick"
+  },
+  "Error Handler": {
+    "prefix": "hal_error_handler",
+    "body": [
+      "void Error_Handler(void) {",
+      "\t__disable_irq();",
+      "\twhile (1) {",
+      "\t\t${1:/* loop forever on error */}",
+      "\t}",
+      "}"
+    ],
+    "description": "HAL Error_Handler stub"
+  }
+}

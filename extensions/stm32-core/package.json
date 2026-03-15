@@ -248,7 +248,7 @@
     "snippets": [
       {
         "language": "c",
-        "path": "../../resources/stm32/snippets/hal-c.json"
+        "path": "./resources/stm32/snippets/hal-c.json"
       }
     ],
     "configuration": {

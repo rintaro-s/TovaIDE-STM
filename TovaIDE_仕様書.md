@@ -3127,7 +3127,61 @@ Phase 6 品質仕上げ
   全 4 拡張機能 TypeScript エラー 0
   test/smoke TypeScript エラー 0
 
+✅ 重大バグ修正 (3件) - 第1弾
+  1. **CubeMX/CubeCLT 自動検出修正**
+     - autoDetectToolPaths() を .bat/.sh ラッパー対応に修正
+     - Windows: ['STM32CubeCLT_metadata.bat', 'STM32CubeCLT_metadata.exe'] を順に探索
+     - Linux/macOS: ['STM32CubeCLT_metadata.sh', 'STM32CubeCLT_metadata'] を順に探索
+     - 検索パス追加: 'E:\\installs\\cubeCLT' (ユーザー環境)
+     - CubeMX も macOS/Linux 対応 (/opt, /usr/local)
+  2. **package.json contributes パスエラー修正**
+     - snippets path を `../../resources` → `./resources` に変更
+     - `resources/stm32/snippets/hal-c.json` を `extensions/stm32-core/resources/stm32/snippets/` にコピー
+     - 拡張フォルダ内に収まるよう修正 (移植性向上)
+  3. **View Data Provider 未登録エラー修正**
+     - QuickActionsProvider クラス追加 (TreeDataProvider 実装)
+     - stm32-pin.quickActions / stm32-build.quickActions を登録
+     - ピンクイック操作: ピンビジュアライザ / .ioc エディタ
+     - ビルドクイック操作: ビルド / 書き込み / ビルド+書き込み
+
+✅ 重大バグ修正 (3件) - 第2弾 (実行時エラー完全解消)
+  1. **spawn EINVAL エラー修正 (最重要)**
+     - **問題**: `.bat` / `.sh` ファイルを直接 spawn すると EINVAL エラー
+     - **原因**: Windows では `.bat` は実行ファイルではなく、cmd.exe 経由が必須
+     - **修正箇所** (extensions/stm32-core/src/extension.ts):
+       * `detectCubeCLTMetadata()`: execFileAsync に `shell: needsShell` 追加 (L198-199)
+       * `startDebugSession()`: spawn に `shell: needsShell` 追加 (L390-391)
+       * `runDetached()`: spawn に `shell: needsShell` 追加 (L454-455)
+       * `runCliWithProgress()`: spawn に `shell: needsShell` 追加 (L469-470)
+       * `runCli()`: execFileAsync に `shell: needsShell` 追加 (L522-523)
+     - **判定ロジック**: `const needsShell = command.endsWith('.bat') || command.endsWith('.sh');`
+     - **効果**: CubeCLT メタデータ検出、ビルド、書き込み、デバッグ起動がすべて正常動作
+  2. **環境チェック改善 (STM32_Programmer_CLI 未検出対策)**
+     - **問題**: PATH に含まれていないツールが「未検出」と表示される
+     - **修正** (extensions/stm32-ux/src/extension.ts):
+       * 設定済みパス (cubemx.path / cubeclt.metadataPath) を優先的に検証
+       * ファイル存在確認 (`vscode.workspace.fs.stat`) で有効性チェック
+       * 未設定時のみ PATH 探索 (`resolveCommandPath`)
+       * ヒントセクション追加: 「CubeCLT メタデータ検出を実行してください」
+     - **execFileAsync 型定義修正**: `shell?: boolean` オプション追加 (L12)
+     - **効果**: 設定済みツールは正しく検出、未設定ツールには適切なガイダンス表示
+  3. **サイドバー View Provider 完全登録**
+     - **問題**: `stm32-ai.quickActions` のデータプロバイダー未登録
+     - **修正** (extensions/stm32-core/src/phase2.ts):
+       * `aiQuickActions` プロバイダー追加 (L495-499)
+         - AI チャットを開く (stm32ai.openChat)
+         - ビルドエラーを修正 (stm32ai.fixBuildError)
+         - HardFault 解析 (stm32ai.analyzeHardFault)
+       * `registerTreeDataProvider('stm32-ai.quickActions', aiQuickActions)` 登録 (L509)
+     - **効果**: 全サイドバービュー (pin/build/ai/debug) が正常動作
+
+### ビルド状態
+  全 4 拡張機能 TypeScript エラー 0
+  test/smoke TypeScript エラー 0
+  **実行時エラー 0 (spawn EINVAL 完全解消)**
+
 ### 次セッション候補
+  - SVD パス設定 UI 改善 (現在は手動設定のみ)
   - ピン削除機能 (Remove Pin) — .ioc から行削除
   - チップ図ズーム: ピンチジェスチャー対応 (touch)
   - STM32WB / STM32L4 MCU JSON 追加

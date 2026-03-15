@@ -453,6 +453,29 @@ class LiveExpressionsProvider implements vscode.TreeDataProvider<LiveExpressionE
 	}
 }
 
+interface QuickActionElement {
+	label: string;
+	command: string;
+	icon?: string;
+}
+
+class QuickActionsProvider implements vscode.TreeDataProvider<QuickActionElement> {
+	constructor(private readonly actions: QuickActionElement[]) { }
+
+	public async getChildren(_element?: QuickActionElement): Promise<QuickActionElement[]> {
+		return this.actions;
+	}
+
+	public async getTreeItem(element: QuickActionElement): Promise<vscode.TreeItem> {
+		const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
+		item.command = { command: element.command, title: element.label };
+		if (element.icon) {
+			item.iconPath = new vscode.ThemeIcon(element.icon);
+		}
+		return item;
+	}
+}
+
 export function registerPhase2Features(context: vscode.ExtensionContext, dependencies: Phase2Dependencies): void {
 	const iocProvider = new IocCustomEditorProvider(dependencies);
 	const svdProvider = new SvdRegisterProvider(dependencies);
@@ -460,12 +483,30 @@ export function registerPhase2Features(context: vscode.ExtensionContext, depende
 	const swvChannel = getSwvOutputChannel();
 	context.subscriptions.push(swvChannel);
 
+	const pinQuickActions = new QuickActionsProvider([
+		{ label: vscode.l10n.t('ピンビジュアライザを開く'), command: 'stm32ux.openPinVisualizer', icon: 'symbol-color' },
+		{ label: vscode.l10n.t('.ioc エディタを開く'), command: 'stm32.openIocEditor', icon: 'edit' },
+	]);
+	const buildQuickActions = new QuickActionsProvider([
+		{ label: vscode.l10n.t('ビルド (Debug)'), command: 'stm32.buildDebug', icon: 'tools' },
+		{ label: vscode.l10n.t('書き込み'), command: 'stm32.flash', icon: 'zap' },
+		{ label: vscode.l10n.t('ビルド + 書き込み'), command: 'stm32.buildAndFlash', icon: 'rocket' },
+	]);
+	const aiQuickActions = new QuickActionsProvider([
+		{ label: vscode.l10n.t('AI チャットを開く'), command: 'stm32ai.openChat', icon: 'comment' },
+		{ label: vscode.l10n.t('ビルドエラーを修正'), command: 'stm32ai.fixBuildError', icon: 'wrench' },
+		{ label: vscode.l10n.t('HardFault 解析'), command: 'stm32ai.analyzeHardFault', icon: 'bug' },
+	]);
+
 	context.subscriptions.push(vscode.window.registerCustomEditorProvider(IOC_EDITOR_VIEW_TYPE, iocProvider, {
 		webviewOptions: {
 			retainContextWhenHidden: true,
 		},
 		supportsMultipleEditorsPerDocument: false,
 	}));
+	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-pin.quickActions', pinQuickActions));
+	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-build.quickActions', buildQuickActions));
+	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-ai.quickActions', aiQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-debug.registers', svdProvider));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-debug.liveExpressions', liveExpressionsProvider));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.importCubeIDE', () => importCubeIdeProject(dependencies)));

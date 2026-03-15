@@ -9,7 +9,7 @@ declare const require: (moduleName: string) => unknown;
 declare const process: { platform: string };
 
 const childProcess = require('child_process') as {
-	execFile: (command: string, args: string[], options: { cwd?: string }, callback: (error: Error | null, stdout: string, stderr: string) => void) => void;
+	execFile: (command: string, args: string[], options: { cwd?: string; shell?: boolean }, callback: (error: Error | null, stdout: string, stderr: string) => void) => void;
 };
 
 interface ExecFileResult {
@@ -182,22 +182,50 @@ async function openTemplateGallery(): Promise<void> {
 
 async function runEnvironmentCheck(): Promise<void> {
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+	const configuredCubeMx = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
+	const configuredMetadata = vscode.workspace.getConfiguration('stm32').get<string>('cubeclt.metadataPath', '').trim();
+
+	const rows: string[] = [];
+
+	if (configuredCubeMx) {
+		outputChannel.appendLine(`[STM32-UX] Checking CubeMX path: ${configuredCubeMx}`);
+		const exists = await vscode.workspace.fs.stat(vscode.Uri.file(configuredCubeMx)).then(() => {
+			outputChannel.appendLine(`[STM32-UX] CubeMX path exists: ${configuredCubeMx}`);
+			return true;
+		}, (err) => {
+			outputChannel.appendLine(`[STM32-UX] CubeMX path check failed: ${err}`);
+			return false;
+		});
+		rows.push(`- STM32CubeMX: ${exists ? `✅ ${configuredCubeMx}` : `❌ 設定パスが無効: ${configuredCubeMx}`}`);
+	} else {
+		const foundPath = await resolveCommandPath('STM32CubeMX', workspaceRoot);
+		rows.push(`- STM32CubeMX: ${foundPath ? `✅ ${foundPath}` : '❌ 未検出'}`);
+	}
+
+	if (configuredMetadata) {
+		outputChannel.appendLine(`[STM32-UX] Checking CubeCLT metadata path: ${configuredMetadata}`);
+		const exists = await vscode.workspace.fs.stat(vscode.Uri.file(configuredMetadata)).then(() => {
+			outputChannel.appendLine(`[STM32-UX] CubeCLT metadata path exists: ${configuredMetadata}`);
+			return true;
+		}, (err) => {
+			outputChannel.appendLine(`[STM32-UX] CubeCLT metadata path check failed: ${err}`);
+			return false;
+		});
+		rows.push(`- STM32CubeCLT_metadata: ${exists ? `✅ ${configuredMetadata}` : `❌ 設定パスが無効: ${configuredMetadata}`}`);
+	} else {
+		const foundPath = await resolveCommandPath('STM32CubeCLT_metadata', workspaceRoot);
+		rows.push(`- STM32CubeCLT_metadata: ${foundPath ? `✅ ${foundPath}` : '❌ 未検出'}`);
+	}
+
 	const tools = [
-		{ id: 'STM32CubeMX', command: 'STM32CubeMX' },
-		{ id: 'STM32CubeCLT_metadata', command: 'STM32CubeCLT_metadata' },
 		{ id: 'STM32_Programmer_CLI', command: 'STM32_Programmer_CLI' },
 		{ id: 'arm-none-eabi-gcc', command: 'arm-none-eabi-gcc' },
 		{ id: 'git', command: 'git' }
 	];
-
-	const rows: string[] = [];
 	for (const tool of tools) {
 		const foundPath = await resolveCommandPath(tool.command, workspaceRoot);
-		rows.push(`- ${tool.id}: ${foundPath ? `✅ ${foundPath}` : '❌ 未検出'}`);
+		rows.push(`- ${tool.id}: ${foundPath ? `✅ ${foundPath}` : '❌ 未検出 (PATH に含まれていません)'}`);
 	}
-
-	const configuredCubeMx = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
-	const configuredMetadata = vscode.workspace.getConfiguration('stm32').get<string>('cubeclt.metadataPath', '').trim();
 
 	const report = [
 		'# STM32 環境チェック',
@@ -208,6 +236,10 @@ async function runEnvironmentCheck(): Promise<void> {
 		'## 設定値',
 		`- stm32.cubemx.path: ${configuredCubeMx.length > 0 ? configuredCubeMx : '(未設定)'}`,
 		`- stm32.cubeclt.metadataPath: ${configuredMetadata.length > 0 ? configuredMetadata : '(未設定)'}`,
+		'',
+		'## ヒント',
+		'- STM32_Programmer_CLI が未検出の場合、CubeCLT メタデータ検出を実行してください',
+		'- コマンドパレット: `STM32: CubeCLT メタデータを検出`',
 	].join('\n');
 
 	outputChannel.appendLine('[STM32-UX] Environment check completed.');
@@ -1199,7 +1231,8 @@ async function resolveCommandPath(command: string, cwd: string | undefined): Pro
 
 function execFileAsync(command: string, args: string[], cwd: string | undefined): Promise<ExecFileResult> {
 	return new Promise((resolve, reject) => {
-		childProcess.execFile(command, args, { cwd }, (error, stdout, stderr) => {
+		const needsShell = command.endsWith('.bat') || command.endsWith('.sh');
+		childProcess.execFile(command, args, { cwd, shell: needsShell }, (error, stdout, stderr) => {
 			if (error) {
 				reject(error);
 				return;
