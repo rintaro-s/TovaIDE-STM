@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { IocEditorProvider } from './webview/IocEditorProvider';
 
 declare const require: (moduleName: string) => unknown;
 declare const process: { platform: string };
@@ -125,14 +124,11 @@ export function activate(context: vscode.ExtensionContext): void {
 	extensionUri = context.extensionUri;
 	extensionContextRef = context;
 	context.subscriptions.push(outputChannel);
-        
-        // Custom Editor Registration
-        context.subscriptions.push(IocEditorProvider.register(context));
 
-        context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ux.onboardingView', new OnboardingViewProvider()));
-        context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWorkflowStudio', () => openWorkflowStudio()));
-        context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWelcomeWizard', () => openWelcomeWizard()));
-        context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openMcpOperationDesk', () => openMcpOperationDesk()));
+	context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ux.onboardingView', new OnboardingViewProvider()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWorkflowStudio', () => openWorkflowStudio()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWelcomeWizard', () => openWelcomeWizard()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openMcpOperationDesk', () => openMcpOperationDesk()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.syncMcuCatalogFromCubeMX', () => syncMcuCatalogFromCubeMX()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.startBlinkTutorial', () => openBlinkTutorial()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openTemplateGallery', () => openTemplateGallery()));
@@ -581,7 +577,7 @@ function normalizeMcuKey(mcuKey: string): string {
 		.replace(/[^A-Z0-9]/g, '');
 }
 
-async function resolveMcuJsonName(mcuKey: string): Promise<string> {
+async function resolveMcuJsonName(mcuKey: string): Promise<string | undefined> {
 	const map: Record<string, string> = {
 		'STM32H743ZI': 'STM32H743ZI',
 		'STM32H743': 'STM32H743ZI',
@@ -608,7 +604,6 @@ async function resolveMcuJsonName(mcuKey: string): Promise<string> {
 		trimmedVariant,
 		map[raw],
 		map[trimmedVariant],
-		'STM32F446RE',
 	].filter((candidate): candidate is string => Boolean(candidate));
 
 	const mcuCatalogUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu');
@@ -621,11 +616,23 @@ async function resolveMcuJsonName(mcuKey: string): Promise<string> {
 		}
 	}
 
-	return 'STM32F446RE';
+	return undefined;
 }
 
 async function loadMcuPackagePins(mcuName?: string): Promise<Array<{ pin: string; mode: string }>> {
-	const fileName = await resolveMcuJsonName(mcuName ?? 'STM32F446RE');
+	if (mcuName) {
+		const xmlPins = await loadMcuPinsFromCubeMxXml(mcuName);
+		if (xmlPins.length > 0) {
+			return xmlPins;
+		}
+	}
+
+	const fallbackMcu = mcuName ?? 'STM32F446RE';
+	const fileName = await resolveMcuJsonName(fallbackMcu);
+	if (!fileName) {
+		return [];
+	}
+
 	try {
 		const jsonUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu', `${fileName}.json`);
 		const bytes = await vscode.workspace.fs.readFile(jsonUri);
@@ -997,6 +1004,9 @@ async function scanCubeMxBoardProfiles(root: vscode.Uri): Promise<CubeMxBoardCat
 
 async function loadMcuPinDefinitions(mcuName?: string): Promise<Array<{ pin: string; mode?: string; altFunctions?: string[] }>> {
 	const fileName = await resolveMcuJsonName(mcuName ?? 'STM32F446RE');
+	if (!fileName) {
+		return [];
+	}
 	try {
 		const jsonUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu', `${fileName}.json`);
 		const bytes = await vscode.workspace.fs.readFile(jsonUri);
@@ -1039,6 +1049,93 @@ function cubeMxFileNameMatchesMcu(fileName: string, mcuName: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+function normalizeCubeMxPinName(rawPinName: string): string {
+	const normalized = rawPinName.trim().toUpperCase();
+	const gpio = normalized.match(/P[A-K][0-9]{1,2}/);
+	if (gpio) {
+		return gpio[0];
+	}
+	return normalized.split('/')[0].trim();
+}
+
+function inferDefaultModeFromCubeMxSignals(pinName: string, signals: string[]): string {
+	const upperPin = pinName.toUpperCase();
+	const upperSignals = signals.map(s => s.toUpperCase());
+
+	if (upperPin === 'PA13') { return 'SYS_SWDIO'; }
+	if (upperPin === 'PA14') { return 'SYS_SWCLK'; }
+	if (upperSignals.some(s => s.includes('RCC_OSC32_IN') || s.includes('OSC32_IN'))) { return 'RCC_OSC32_IN'; }
+	if (upperSignals.some(s => s.includes('RCC_OSC32_OUT') || s.includes('OSC32_OUT'))) { return 'RCC_OSC32_OUT'; }
+	if (upperSignals.some(s => s.includes('RCC_OSC_IN') || s === 'OSC_IN')) { return 'RCC_OSC_IN'; }
+	if (upperSignals.some(s => s.includes('RCC_OSC_OUT') || s === 'OSC_OUT')) { return 'RCC_OSC_OUT'; }
+
+	const preferred = signals.find(s => {
+		const u = s.toUpperCase();
+		return u.startsWith('SYS') || u.startsWith('RCC') || u.startsWith('RTC');
+	});
+	if (preferred) {
+		if (preferred.toUpperCase() === 'SWDIO') { return 'SYS_SWDIO'; }
+		if (preferred.toUpperCase() === 'SWCLK') { return 'SYS_SWCLK'; }
+		return preferred;
+	}
+
+	if (/^P[A-K][0-9]{1,2}$/.test(upperPin)) {
+		return 'GPIO_Input';
+	}
+
+	return '未使用';
+}
+
+async function loadMcuPinsFromCubeMxXml(mcuName: string): Promise<Array<{ pin: string; mode: string }>> {
+	const xmlUri = await findCubeMxMcuXmlFile(mcuName);
+	if (!xmlUri) {
+		return [];
+	}
+
+	let text = '';
+	try {
+		const bytes = await vscode.workspace.fs.readFile(xmlUri);
+		for (const value of bytes) { text += String.fromCharCode(value); }
+	} catch {
+		return [];
+	}
+
+	const entries: Array<{ pin: string; mode: string; pos: number; idx: number }> = [];
+	const pinRe = /<Pin\b([^>]*?)(?:\/>|>([\s\S]*?)<\/Pin>)/gi;
+	let match: RegExpExecArray | null;
+	let fallbackPos = 0;
+	while ((match = pinRe.exec(text)) !== null) {
+		const attrs = match[1] ?? '';
+		const body = match[2] ?? '';
+		const nameMatch = attrs.match(/\bName="([^"]+)"/i);
+		if (!nameMatch) { continue; }
+
+		const pinName = normalizeCubeMxPinName(nameMatch[1]);
+		if (!pinName) { continue; }
+
+		const posMatch = attrs.match(/\bPosition="(\d+)"/i);
+		const pos = posMatch ? parseInt(posMatch[1], 10) : (fallbackPos + 1);
+		fallbackPos = Math.max(fallbackPos + 1, pos);
+
+		const signals: string[] = [];
+		const signalRe = /<Signal\b[^>]*\bName="([^"]+)"/gi;
+		let signalMatch: RegExpExecArray | null;
+		while ((signalMatch = signalRe.exec(body)) !== null) {
+			signals.push(signalMatch[1].trim());
+		}
+
+		entries.push({
+			pin: pinName,
+			mode: inferDefaultModeFromCubeMxSignals(pinName, signals),
+			pos,
+			idx: entries.length,
+		});
+	}
+
+	entries.sort((a, b) => a.pos === b.pos ? a.idx - b.idx : a.pos - b.pos);
+	return entries.map(e => ({ pin: e.pin, mode: e.mode }));
 }
 
 /** CubeMX MCU XML から Pin → Signal名一覧 を読み込む */
@@ -1243,11 +1340,23 @@ async function openPinVisualizer(): Promise<void> {
 			}
 			const configuredPins = parsePinLines(text);
 			detectedMcu = detectMcuFromIocText(text);
-			const totalPins = getPackagePinCount(text, detectedMcu);
-			pins = buildFullPackagePins(configuredPins, totalPins);
 			iocSettings = parseFullIocSettings(text);
-			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu} (${totalPins} pin)`;
+			// Use canonical pin list from JSON resource (matches real package), then
+			// overlay .ioc configured modes — same logic as CubeMX's reset-state baseline.
+			const canonicalPins = await loadMcuPackagePins(detectedMcu);
+			if (canonicalPins.length > 0) {
+				const configMap = new Map(configuredPins.map(p => [p.pin.toUpperCase(), p.mode]));
+				pins = canonicalPins.map(p => ({
+					pin: p.pin,
+					mode: configMap.get(p.pin.toUpperCase()) ?? p.mode, // keep reset-state default if not configured
+				}));
+			} else {
+				const totalPins = getPackagePinCount(text, detectedMcu);
+				pins = buildFullPackagePins(configuredPins, totalPins);
+			}
+			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu ?? 'STM32'} (${pins.length} pin)`;
 		} else {
+			// No .ioc: load MCU JSON — modes already updated to CubeMX reset state.
 			const fallback = await loadMcuPackagePins();
 			pins = fallback.length > 0 ? fallback : buildFullPackagePins([], 64);
 			panel.title = 'STM32 ピンビジュアライザ — STM32F446RE (デフォルト)';
@@ -2304,6 +2413,30 @@ function buildFullPackagePins(
 			all.push({ pin: pinName, mode: configMap.get(pinName.toUpperCase()) ?? '未使用' });
 		}
 	}
+
+	for (const item of configured) {
+		const key = item.pin.toUpperCase();
+		const found = all.findIndex(p => p.pin.toUpperCase() === key);
+		if (found >= 0) {
+			all[found].mode = item.mode;
+			continue;
+		}
+		const placeholder = all.findIndex(p => /^PIN\d+$/i.test(p.pin));
+		if (placeholder >= 0) {
+			all[placeholder] = { pin: item.pin, mode: item.mode };
+		} else {
+			all.push({ pin: item.pin, mode: item.mode });
+		}
+	}
+
+	while (all.length < totalPins) {
+		all.push({ pin: `PIN${all.length + 1}`, mode: '未使用' });
+	}
+
+	if (all.length > totalPins) {
+		return all.slice(0, totalPins);
+	}
+
 	return all;
 }
 
@@ -3049,70 +3182,85 @@ function getTemplateGalleryHtml(webview: vscode.Webview): string {
 }
 
 function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
-	const sorted = [...pins].sort(comparePinNames);
-	const n = sorted.length;
+	const n = pins.length;
 	if (n === 0) { return '<text x="10" y="20" fill="#6B7280" font-size="12">ピンなし</text>'; }
 
 	const perSide = Math.ceil(n / 4);
-	const PIN_PITCH = n > 160 ? 11 : n > 120 ? 12 : n > 80 ? 13 : 14;
-	const PIN_LEN = n > 120 ? 12 : 14;
-	const PIN_W = n > 120 ? 5 : 6;
-	const CHIP_SIZE = perSide * PIN_PITCH + 18;
-	const OFFSET = PIN_LEN + 4;
+
+	// --- Layout constants: fixed at 28px pitch for readable labels ---
+	const PIN_PITCH = 28;   // px per pin slot (always 28 for readability)
+	const PIN_W = 10;       // pin lead width (perpendicular to direction)
+	const PIN_STUB = 12;    // pin lead length from chip edge
+	const LABEL_AREA = 72;  // region outside PIN_STUB reserved for text labels
+	const CHIP_SIZE = perSide * PIN_PITCH + 16;
+	const OFFSET = PIN_STUB + LABEL_AREA; // total margin = 84px
 	const TOTAL = CHIP_SIZE + OFFSET * 2;
 
 	const sides: Array<{ pin: string; mode: string }[]> = [[], [], [], []];
-	for (let i = 0; i < sorted.length; i++) {
-		sides[Math.min(3, Math.floor(i / perSide))].push(sorted[i]);
+	for (let i = 0; i < pins.length; i++) {
+		sides[Math.min(3, Math.floor(i / perSide))].push(pins[i]);
 	}
 
 	let elements = '';
 
 	// chip body
-	elements += `<rect x="${OFFSET}" y="${OFFSET}" width="${CHIP_SIZE}" height="${CHIP_SIZE}" rx="6" fill="#171a26" stroke="#3b4155" stroke-width="1.2"/>`;
-	// notch top-left
-	elements += `<path d="M${OFFSET + 9},${OFFSET} A9,9 0 0,0 ${OFFSET},${OFFSET + 9}" fill="#0d0e14" stroke="#3b4155" stroke-width="1"/>`;
-	// center label
-	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 - 5}" text-anchor="middle" fill="#aeb6cb" font-size="9" font-family="Segoe UI,sans-serif">STM32</text>`;
-	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 + 8}" text-anchor="middle" fill="#77809b" font-size="8" font-family="Segoe UI,sans-serif">${n} pins</text>`;
+	const CX = OFFSET, CY = OFFSET;
+	elements += `<rect x="${CX}" y="${CY}" width="${CHIP_SIZE}" height="${CHIP_SIZE}" rx="8" fill="#1a1d2e" stroke="#4B5563" stroke-width="1.5"/>`;
+	elements += `<path d="M${CX + 18},${CY} A18,18 0 0,0 ${CX},${CY + 18}" fill="#0d0e14" stroke="#4B5563" stroke-width="1"/>`;
+	const midX = CX + CHIP_SIZE / 2;
+	const midY = CY + CHIP_SIZE / 2;
+	elements += `<text x="${midX}" y="${midY - 10}" text-anchor="middle" fill="#9CA3AF" font-size="16" font-weight="600" font-family="Segoe UI,sans-serif">STM32</text>`;
+	elements += `<text x="${midX}" y="${midY + 8}" text-anchor="middle" fill="#6B7280" font-size="12" font-family="Segoe UI,sans-serif">LQFP${n}</text>`;
 
-	const renderPin = (item: { pin: string; mode: string }, index: number, side: number) => {
-		const isUnused = item.mode === '未使用';
-		const fill = isUnused ? '#161820' : colorForMode(item.mode);
-		const stroke = isUnused ? '#2a2d3a' : colorForModeBorder(item.mode);
-		const pos = 9 + index * PIN_PITCH + PIN_PITCH / 2;
-
-		let rx = 0, ry = 0;
-		if (side === 0) { // bottom
-			rx = OFFSET + pos - PIN_W / 2; ry = OFFSET + CHIP_SIZE;
-		} else if (side === 1) { // left
-			rx = 0; ry = OFFSET + pos - PIN_W / 2;
-		} else if (side === 2) { // top
-			rx = OFFSET + CHIP_SIZE - pos - PIN_W / 2; ry = 0;
-		} else { // right
-			rx = OFFSET + CHIP_SIZE; ry = OFFSET + CHIP_SIZE - pos - PIN_W / 2;
-		}
-
-		const pinRect = (side === 0 || side === 2)
-			? `<rect x="${rx}" y="${ry}" width="${PIN_W}" height="${PIN_LEN}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`
-			: `<rect x="${rx}" y="${ry}" width="${PIN_LEN}" height="${PIN_W}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
-
-		const pinNum = sides.slice(0, side).reduce((a, s) => a + s.length, 0) + index + 1;
-		let nx = 0, ny = 0, nanchor = 'middle';
-		if (side === 0) { nx = rx + PIN_W / 2; ny = ry + PIN_LEN - 3; nanchor = 'middle'; }
-		else if (side === 1) { nx = rx + PIN_LEN - 3; ny = ry + PIN_W / 2 + 3; nanchor = 'end'; }
-		else if (side === 2) { nx = rx + PIN_W / 2; ny = ry + 7; nanchor = 'middle'; }
-		else { nx = rx + 3; ny = ry + PIN_W / 2 + 3; nanchor = 'start'; }
-
-		return `<g class="lqfp-pin" data-pin="${escapeHtml(item.pin)}" data-mode="${escapeHtml(item.mode)}" data-num="${pinNum}" role="button" tabindex="0" aria-label="${pinNum}: ${escapeHtml(item.pin)}: ${escapeHtml(item.mode)}">`
-			+ pinRect
-			+ `<text x="${nx}" y="${ny}" text-anchor="${nanchor}" fill="rgba(255,255,255,.75)" font-size="4.8" font-family="Segoe UI,sans-serif" pointer-events="none">${pinNum}</text>`
-			+ `</g>`;
-	};
-
+	let globalPinNum = 0;
 	for (let s = 0; s < 4; s++) {
 		for (let i = 0; i < sides[s].length; i++) {
-			elements += renderPin(sides[s][i], i, s);
+			globalPinNum++;
+			const item = sides[s][i];
+			const editable = /^P[A-K][0-9]{1,2}$/i.test(item.pin);
+			const isUnused = item.mode === '未使用';
+			const fill = isUnused ? '#1a1d2e' : colorForMode(item.mode);
+			const stroke = isUnused ? '#374151' : colorForModeBorder(item.mode);
+
+			// center position along this side
+			const sidePos = 8 + i * PIN_PITCH + PIN_PITCH / 2;
+
+			let prect = '', pnum = '', plbl = '';
+
+			if (s === 0) {
+				// bottom: left → right
+				const px = CX + sidePos;
+				const chipBot = CY + CHIP_SIZE;
+				prect = `<rect x="${px - PIN_W / 2}" y="${chipBot}" width="${PIN_W}" height="${PIN_STUB}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+				pnum = `<text x="${px}" y="${chipBot - 2}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
+				// rotated label: translate to pin tip, rotate +90° → text reads downward away from chip
+				plbl = `<g transform="translate(${px},${chipBot + PIN_STUB + 3}) rotate(90)"><text x="0" y="0" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text></g>`;
+			} else if (s === 1) {
+				// left: bottom → top
+				const py = CY + sidePos;
+				const chipLeft = CX;
+				prect = `<rect x="${chipLeft - PIN_STUB}" y="${py - PIN_W / 2}" width="${PIN_STUB}" height="${PIN_W}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+				pnum = `<text x="${chipLeft + 4}" y="${py + 4}" text-anchor="start" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
+				plbl = `<text x="${chipLeft - PIN_STUB - 6}" y="${py + 4}" text-anchor="end" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text>`;
+			} else if (s === 2) {
+				// top: right → left
+				const px = CX + CHIP_SIZE - sidePos;
+				const chipTop = CY;
+				prect = `<rect x="${px - PIN_W / 2}" y="${chipTop - PIN_STUB}" width="${PIN_W}" height="${PIN_STUB}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+				pnum = `<text x="${px}" y="${chipTop + 8}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
+				// rotated: translate to pin tip, rotate -90° → text reads upward away from chip
+				plbl = `<g transform="translate(${px},${chipTop - PIN_STUB - 3}) rotate(-90)"><text x="0" y="0" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text></g>`;
+			} else {
+				// right: top → bottom
+				const py = CY + CHIP_SIZE - sidePos;
+				const chipRight = CX + CHIP_SIZE;
+				prect = `<rect x="${chipRight}" y="${py - PIN_W / 2}" width="${PIN_STUB}" height="${PIN_W}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+				pnum = `<text x="${chipRight - 4}" y="${py + 4}" text-anchor="end" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
+				plbl = `<text x="${chipRight + PIN_STUB + 6}" y="${py + 4}" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text>`;
+			}
+
+			elements += `<g class="lqfp-pin${editable ? '' : ' fixed'}" data-pin="${escapeHtml(item.pin)}" data-mode="${escapeHtml(item.mode)}" data-num="${globalPinNum}" data-editable="${editable ? '1' : '0'}" role="${editable ? 'button' : 'img'}" tabindex="${editable ? '0' : '-1'}" aria-label="${globalPinNum}: ${escapeHtml(item.pin)}: ${escapeHtml(item.mode)}">`
+				+ prect + pnum + plbl + `</g>`;
 		}
 	}
 
@@ -3132,9 +3280,10 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	const csp = webview.cspSource;
 
 	const sorted = [...pins].sort(comparePinNames);
+	const editablePins = sorted.filter(item => /^P[A-K][0-9]{1,2}$/i.test(item.pin));
 
 	const groupMap = new Map<string, Array<{ pin: string; mode: string }>>();
-	for (const item of sorted) {
+	for (const item of editablePins) {
 		const portMatch = item.pin.match(/^([A-Za-z]+)/);
 		const portKey = portMatch ? portMatch[1].toUpperCase() : '?';
 		let arr = groupMap.get(portKey);
@@ -3166,16 +3315,19 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		{ color: '#1a4731', border: '#22c55e', label: 'GPIO Input' },
 		{ color: '#7c3a00', border: '#f59e0b', label: 'UART/USART' },
 		{ color: '#6d1a4c', border: '#ec4899', label: 'I2C' },
-		{ color: '#1f4d7a', border: '#38bdf8', label: 'SPI' },
-		{ color: '#7c1d1d', border: '#ef4444', label: 'ADC' },
+		{ color: '#1f4d7a', border: '#38bdf8', label: 'SPI/I2S' },
+		{ color: '#7c1d1d', border: '#ef4444', label: 'ADC/DAC' },
 		{ color: '#1a3050', border: '#3b82f6', label: 'TIM/PWM' },
-		{ color: '#1e2030', border: '#4b5563', label: 'その他' },
+		{ color: '#3b1f6e', border: '#a78bfa', label: 'SWD/JTAG' },
+		{ color: '#1a3a2e', border: '#34d399', label: 'RCC/OSC' },
+		{ color: '#3d2800', border: '#fb923c', label: 'CAN' },
+		{ color: '#1a1d2e', border: '#374151', label: '未使用' },
 	];
 	const legendHtml = legend.map(l =>
 		`<span class="lg-item"><span class="lg-dot" style="background:${l.color};border-color:${l.border}"></span>${escapeHtml(l.label)}</span>`
 	).join('');
 
-	const chipSvg = buildLqfpSvg(sorted);
+	const chipSvg = buildLqfpSvg(pins);
 
 	// ---- Build settings tab content from parsed ioc settings ----
 
@@ -3315,42 +3467,43 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		.s-add-btn{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;margin-top:8px}
 		.s-add-btn:hover{border-color:var(--ac)}
 		/* ---- pin view ---- */
-		.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+		.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 		.chip-hdr{flex:1;min-width:0}
-		.chip-hdr h1{font-size:14px;font-weight:700;margin-bottom:1px}
+		.chip-hdr h1{font-size:15px;font-weight:700;margin-bottom:2px}
 		.chip-hdr .path{font-size:11px;color:var(--mt);font-family:var(--vscode-editor-font-family,monospace);word-break:break-all}
 		.search-wrap{position:relative}
-		.search-wrap input{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 10px 5px 30px;font-size:12px;outline:none;width:210px}
+		.search-wrap input{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 10px 5px 30px;font-size:12px;outline:none;width:180px}
 		.search-wrap input:focus{border-color:var(--ac)}
 		.search-wrap .ic{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--mt);font-size:13px;pointer-events:none}
 		.pin-count{font-size:11px;color:var(--mt);white-space:nowrap}
 		.view-toggle{display:flex;gap:4px}
 		.vtbtn{background:var(--sf);border:1px solid var(--bd);color:var(--mt);border-radius:5px;padding:4px 10px;font-size:11px;cursor:pointer}
 		.vtbtn.active{background:var(--ac);border-color:var(--ac);color:#fff}
-		.legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;padding:7px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--sf)}
+		.legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;padding:9px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--sf)}
 		.lg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mt)}
 		.lg-dot{width:10px;height:10px;border-radius:3px;border:1.5px solid;flex-shrink:0}
-		.port-group{margin-bottom:8px}
+		.port-group{margin-bottom:10px}
 		.port-group.hidden{display:none}
-		.port-hd{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+		.port-hd{display:flex;align-items:center;gap:6px;margin-bottom:4px}
 		.port-badge{font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:4px;background:var(--sf);border:1px solid var(--bd);color:var(--mt)}
 		.port-count{font-size:10px;color:var(--mt)}
-		.pin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px}
-		.pin-card{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border:1.2px solid;border-radius:6px;cursor:pointer;min-width:0;text-align:left;transition:filter .1s,box-shadow .1s}
+		.pin-grid{display:flex;flex-wrap:wrap;gap:3px}
+		.pin-card{display:flex;flex-direction:column;align-items:flex-start;padding:3px 6px;border:1.2px solid;border-radius:5px;cursor:pointer;min-width:76px;text-align:left;transition:filter .1s,box-shadow .1s}
 		.pin-card:hover{filter:brightness(1.18);box-shadow:0 0 0 2px rgba(255,255,255,.08)}
 		.pin-card:focus{outline:2px solid #fff;outline-offset:2px}
-		.pin-name{font-size:12px;font-weight:700;color:#e8eaed;line-height:1.1;font-family:var(--vscode-editor-font-family,monospace)}
-		.pin-mode{font-size:10px;color:rgba(232,234,237,.7);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64%}
+		.pin-name{font-size:11px;font-weight:700;color:#e8eaed;line-height:1.15}
+		.pin-mode{font-size:9px;color:rgba(232,234,237,.65);margin-top:0;line-height:1.1}
 		.empty-msg{color:var(--mt);font-size:13px;margin-top:20px}
-		.hint{font-size:11px;color:var(--mt);margin-bottom:8px}
-		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#13151e;padding:8px;display:block}
+		.hint{font-size:11px;color:var(--mt);margin-bottom:14px}
+		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#13151e;padding:6px;display:block}
 		#chipView .lqfp-pin{cursor:pointer}
+		#chipView .lqfp-pin.fixed{cursor:default}
 		#chipView .lqfp-pin:focus rect{stroke:#fff;stroke-width:2}
 		#chipView .lqfp-pin:hover rect{filter:brightness(1.25)}
 		#chipView .lqfp-pin.dim{opacity:.18}
 		#chipView .lqfp-pin.match rect{stroke:#fbbf24;stroke-width:2;filter:brightness(1.3)}
-		#chipWrap{overflow:auto;max-height:68vh}
-		#chipSvg{transform-origin:top left;transition:transform .12s;display:inline-block}
+		#chipWrap{overflow:auto}
+		#chipSvg{transform-origin:top left;transition:transform .15s}
 		.zoom-row{display:flex;gap:6px;align-items:center;margin-bottom:8px}
 		.zbtn{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:5px;width:28px;height:28px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
 		.zbtn:hover{border-color:var(--ac)}
@@ -3643,8 +3796,12 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			});
 		}
 		for (const g of document.querySelectorAll('.lqfp-pin')) {
-			g.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }));
+			g.addEventListener('click', () => {
+				if (g.dataset.editable !== '1') { return; }
+				vscode.postMessage({ type: 'editPin', pin: g.dataset.pin });
+			});
 			g.addEventListener('keydown', e => {
+				if (g.dataset.editable !== '1') { return; }
 				if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }); }
 			});
 		}
@@ -3860,25 +4017,35 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 
 function colorForMode(mode: string): string {
 	const value = mode.toLowerCase();
+	if (value === '未使用') { return '#1a1d2e'; }
 	if (value.includes('gpio_output')) { return '#0f4c5c'; }
 	if (value.includes('gpio_input')) { return '#1a4731'; }
-	if (value.includes('usart') || value.includes('uart')) { return '#7c3a00'; }
+	if (value.includes('swdio') || value.includes('swclk') || value.includes('sys_sw')) { return '#3b1f6e'; }
+	if (value.includes('rcc_osc') || value.includes('osc')) { return '#1a3a2e'; }
+	if (value.includes('usart') || value.includes('uart') || value.includes('lpuart')) { return '#7c3a00'; }
 	if (value.includes('i2c')) { return '#6d1a4c'; }
-	if (value.includes('spi')) { return '#1f4d7a'; }
-	if (value.includes('adc')) { return '#7c1d1d'; }
+	if (value.includes('spi') || value.includes('i2s')) { return '#1f4d7a'; }
+	if (value.includes('adc') || value.includes('dac')) { return '#7c1d1d'; }
 	if (value.includes('tim') || value.includes('pwm')) { return '#1a3050'; }
+	if (value.includes('can')) { return '#3d2800'; }
+	if (value.includes('usb')) { return '#1a3d3d'; }
 	return '#1e2030';
 }
 
 function colorForModeBorder(mode: string): string {
 	const value = mode.toLowerCase();
+	if (value === '未使用') { return '#374151'; }
 	if (value.includes('gpio_output')) { return '#14b8a6'; }
 	if (value.includes('gpio_input')) { return '#22c55e'; }
-	if (value.includes('usart') || value.includes('uart')) { return '#f59e0b'; }
+	if (value.includes('swdio') || value.includes('swclk') || value.includes('sys_sw')) { return '#a78bfa'; }
+	if (value.includes('rcc_osc') || value.includes('osc')) { return '#34d399'; }
+	if (value.includes('usart') || value.includes('uart') || value.includes('lpuart')) { return '#f59e0b'; }
 	if (value.includes('i2c')) { return '#ec4899'; }
-	if (value.includes('spi')) { return '#38bdf8'; }
-	if (value.includes('adc')) { return '#ef4444'; }
+	if (value.includes('spi') || value.includes('i2s')) { return '#38bdf8'; }
+	if (value.includes('adc') || value.includes('dac')) { return '#ef4444'; }
 	if (value.includes('tim') || value.includes('pwm')) { return '#3b82f6'; }
+	if (value.includes('can')) { return '#fb923c'; }
+	if (value.includes('usb')) { return '#2dd4bf'; }
 	return '#4b5563';
 }
 
