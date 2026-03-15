@@ -18,6 +18,7 @@ const pathModule = require('path') as {
 };
 
 const CUBEMX_MCU_CATALOG_KEY = 'stm32ux.cubemxMcuCatalog';
+const CUBEMX_BOARD_CATALOG_KEY = 'stm32ux.cubemxBoardCatalog';
 let extensionContextRef: vscode.ExtensionContext;
 
 interface ExecFileResult {
@@ -41,17 +42,18 @@ interface BoardProfile {
 	defaultPins: Array<{ pin: string; mode: string }>;
 }
 
+interface CubeMxBoardCatalogItem {
+	id: string;
+	name: string;
+	mcu: string;
+	description: string;
+}
+
 interface BoardConfiguratorPayload {
+	selectionMode: 'board' | 'mcu';
 	boardId: string;
+	mcuName: string;
 	projectName: string;
-	clockSource: 'Internal' | 'External';
-	sysclkMHz: number;
-	debugPort: 'SWD' | 'JTAG' | 'Disabled';
-	enableFreeRtos: boolean;
-	enableUsb: boolean;
-	enableEthernet: boolean;
-	stackSize: number;
-	heapSize: number;
 	openPinGui: boolean;
 }
 
@@ -294,7 +296,7 @@ async function openMcpOperationDesk(): Promise<void> {
 }
 
 async function openWelcomeWizard(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.welcome', 'STM32 ウェルカム', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.welcome', 'TovaIDE-STM ウェルカム', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getWelcomeHtml(panel.webview);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || typeof message.type !== 'string') {
@@ -379,38 +381,57 @@ async function openTemplateGallery(): Promise<void> {
 
 async function openBoardConfigurator(): Promise<void> {
 	const profiles = await getBoardProfilesFromCatalog();
-	if (profiles.length === 0) {
+	const mcuNames = await getMcuSelectorNamesFromCatalog(profiles);
+	if (profiles.length === 0 && mcuNames.length === 0) {
 		vscode.window.showErrorMessage(vscode.l10n.t('利用可能なMCU定義が見つかりません。resources/stm32/mcu を確認してください。'));
 		return;
 	}
 
-	const panel = vscode.window.createWebviewPanel('stm32ux.boardConfigurator', 'STM32 ボード設定スタジオ', vscode.ViewColumn.Active, { enableScripts: true });
-	panel.webview.html = getBoardConfiguratorHtml(panel.webview, profiles);
+	const panel = vscode.window.createWebviewPanel('stm32ux.boardConfigurator', 'TovaIDE-STM ボード設定スタジオ', vscode.ViewColumn.Active, { enableScripts: true });
+	panel.webview.html = getBoardConfiguratorHtml(panel.webview, profiles, mcuNames);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || message.type !== 'create' || !isRecord(message.payload)) {
 			return;
 		}
 
 		const payload = message.payload as Record<string, unknown>;
+		const selectionMode = payload.selectionMode === 'mcu' ? 'mcu' : 'board';
 		const boardId = typeof payload.boardId === 'string' ? payload.boardId : '';
+		const mcuName = typeof payload.mcuName === 'string' ? payload.mcuName.trim() : '';
 		const projectName = typeof payload.projectName === 'string' ? payload.projectName.trim() : '';
-		const profile = profiles.find(item => item.id === boardId);
-		if (!profile || projectName.length === 0) {
-			vscode.window.showErrorMessage(vscode.l10n.t('ボードとプロジェクト名を入力してください。'));
+
+		let profile: BoardProfile | undefined;
+		if (selectionMode === 'board') {
+			profile = profiles.find(item => item.id === boardId);
+			if (!profile) {
+				vscode.window.showErrorMessage(vscode.l10n.t('Board を選択してください。'));
+				return;
+			}
+		} else {
+			if (mcuName.length === 0) {
+				vscode.window.showErrorMessage(vscode.l10n.t('MCU/MPU Selector から Commercial Part Number を選択してください。'));
+				return;
+			}
+			const matched = profiles.find(item => normalizeMcuKey(item.mcu) === normalizeMcuKey(mcuName));
+			profile = matched ?? {
+				id: `mcu-${mcuName.toLowerCase()}`,
+				name: `MCU/MPU Selector (${mcuName})`,
+				mcu: mcuName,
+				description: 'MCU/MPU Selector で選択した CPN から生成',
+				defaultPins: []
+			};
+		}
+
+		if (projectName.length === 0) {
+			vscode.window.showErrorMessage(vscode.l10n.t('プロジェクト名を入力してください。'));
 			return;
 		}
 
 		const config: BoardConfiguratorPayload = {
+			selectionMode,
 			boardId,
+			mcuName: profile.mcu,
 			projectName,
-			clockSource: payload.clockSource === 'External' ? 'External' : 'Internal',
-			sysclkMHz: Number(payload.sysclkMHz) || 80,
-			debugPort: payload.debugPort === 'JTAG' ? 'JTAG' : payload.debugPort === 'Disabled' ? 'Disabled' : 'SWD',
-			enableFreeRtos: payload.enableFreeRtos === true,
-			enableUsb: payload.enableUsb === true,
-			enableEthernet: payload.enableEthernet === true,
-			stackSize: Math.max(256, Number(payload.stackSize) || 1024),
-			heapSize: Math.max(256, Number(payload.heapSize) || 1536),
 			openPinGui: payload.openPinGui !== false,
 		};
 
@@ -614,73 +635,38 @@ async function loadMcuPackagePins(mcuName?: string): Promise<Array<{ pin: string
 }
 
 async function getBoardProfilesFromCatalog(): Promise<BoardProfile[]> {
-	const preferredByMcu = new Map<string, BoardProfile>();
-	for (const profile of PREFERRED_BOARD_PROFILES) {
-		preferredByMcu.set(normalizeMcuKey(profile.mcu), profile);
-	}
-
-	const mcuCatalogUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu');
-	let entries: [string, vscode.FileType][] = [];
-	try {
-		entries = await vscode.workspace.fs.readDirectory(mcuCatalogUri);
-	} catch {
-		return [...PREFERRED_BOARD_PROFILES];
-	}
-
 	const profiles: BoardProfile[] = [];
 	const seen = new Set<string>();
-	const appendProfile = (profile: BoardProfile): void => {
-		const normalized = normalizeMcuKey(profile.mcu);
-		if (seen.has(normalized)) {
+	const addProfile = (profile: BoardProfile): void => {
+		if (seen.has(profile.id)) {
 			return;
 		}
-		seen.add(normalized);
+		seen.add(profile.id);
 		profiles.push(profile);
 	};
 
-	for (const [name, type] of entries) {
-		if (type !== vscode.FileType.File || !name.toLowerCase().endsWith('.json')) {
-			continue;
-		}
-
-		const mcu = name.slice(0, -5);
-		const normalized = normalizeMcuKey(mcu);
-		const preferred = preferredByMcu.get(normalized);
-		if (preferred) {
-			appendProfile({
-				...preferred,
-				mcu,
-			});
-			continue;
-		}
-
-		appendProfile({
-			id: `catalog-${mcu.toLowerCase()}`,
-			name: mcu,
-			mcu,
-			description: `MCUカタログ (${mcu}) から生成`,
-			defaultPins: [],
-		});
+	for (const profile of PREFERRED_BOARD_PROFILES) {
+		addProfile(profile);
 	}
 
-	const cubeMxCatalog = extensionContextRef.globalState.get<string[]>(CUBEMX_MCU_CATALOG_KEY, []);
-	for (const mcu of cubeMxCatalog) {
-		const preferred = preferredByMcu.get(normalizeMcuKey(mcu));
-		if (preferred) {
-			appendProfile({
-				...preferred,
-				mcu,
-				description: `${preferred.description} (CubeMX DB)`
-			});
-			continue;
+	let boardCatalog = extensionContextRef.globalState.get<CubeMxBoardCatalogItem[]>(CUBEMX_BOARD_CATALOG_KEY, []);
+	if (boardCatalog.length < 20) {
+		const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
+		for (const candidate of buildCubeMxBoardDbCandidates(configured)) {
+			if (await fileExists(candidate)) {
+				boardCatalog = await scanCubeMxBoardProfiles(vscode.Uri.file(candidate));
+				await extensionContextRef.globalState.update(CUBEMX_BOARD_CATALOG_KEY, boardCatalog);
+				break;
+			}
 		}
-
-		appendProfile({
-			id: `cubemx-${mcu.toLowerCase()}`,
-			name: mcu,
-			mcu,
-			description: `CubeMX DB から取得 (${mcu})`,
-			defaultPins: [],
+	}
+	for (const item of boardCatalog) {
+		addProfile({
+			id: item.id,
+			name: item.name,
+			mcu: item.mcu,
+			description: item.description,
+			defaultPins: []
 		});
 	}
 
@@ -688,18 +674,67 @@ async function getBoardProfilesFromCatalog(): Promise<BoardProfile[]> {
 	return profiles;
 }
 
+async function getMcuSelectorNamesFromCatalog(profiles: BoardProfile[]): Promise<string[]> {
+	const names = new Set<string>();
+
+	for (const profile of profiles) {
+		if (profile.mcu) {
+			names.add(profile.mcu.toUpperCase());
+		}
+	}
+
+	const mcuCatalogUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu');
+	try {
+		const entries = await vscode.workspace.fs.readDirectory(mcuCatalogUri);
+		for (const [name, type] of entries) {
+			if (type === vscode.FileType.File && name.toLowerCase().endsWith('.json')) {
+				names.add(name.slice(0, -5).toUpperCase());
+			}
+		}
+	} catch {
+		// ignore resource catalog read errors
+	}
+
+	let syncedMcu = extensionContextRef.globalState.get<string[]>(CUBEMX_MCU_CATALOG_KEY, []);
+	if (syncedMcu.length < 2000) {
+		const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
+		for (const candidate of buildCubeMxMcuDbCandidates(configured)) {
+			if (await fileExists(candidate)) {
+				syncedMcu = await scanCubeMxMcuNames(vscode.Uri.file(candidate));
+				await extensionContextRef.globalState.update(CUBEMX_MCU_CATALOG_KEY, syncedMcu);
+				break;
+			}
+		}
+	}
+
+	for (const mcu of syncedMcu) {
+		names.add(mcu.toUpperCase());
+	}
+
+	return Array.from(names).sort();
+}
+
 async function syncMcuCatalogFromCubeMX(): Promise<void> {
 	const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
-	const candidates = buildCubeMxMcuDbCandidates(configured);
-	let selectedRoot: string | undefined;
-	for (const candidate of candidates) {
+	const mcuCandidates = buildCubeMxMcuDbCandidates(configured);
+	const boardCandidates = buildCubeMxBoardDbCandidates(configured);
+
+	let selectedMcuRoot: string | undefined;
+	for (const candidate of mcuCandidates) {
 		if (await fileExists(candidate)) {
-			selectedRoot = candidate;
+			selectedMcuRoot = candidate;
+			break;
+		}
+	}
+	let selectedBoardRoot: string | undefined;
+	for (const candidate of boardCandidates) {
+		if (await fileExists(candidate)) {
+			selectedBoardRoot = candidate;
 			break;
 		}
 	}
 
-	if (!selectedRoot) {
+	if (!selectedMcuRoot) {
 		vscode.window.showErrorMessage(vscode.l10n.t('CubeMX の MCU DB が見つかりません。stm32.cubemx.path を設定して再実行してください。'));
 		return;
 	}
@@ -710,12 +745,20 @@ async function syncMcuCatalogFromCubeMX(): Promise<void> {
 		cancellable: false,
 	}, async progress => {
 		progress.report({ message: vscode.l10n.t('MCU 定義を走査しています') });
-		return scanCubeMxMcuNames(vscode.Uri.file(selectedRoot));
+		return scanCubeMxMcuNames(vscode.Uri.file(selectedMcuRoot));
 	});
 
+	const boardItems = selectedBoardRoot
+		? await scanCubeMxBoardProfiles(vscode.Uri.file(selectedBoardRoot))
+		: [];
+
 	await extensionContextRef.globalState.update(CUBEMX_MCU_CATALOG_KEY, mcuNames);
-	outputChannel.appendLine(`[STM32-UX] Synced MCU catalog from CubeMX: ${mcuNames.length} entries (${selectedRoot})`);
-	vscode.window.showInformationMessage(vscode.l10n.t('CubeMX から MCU カタログを同期しました: {0} 件', mcuNames.length));
+	await extensionContextRef.globalState.update(CUBEMX_BOARD_CATALOG_KEY, boardItems);
+	outputChannel.appendLine(`[STM32-UX] Synced MCU catalog: ${mcuNames.length} entries (${selectedMcuRoot})`);
+	if (selectedBoardRoot) {
+		outputChannel.appendLine(`[STM32-UX] Synced Board catalog: ${boardItems.length} entries (${selectedBoardRoot})`);
+	}
+	vscode.window.showInformationMessage(vscode.l10n.t('CubeMX 同期完了: MCU {0} 件 / Board {1} 件', mcuNames.length, boardItems.length));
 }
 
 function buildCubeMxMcuDbCandidates(configuredPath: string): string[] {
@@ -742,8 +785,86 @@ function buildCubeMxMcuDbCandidates(configuredPath: string): string[] {
 	return candidates;
 }
 
+function buildCubeMxBoardDbCandidates(configuredPath: string): string[] {
+	const candidates: string[] = [];
+	const add = (value: string): void => {
+		const resolved = pathModule.resolve(value);
+		if (!candidates.includes(resolved)) {
+			candidates.push(resolved);
+		}
+	};
+
+	if (configuredPath.length > 0) {
+		const base = configuredPath.toLowerCase().endsWith('.exe') ? pathModule.dirname(configuredPath) : configuredPath;
+		add(pathModule.join(base, 'db', 'board'));
+		add(pathModule.join(base, 'db', 'plugins', 'boardmanager', 'boards'));
+		add(pathModule.join(pathModule.dirname(base), 'db', 'board'));
+		add(pathModule.join(pathModule.dirname(base), 'db', 'plugins', 'boardmanager', 'boards'));
+		add(pathModule.join(base, 'STM32CubeMX', 'db', 'board'));
+		add(pathModule.join(base, 'STM32CubeMX', 'db', 'plugins', 'boardmanager', 'boards'));
+	}
+
+	if (process.platform === 'win32') {
+		add('C:/ST/STM32CubeMX/db/board');
+		add('C:/ST/STM32CubeMX/db/plugins/boardmanager/boards');
+		add('C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeMX/db/board');
+		add('C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeMX/db/plugins/boardmanager/boards');
+	}
+
+	return candidates;
+}
+
+/** STM32C011F(4-6)Px → ['STM32C011F4PX', 'STM32C011F6PX'] */
+function expandMcuVariantName(name: string): string[] {
+	const parenRe = /\(([A-Z0-9](?:-[A-Z0-9])+)\)/i;
+	const m = name.match(parenRe);
+	if (!m) { return [name.toUpperCase()]; }
+	const chars = m[1].split('-');
+	const results: string[] = [];
+	for (const ch of chars) {
+		results.push(...expandMcuVariantName(name.replace(m[0], ch)));
+	}
+	return results;
+}
+
 async function scanCubeMxMcuNames(root: vscode.Uri): Promise<string[]> {
 	const names = new Set<string>();
+
+	// 1. Parse families.xml first — this contains all MCU CPN variants
+	const familiesUri = vscode.Uri.joinPath(root, 'families.xml');
+	try {
+		const familiesBytes = await vscode.workspace.fs.readFile(familiesUri);
+		let familiesText = '';
+		for (const v of familiesBytes) { familiesText += String.fromCharCode(v); }
+		const mcuNameRe = /<Mcu\b[^>]*\bName="([^"]+)"/gi;
+		let fm: RegExpExecArray | null;
+		while ((fm = mcuNameRe.exec(familiesText)) !== null) {
+			for (const expanded of expandMcuVariantName(fm[1])) {
+				names.add(expanded);
+			}
+		}
+	} catch {
+		// families.xml not found — fall through to file scan
+	}
+
+	// 2. Also scan XML filenames (expands multi-variant file names)
+	let entries: [string, vscode.FileType][] = [];
+	try { entries = await vscode.workspace.fs.readDirectory(root); } catch { /* ignore */ }
+	for (const [name, type] of entries) {
+		if (type !== vscode.FileType.File || !name.toLowerCase().endsWith('.xml')) { continue; }
+		const stem = name.slice(0, -4);
+		if (!stem.toUpperCase().startsWith('STM32')) { continue; }
+		for (const expanded of expandMcuVariantName(stem)) {
+			names.add(expanded);
+		}
+	}
+
+	return Array.from(names).sort();
+}
+
+async function scanCubeMxBoardProfiles(root: vscode.Uri): Promise<CubeMxBoardCatalogItem[]> {
+	const results: CubeMxBoardCatalogItem[] = [];
+	const seen = new Set<string>();
 	const queue: vscode.Uri[] = [root];
 	let scannedFiles = 0;
 
@@ -759,6 +880,7 @@ async function scanCubeMxMcuNames(root: vscode.Uri): Promise<string[]> {
 		} catch {
 			entries = [];
 		}
+
 		for (const [name, type] of entries) {
 			if (type === vscode.FileType.Directory) {
 				queue.push(vscode.Uri.joinPath(current, name));
@@ -767,15 +889,281 @@ async function scanCubeMxMcuNames(root: vscode.Uri): Promise<string[]> {
 			if (type !== vscode.FileType.File || !name.toLowerCase().endsWith('.xml')) {
 				continue;
 			}
+
 			scannedFiles += 1;
-			const mcuName = name.slice(0, -4).toUpperCase();
-			if (/^STM32[A-Z0-9]+$/.test(mcuName)) {
-				names.add(mcuName);
+			const fileUri = vscode.Uri.joinPath(current, name);
+			let content = '';
+			try {
+				const bytes = await vscode.workspace.fs.readFile(fileUri);
+				for (const value of bytes) {
+					content += String.fromCharCode(value);
+				}
+			} catch {
+				continue;
+			}
+
+			const fileStem = name.slice(0, -4);
+			if (!/_(Configs|Modes)_?$/i.test(fileStem)) {
+				continue;
+			}
+			const boardStem = fileStem.replace(/_(Configs|Modes)_?$/i, '');
+			const titleMatch = content.match(/Name="([^"]+)"/i);
+			const boardName = (titleMatch?.[1] ?? boardStem).trim();
+			const mcuMatch = content.match(/STM32[A-Z0-9]+/i);
+			const guessedFromBoard = boardStem.match(/([A-Z]\d{3}[A-Z]{1,3}\d?[A-Z]?)/i);
+			const mcu = (mcuMatch?.[0] ?? (guessedFromBoard ? `STM32${guessedFromBoard[1].toUpperCase()}TX` : '')).toUpperCase();
+			if (!mcu) {
+				continue;
+			}
+			const id = `cubemx-board-${boardStem.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+			if (seen.has(id)) {
+				continue;
+			}
+			seen.add(id);
+			results.push({
+				id,
+				name: boardStem,
+				mcu,
+				description: `CubeMX Board DB 由来 (${boardName})`
+			});
+		}
+	}
+
+	results.sort((a, b) => a.name.localeCompare(b.name));
+	return results;
+}
+
+async function loadMcuPinDefinitions(mcuName?: string): Promise<Array<{ pin: string; mode?: string; altFunctions?: string[] }>> {
+	const fileName = await resolveMcuJsonName(mcuName ?? 'STM32F446RE');
+	try {
+		const jsonUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu', `${fileName}.json`);
+		const bytes = await vscode.workspace.fs.readFile(jsonUri);
+		let text = '';
+		for (const value of bytes) { text += String.fromCharCode(value); }
+		const data = JSON.parse(text) as { pins?: Array<{ pin: string; mode?: string; altFunctions?: string[] }> };
+		return data.pins ?? [];
+	} catch {
+		return [];
+	}
+}
+
+/** CubeMX MCU DBの db/mcu フォルダから、対象MCUに対応するXMLファイルを検索する */
+async function findCubeMxMcuXmlFile(mcuName: string): Promise<vscode.Uri | undefined> {
+	const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
+	for (const candidate of buildCubeMxMcuDbCandidates(configured)) {
+		if (!(await fileExists(candidate))) { continue; }
+		const rootUri = vscode.Uri.file(candidate);
+		let entries: [string, vscode.FileType][] = [];
+		try { entries = await vscode.workspace.fs.readDirectory(rootUri); } catch { continue; }
+		for (const [name, type] of entries) {
+			if (type !== vscode.FileType.File || !name.toLowerCase().endsWith('.xml')) { continue; }
+			const stem = name.slice(0, -4);
+			if (!stem.toUpperCase().startsWith('STM32')) { continue; }
+			if (cubeMxFileNameMatchesMcu(stem, mcuName)) {
+				return vscode.Uri.joinPath(rootUri, name);
+			}
+		}
+	}
+	return undefined;
+}
+
+/** "STM32F446R(C-E)Tx" のような CubeMX ファイル名パターンが指定 MCU にマッチするか */
+function cubeMxFileNameMatchesMcu(fileName: string, mcuName: string): boolean {
+	const pattern = fileName.replace(/\(([A-Z0-9](?:-[A-Z0-9])+)\)/gi, (_, chars: string) =>
+		'[' + chars.replace(/-/g, '') + ']'
+	);
+	try {
+		return new RegExp('^' + pattern + '$', 'i').test(mcuName);
+	} catch {
+		return false;
+	}
+}
+
+/** CubeMX MCU XML から Pin → Signal名一覧 を読み込む */
+async function loadPinSignalsFromCubeMxXml(xmlUri: vscode.Uri): Promise<Map<string, string[]>> {
+	const result = new Map<string, string[]>();
+	let text = '';
+	try {
+		const bytes = await vscode.workspace.fs.readFile(xmlUri);
+		for (const v of bytes) { text += String.fromCharCode(v); }
+	} catch {
+		return result;
+	}
+
+	// Match <Pin Name="PA0" ...>...</Pin> blocks (including self-closing)
+	const pinBlockRe = /<Pin\b([^>]*)>([\s\S]*?)<\/Pin>/gi;
+	let pinMatch: RegExpExecArray | null;
+	while ((pinMatch = pinBlockRe.exec(text)) !== null) {
+		const attrs = pinMatch[1];
+		const body = pinMatch[2];
+		const nameAttr = attrs.match(/\bName="([^"]+)"/i);
+		if (!nameAttr) { continue; }
+		const rawPinName = nameAttr[1];
+		// Normalize: "PC14-OSC32_IN" → use only "PC14"
+		const pinBaseName = rawPinName.split('-')[0].split('/')[0].trim().toUpperCase();
+		if (!/^P[A-K][0-9]{1,2}$/.test(pinBaseName)) { continue; }
+		const signals: string[] = [];
+		const sigRe = /<Signal\b[^>]*\bName="([^"]+)"/gi;
+		let sm: RegExpExecArray | null;
+		while ((sm = sigRe.exec(body)) !== null) {
+			signals.push(sm[1]);
+		}
+		if (!result.has(pinBaseName) && signals.length > 0) {
+			result.set(pinBaseName, signals);
+		}
+	}
+	return result;
+}
+
+interface IocFullSettings {
+	pinAssignments: Record<string, string>;
+	pinGpioConfigs: Record<string, Record<string, string>>;
+	nvicSettings: Record<string, Record<string, string>>;
+	dmaLines: Array<{ key: string; value: string }>;
+	paramSettings: Record<string, Record<string, string>>;
+	userConstants: Array<{ name: string; value: string }>;
+	systemSettings: Record<string, string>;
+}
+
+function parseFullIocSettings(text: string): IocFullSettings {
+	const s: IocFullSettings = {
+		pinAssignments: {},
+		pinGpioConfigs: {},
+		nvicSettings: {},
+		dmaLines: [],
+		paramSettings: {},
+		userConstants: [],
+		systemSettings: {}
+	};
+
+	for (const rawLine of text.split(/\r?\n/)) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith('#')) { continue; }
+		const eqIdx = line.indexOf('=');
+		if (eqIdx < 0) { continue; }
+		const key = line.slice(0, eqIdx).trim();
+		const value = line.slice(eqIdx + 1).trim();
+
+		// Pin assignment: PA5=GPIO_Output
+		if (/^P[A-K][0-9]{1,2}$/.test(key)) {
+			s.pinAssignments[key] = value;
+			continue;
+		}
+
+		// Pin GPIO config: PA5-GPIO_Output.GPIO_Speed=HIGH
+		const pinCfgM = key.match(/^(P[A-K][0-9]{1,2})-[^.]+\.(.+)$/);
+		if (pinCfgM) {
+			if (!s.pinGpioConfigs[pinCfgM[1]]) { s.pinGpioConfigs[pinCfgM[1]] = {}; }
+			s.pinGpioConfigs[pinCfgM[1]][pinCfgM[2]] = value;
+			continue;
+		}
+
+		// NVIC: NVIC.USART2_IRQn_IRQChannelState=ENABLE
+		if (key.startsWith('NVIC.')) {
+			const nvicKey = key.slice(5);
+			const nvicM = nvicKey.match(/^(.+?)_(IRQChannelState|IRQChannelPreemptionPriority|IRQChannelSubPriority|IRQForcedDisabled)$/);
+			if (nvicM) {
+				if (!s.nvicSettings[nvicM[1]]) { s.nvicSettings[nvicM[1]] = {}; }
+				s.nvicSettings[nvicM[1]][nvicM[2]] = value;
+			}
+			continue;
+		}
+
+		// DMA: DMA.Request1=USART2_TX
+		if (key.startsWith('DMA.')) {
+			s.dmaLines.push({ key, value });
+			continue;
+		}
+
+		// User constants: ProjectManager.UserConstants=NAME1:VAL1,NAME2:VAL2
+		if (key === 'ProjectManager.UserConstants') {
+			if (value.trim()) {
+				for (const part of value.split(',')) {
+					const ci = part.indexOf(':');
+					if (ci >= 0) {
+						s.userConstants.push({ name: part.slice(0, ci).trim(), value: part.slice(ci + 1).trim() });
+					}
+				}
+			}
+			continue;
+		}
+
+		// System settings
+		if (key.startsWith('ProjectManager.') || key.startsWith('Mcu.') || key.startsWith('File.') || key.startsWith('KeepUserPlacement')) {
+			s.systemSettings[key] = value;
+			continue;
+		}
+
+		// Parameter settings: ADC1.Resolution=ADC_RESOLUTION_12B
+		const paramM = key.match(/^([A-Za-z][A-Za-z0-9_]*)\.(.+)$/);
+		if (paramM) {
+			if (!s.paramSettings[paramM[1]]) { s.paramSettings[paramM[1]] = {}; }
+			s.paramSettings[paramM[1]][paramM[2]] = value;
+		}
+	}
+	return s;
+}
+
+async function getPinModeGroupsForPin(mcuName: string | undefined, pinName: string, currentMode: string): Promise<Record<string, string[]>> {
+	const values = new Set<string>();
+	values.add('GPIO_Output');
+	values.add('GPIO_Input');
+	values.add('GPIO_Analog');
+	values.add('Reset_State');
+
+	// 1. Try CubeMX MCU XML (most complete — all Signal names from db/mcu/)
+	const targetMcu = mcuName ?? 'STM32F446RETx';
+	const xmlUri = await findCubeMxMcuXmlFile(targetMcu);
+	if (xmlUri) {
+		const pinSignals = await loadPinSignalsFromCubeMxXml(xmlUri);
+		const pinKey = pinName.toUpperCase();
+		const signals = pinSignals.get(pinKey) ?? [];
+		for (const sig of signals) {
+			if (sig.toUpperCase() === 'GPIO') {
+				// GPIO expands to standard modes
+			} else if (!sig.toUpperCase().startsWith('EVENTOUT') && !sig.toUpperCase().startsWith('ANALOG')) {
+				values.add(sig);
 			}
 		}
 	}
 
-	return Array.from(names).sort();
+	// 2. Fallback: resource JSON altFunctions
+	if (values.size <= 4) {
+		const defs = await loadMcuPinDefinitions(mcuName);
+		const found = defs.find(p => p.pin.toUpperCase() === pinName.toUpperCase());
+		if (found?.mode) { values.add(found.mode); }
+		for (const alt of (found?.altFunctions ?? [])) { values.add(alt); }
+	}
+
+	if (currentMode) { values.add(currentMode); }
+
+	const groups: Record<string, string[]> = {};
+	for (const mode of values) {
+		const upper = mode.toUpperCase();
+		let group = 'その他';
+		if (upper.startsWith('RESET_STATE') || upper.startsWith('GPIO')) { group = 'GPIO'; }
+		else if (upper.startsWith('USART') || upper.startsWith('UART') || upper.startsWith('LPUART')) { group = 'UART/USART'; }
+		else if (upper.startsWith('I2C') || upper.startsWith('FMPI2C')) { group = 'I2C'; }
+		else if (upper.startsWith('SPI') || upper.startsWith('I2S')) { group = 'SPI/I2S'; }
+		else if (upper.startsWith('ADC') || upper.startsWith('DAC')) { group = 'ADC/DAC'; }
+		else if (upper.startsWith('TIM') || upper.startsWith('LPTIM') || upper.startsWith('HRTIM')) { group = 'TIM/PWM'; }
+		else if (upper.startsWith('CAN') || upper.startsWith('FDCAN')) { group = 'CAN/FDCAN'; }
+		else if (upper.startsWith('USB') || upper.startsWith('OTG')) { group = 'USB'; }
+		else if (upper.startsWith('ETH') || upper.startsWith('RMII') || upper.startsWith('MII')) { group = 'Ethernet'; }
+		else if (upper.startsWith('SDIO') || upper.startsWith('SDMMC')) { group = 'SDIO/SDMMC'; }
+		else if (upper.startsWith('QUADSPI') || upper.startsWith('OCTOSPI') || upper.startsWith('FSMCR') || upper.startsWith('FMC')) { group = 'FMC/QSPI'; }
+		else if (upper.startsWith('RCC') || upper.startsWith('RTC') || upper.startsWith('SYS')) { group = 'RCC/RTC/SYS'; }
+		else if (upper.startsWith('SAI') || upper.startsWith('SPDIFRX') || upper.startsWith('SPDIF')) { group = 'Audio'; }
+
+		if (!groups[group]) { groups[group] = []; }
+		groups[group].push(mode);
+	}
+
+	for (const key of Object.keys(groups)) {
+		groups[key] = Array.from(new Set(groups[key])).sort((a, b) => a.localeCompare(b));
+	}
+
+	return Object.keys(groups).length > 0 ? groups : PIN_MODE_GROUPS;
 }
 
 async function openPinVisualizer(): Promise<void> {
@@ -784,6 +1172,7 @@ async function openPinVisualizer(): Promise<void> {
 	const render = async (): Promise<void> => {
 		let pins: Array<{ pin: string; mode: string }> = [];
 		let detectedMcu: string | undefined;
+		let iocSettings: IocFullSettings = parseFullIocSettings('');
 		if (iocUri) {
 			const bytes = await vscode.workspace.fs.readFile(iocUri);
 			let text = '';
@@ -794,13 +1183,14 @@ async function openPinVisualizer(): Promise<void> {
 			detectedMcu = detectMcuFromIocText(text);
 			const totalPins = getPackagePinCount(text, detectedMcu);
 			pins = buildFullPackagePins(configuredPins, totalPins);
+			iocSettings = parseFullIocSettings(text);
 			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu} (${totalPins} pin)`;
 		} else {
 			const fallback = await loadMcuPackagePins();
 			pins = fallback.length > 0 ? fallback : buildFullPackagePins([], 64);
 			panel.title = 'STM32 ピンビジュアライザ — STM32F446RE (デフォルト)';
 		}
-		panel.webview.html = getPinVisualizerHtml(panel.webview, pins, iocUri?.fsPath);
+		panel.webview.html = getPinVisualizerHtml(panel.webview, pins, iocUri?.fsPath, iocSettings);
 	};
 
 	let activeIocUri = iocUri;
@@ -823,7 +1213,7 @@ async function openPinVisualizer(): Promise<void> {
 				const newIocUri = vscode.Uri.joinPath(wsFolder.uri, 'project.ioc');
 				const mcuPins = await loadMcuPackagePins();
 				const lines = [
-					'# Generated by CubeForge Pin Visualizer',
+					'# Generated by TovaIDE-STM Pin Visualizer',
 					'Mcu.Name=STM32F446RETx',
 					'ProjectManager.ProjectName=project',
 					'ProjectManager.TargetToolchain=STM32CubeIDE',
@@ -835,14 +1225,17 @@ async function openPinVisualizer(): Promise<void> {
 			}
 			// Send mode list + current mode back to webview for the in-webview dialog
 			let currentMode = '';
+			let detectedMcu: string | undefined;
 			if (activeIocUri) {
 				const bytes = await vscode.workspace.fs.readFile(activeIocUri);
 				let text = '';
 				for (const value of bytes) { text += String.fromCharCode(value); }
+				detectedMcu = detectMcuFromIocText(text);
 				const m = text.match(new RegExp(`^${message.pin}=([^\\r\\n]+)`, 'm'));
 				if (m) { currentMode = m[1]; }
 			}
-			await panel.webview.postMessage({ type: 'openDialog', pin: message.pin, currentMode, groups: PIN_MODE_GROUPS });
+			const groups = await getPinModeGroupsForPin(detectedMcu, message.pin, currentMode);
+			await panel.webview.postMessage({ type: 'openDialog', pin: message.pin, currentMode, groups });
 			return;
 		}
 
@@ -871,7 +1264,7 @@ async function openPinVisualizer(): Promise<void> {
 				const newIocUri = vscode.Uri.joinPath(wsFolder.uri, 'project.ioc');
 				const mcuPins = await loadMcuPackagePins();
 				const lines = [
-					'# Generated by CubeForge Pin Visualizer',
+					'# Generated by TovaIDE-STM Pin Visualizer',
 					'Mcu.Name=STM32F446RETx',
 					'ProjectManager.ProjectName=project',
 					'ProjectManager.TargetToolchain=STM32CubeIDE',
@@ -882,6 +1275,43 @@ async function openPinVisualizer(): Promise<void> {
 			}
 			await updateIocPinMode(activeIocUri, message.pin, message.mode);
 			vscode.window.showInformationMessage(vscode.l10n.t('{0} を {1} として追加しました。', message.pin, message.mode));
+			await render();
+			return;
+		}
+
+		// Apply a single key=value line to the .ioc file
+		if (message.type === 'applyIocLine' && typeof message.key === 'string' && typeof message.value === 'string') {
+			if (!activeIocUri) {
+				vscode.window.showWarningMessage(vscode.l10n.t('.ioc ファイルが開かれていません。'));
+				return;
+			}
+			await updateIocKeyValue(activeIocUri, message.key, message.value);
+			await render();
+			return;
+		}
+
+		// Apply multiple key=value lines at once (batch settings save)
+		if (message.type === 'applyIocLines' && Array.isArray(message.lines)) {
+			if (!activeIocUri) {
+				vscode.window.showWarningMessage(vscode.l10n.t('.ioc ファイルが開かれていません。'));
+				return;
+			}
+			const validLines = (message.lines as unknown[]).filter(
+				(l): l is { key: string; value: string } =>
+					typeof (l as Record<string, unknown>).key === 'string' && typeof (l as Record<string, unknown>).value === 'string'
+			);
+			for (const { key, value } of validLines) {
+				await updateIocKeyValue(activeIocUri, key, value);
+			}
+			vscode.window.showInformationMessage(vscode.l10n.t('設定を {0} 件保存しました。', validLines.length));
+			await render();
+			return;
+		}
+
+		// Remove a key from the .ioc file
+		if (message.type === 'removeIocKey' && typeof message.key === 'string') {
+			if (!activeIocUri) { return; }
+			await removeIocKey(activeIocUri, message.key);
 			await render();
 			return;
 		}
@@ -983,7 +1413,7 @@ async function createProjectFromBoardConfigurator(profile: BoardProfile, config:
 		mcu: profile.mcu,
 		pinModes: mergedPins,
 		userCodeLines: [
-			'/* STM32 ボード設定スタジオで生成 */',
+			'/* TovaIDE-STM ボード設定スタジオで生成 */',
 			'HAL_Delay(100);'
 		]
 	};
@@ -1033,21 +1463,15 @@ function mergePins(basePins: Array<{ pin: string; mode: string }>, preferredPins
 	return Array.from(map.entries()).map(([pin, mode]) => ({ pin, mode }));
 }
 
-function generateIocTextFromBoardConfig(projectName: string, template: TemplateDefinition, config: BoardConfiguratorPayload): string {
+function generateIocTextFromBoardConfig(projectName: string, template: TemplateDefinition, _config: BoardConfiguratorPayload): string {
 	const lines = [
-		'# Auto-generated by STM32 UX board configurator',
+		'# Auto-generated by TovaIDE-STM board configurator',
 		`Mcu.Name=${template.mcu}`,
 		`ProjectManager.ProjectName=${projectName}`,
 		'ProjectManager.TargetToolchain=STM32CubeIDE',
 		'ProjectManager.NoMain=false',
-		`RCC.ClockSource=${config.clockSource}`,
-		`RCC.SysClkMHz=${config.sysclkMHz}`,
-		`SYS.DebugPort=${config.debugPort}`,
-		`Middleware.FreeRTOS=${config.enableFreeRtos ? 'Enabled' : 'Disabled'}`,
-		`Middleware.USB=${config.enableUsb ? 'Enabled' : 'Disabled'}`,
-		`Middleware.Ethernet=${config.enableEthernet ? 'Enabled' : 'Disabled'}`,
-		`ProjectManager.StackSize=${config.stackSize}`,
-		`ProjectManager.HeapSize=${config.heapSize}`,
+		'ProjectManager.StackSize=1024',
+		'ProjectManager.HeapSize=1536',
 	];
 
 	for (const pin of template.pinModes) {
@@ -1717,14 +2141,18 @@ async function writeTextFile(uri: vscode.Uri, content: string): Promise<void> {
 }
 
 async function updateIocPinMode(iocUri: vscode.Uri, pin: string, mode: string): Promise<boolean> {
+	return updateIocKeyValue(iocUri, pin, mode);
+}
+
+async function updateIocKeyValue(iocUri: vscode.Uri, key: string, value: string): Promise<boolean> {
 	const oldBytes = await vscode.workspace.fs.readFile(iocUri);
 	let oldText = '';
-	for (const value of oldBytes) {
-		oldText += String.fromCharCode(value);
-	}
+	for (const v of oldBytes) { oldText += String.fromCharCode(v); }
 
-	const linePattern = new RegExp(`^${pin}=[^\\r\\n]*$`, 'm');
-	const newLine = `${pin}=${mode}`;
+	// Escape special regex chars in key
+	const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const linePattern = new RegExp(`^${escapedKey}=[^\\r\\n]*$`, 'm');
+	const newLine = `${key}=${value}`;
 	let newText = oldText;
 	if (linePattern.test(oldText)) {
 		newText = oldText.replace(linePattern, newLine);
@@ -1733,12 +2161,18 @@ async function updateIocPinMode(iocUri: vscode.Uri, pin: string, mode: string): 
 		newText = `${oldText}${suffix}${newLine}\n`;
 	}
 
-	if (newText === oldText) {
-		return false;
-	}
-
+	if (newText === oldText) { return false; }
 	await writeTextFile(iocUri, newText);
 	return true;
+}
+
+async function removeIocKey(iocUri: vscode.Uri, key: string): Promise<void> {
+	const oldBytes = await vscode.workspace.fs.readFile(iocUri);
+	let oldText = '';
+	for (const v of oldBytes) { oldText += String.fromCharCode(v); }
+	const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const newText = oldText.replace(new RegExp(`^${escapedKey}=[^\\r\\n]*\\r?\\n?`, 'm'), '');
+	if (newText !== oldText) { await writeTextFile(iocUri, newText); }
 }
 
 async function findIocFile(): Promise<vscode.Uri | undefined> {
@@ -1795,11 +2229,11 @@ function buildFullPackagePins(
 	const configMap = new Map(configured.map(p => [p.pin.toUpperCase(), p.mode]));
 
 	const bankSizes: Array<[string, number, number]> =
-		totalPins >= 144 ? [['A',16,0],['B',16,0],['C',16,0],['D',16,0],['E',16,0],['F',16,0],['G',16,0],['H',2,0]]
-		: totalPins >= 100 ? [['A',16,0],['B',16,0],['C',16,0],['D',16,0],['E',16,0]]
-		: totalPins >= 64  ? [['A',16,0],['B',16,0],['C',16,0],['D',3,0],['H',2,0]]
-		: totalPins >= 48  ? [['A',16,0],['B',16,0],['C',4,13]] // PC13-16
-		:                    [['A',10,0],['B',16,0],['C',3,13]];
+		totalPins >= 144 ? [['A', 16, 0], ['B', 16, 0], ['C', 16, 0], ['D', 16, 0], ['E', 16, 0], ['F', 16, 0], ['G', 16, 0], ['H', 2, 0]]
+			: totalPins >= 100 ? [['A', 16, 0], ['B', 16, 0], ['C', 16, 0], ['D', 16, 0], ['E', 16, 0]]
+				: totalPins >= 64 ? [['A', 16, 0], ['B', 16, 0], ['C', 16, 0], ['D', 3, 0], ['H', 2, 0]]
+					: totalPins >= 48 ? [['A', 16, 0], ['B', 16, 0], ['C', 4, 13]] // PC13-16
+						: [['A', 10, 0], ['B', 16, 0], ['C', 3, 13]];
 
 	const all: Array<{ pin: string; mode: string }> = [];
 	for (const [bank, count, start] of bankSizes) {
@@ -1907,10 +2341,13 @@ function execFileAsync(command: string, args: string[], cwd: string | undefined)
 	});
 }
 
-function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfile[]): string {
+function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfile[], mcuNames: string[]): string {
 	const csp = webview.cspSource;
 	const boardOptions = profiles.map(profile =>
 		`<option value="${escapeHtml(profile.id)}" data-mcu="${escapeHtml(profile.mcu)}" data-desc="${escapeHtml(profile.description)}">${escapeHtml(profile.name)} (${escapeHtml(profile.mcu)})</option>`
+	).join('');
+	const mcuOptions = mcuNames.map(mcu =>
+		`<option value="${escapeHtml(mcu)}">${escapeHtml(mcu)}</option>`
 	).join('');
 
 	return `<!DOCTYPE html>
@@ -1921,92 +2358,74 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14)}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:22px 24px;max-width:900px}
+		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:22px 24px;max-width:960px}
 		h1{font-size:20px;font-weight:700;margin-bottom:6px}
-		.sub{font-size:12px;color:var(--mt);margin-bottom:18px}
-		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+		.sub{font-size:12px;color:var(--mt);margin-bottom:16px}
+		.notice{font-size:12px;color:#cbd5e1;background:#121826;border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+		.mode-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+		.mode-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--bd);border-radius:999px;background:#10131a;font-size:12px;cursor:pointer}
+		.mode-chip input{margin:0}
 		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:14px}
-		.hd{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mt);margin-bottom:10px}
 		.row{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
 		label{font-size:12px;color:#d1d5db}
 		input,select{background:#0d0e14;border:1px solid var(--bd);border-radius:7px;color:var(--tx);padding:8px 10px;font:12px var(--vscode-font-family,'Segoe UI',sans-serif);outline:none}
 		input:focus,select:focus{border-color:var(--ac)}
 		.desc{font-size:11px;color:var(--mt);line-height:1.5}
-		.chk{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-		.chk input{width:16px;height:16px}
+		.mcu-tag{font-size:11px;color:#99f6e4;background:rgba(15,118,110,.18);border:1px solid rgba(15,118,110,.45);padding:2px 8px;border-radius:999px;display:inline-block;margin-top:6px}
+		.hidden{display:none}
+		.chk{display:flex;align-items:center;gap:8px;margin-top:8px}
 		.btnrow{display:flex;justify-content:flex-end;margin-top:14px}
 		button{background:var(--ac);border:1px solid var(--ac);color:#fff;border-radius:8px;padding:9px 16px;font:600 12px var(--vscode-font-family,'Segoe UI',sans-serif);cursor:pointer}
-		button:hover{background:#0d9488;border-color:#0d9488}
-		.mcu-tag{font-size:11px;color:#99f6e4;background:rgba(15,118,110,.18);border:1px solid rgba(15,118,110,.45);padding:2px 8px;border-radius:999px;display:inline-block;margin-top:6px}
 	</style>
 </head>
 <body>
-	<h1>STM32 ボード設定スタジオ</h1>
-	<p class="sub">CubeMXなしで、基板選択・クロック・デバッグ・ミドルウェアを設定してプロジェクトを生成できます。生成後はピンGUIで詳細設定できます。</p>
+	<h1>TovaIDE-STM ボード設定スタジオ</h1>
+	<p class="sub">この画面は「プロジェクト作成専用」です。Clock Tree / Parameter Settings / NVIC / DMA / GPIO はプロジェクト生成後に .ioc 編集（ピンビジュアライザまたはCubeMX）で行います。</p>
+	<div class="notice">CubeMXと件数を合わせるには、先に <b>CubeMXカタログ同期</b> を実行してください。<br/>この画面は Board DB と MCU DB を別々に読み込みます。</div>
 
-	<div class="grid">
-		<div class="card">
-			<div class="hd">1. 基板</div>
+	<div class="mode-row" role="radiogroup" aria-label="作成モード">
+		<label class="mode-chip"><input type="radio" name="selectMode" value="board" checked /> Board から作成</label>
+		<label class="mode-chip"><input type="radio" name="selectMode" value="mcu" /> MCU/MPU Selector から作成</label>
+	</div>
+
+	<div class="card">
+		<div id="boardPanel">
 			<div class="row">
-				<label for="boardSearch">基板を文字検索</label>
-				<input id="boardSearch" type="search" placeholder="例: nucleo / f446 / discovery" aria-label="基板を文字検索" />
-				<div class="desc" id="boardSearchMeta">${profiles.length} 件の基板定義</div>
+				<label for="boardSearch">Board 検索 (Board 名 / 説明 / CPN)</label>
+				<input id="boardSearch" type="search" placeholder="例: NUCLEO / DISCOVERY / STM32F446RE" aria-label="Board 検索" />
+				<div class="desc" id="boardSearchMeta">${profiles.length} 件 (Board DB)</div>
 			</div>
 			<div class="row">
-				<label for="boardId">基板を選択</label>
-				<select id="boardId" aria-label="基板を選択">${boardOptions}</select>
-				<div class="mcu-tag" id="boardMcu">MCU: -</div>
+				<label for="boardId">Board</label>
+				<select id="boardId">${boardOptions}</select>
+				<div class="mcu-tag" id="boardMcu">CPN: -</div>
 				<div class="desc" id="boardDesc">-</div>
 			</div>
+		</div>
+
+		<div id="mcuPanel" class="hidden">
 			<div class="row">
-				<label for="projectName">プロジェクト名</label>
-				<input id="projectName" value="stm32-project" maxlength="64" />
+				<label for="mcuSearch">MCU/MPU Selector 検索 (Commercial Part Number)</label>
+				<input id="mcuSearch" type="search" placeholder="例: STM32F446RETX" aria-label="MCU 検索" />
+				<div class="desc" id="mcuSearchMeta">${mcuNames.length} 件 (MCU DB)</div>
+			</div>
+			<div class="row">
+				<label for="mcuId">MCU / MPU Selector</label>
+				<select id="mcuId">${mcuOptions}</select>
+				<div class="mcu-tag" id="mcuMetaTag">CPN: -</div>
 			</div>
 		</div>
 
-		<div class="card">
-			<div class="hd">2. システム設定</div>
-			<div class="row">
-				<label for="clockSource">クロックソース</label>
-				<select id="clockSource">
-					<option value="Internal">内部クロック (HSI)</option>
-					<option value="External">外部クロック (HSE)</option>
-				</select>
-			</div>
-			<div class="row">
-				<label for="sysclkMHz">SYSCLK [MHz]</label>
-				<input id="sysclkMHz" type="number" min="8" max="480" value="80" />
-			</div>
-			<div class="row">
-				<label for="debugPort">デバッグポート</label>
-				<select id="debugPort">
-					<option value="SWD">SWD</option>
-					<option value="JTAG">JTAG</option>
-					<option value="Disabled">無効</option>
-				</select>
-			</div>
+		<div class="row">
+			<label for="projectName">プロジェクト名</label>
+			<input id="projectName" value="stm32-project" maxlength="64" />
 		</div>
-
-		<div class="card">
-			<div class="hd">3. ミドルウェア・メモリ</div>
-			<label class="chk"><input id="enableFreeRtos" type="checkbox" /> FreeRTOS を有効化</label>
-			<label class="chk"><input id="enableUsb" type="checkbox" /> USB を有効化</label>
-			<label class="chk"><input id="enableEthernet" type="checkbox" /> Ethernet を有効化</label>
-			<div class="row">
-				<label for="stackSize">スタックサイズ [bytes]</label>
-				<input id="stackSize" type="number" min="256" step="256" value="1024" />
-			</div>
-			<div class="row">
-				<label for="heapSize">ヒープサイズ [bytes]</label>
-				<input id="heapSize" type="number" min="256" step="256" value="1536" />
-			</div>
-			<label class="chk"><input id="openPinGui" type="checkbox" checked /> 作成後にピン設定GUIを開く</label>
-		</div>
+		<label class="chk"><input id="openPinGui" type="checkbox" checked /> 作成後にピン設定GUIを開く</label>
 	</div>
 
 	<div class="btnrow">
-		<button id="createBtn" aria-label="プロジェクトを作成">この設定でプロジェクト作成</button>
+		<button id="createBtn" aria-label="プロジェクトを作成">プロジェクト作成</button>
 	</div>
 
 	<script>
@@ -2016,25 +2435,26 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 		const boardSearchMeta = document.getElementById('boardSearchMeta');
 		const boardMcu = document.getElementById('boardMcu');
 		const boardDesc = document.getElementById('boardDesc');
+		const mcuSearch = document.getElementById('mcuSearch');
+		const mcuId = document.getElementById('mcuId');
+		const mcuSearchMeta = document.getElementById('mcuSearchMeta');
+		const mcuMetaTag = document.getElementById('mcuMetaTag');
+		const boardPanel = document.getElementById('boardPanel');
+		const mcuPanel = document.getElementById('mcuPanel');
 		const projectName = document.getElementById('projectName');
+
 		const allBoards = Array.from(boardId.options).map(opt => ({
 			value: opt.value,
 			label: opt.textContent || '',
 			mcu: opt.dataset.mcu || '',
 			desc: opt.dataset.desc || ''
 		}));
+		const allMcu = Array.from(mcuId.options).map(opt => opt.value);
 
 		function renderBoardOptions(query) {
 			const q = (query || '').trim().toLowerCase();
 			const prev = boardId.value;
-			const filtered = allBoards.filter(item => {
-				if (!q) { return true; }
-				return item.value.toLowerCase().includes(q)
-					|| item.label.toLowerCase().includes(q)
-					|| item.mcu.toLowerCase().includes(q)
-					|| item.desc.toLowerCase().includes(q);
-			});
-
+			const filtered = allBoards.filter(item => !q || item.value.toLowerCase().includes(q) || item.label.toLowerCase().includes(q) || item.mcu.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q));
 			boardId.innerHTML = '';
 			for (const item of filtered) {
 				const opt = document.createElement('option');
@@ -2044,11 +2464,10 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 				opt.dataset.desc = item.desc;
 				boardId.appendChild(opt);
 			}
-
 			if (filtered.length === 0) {
 				const empty = document.createElement('option');
 				empty.value = '';
-				empty.textContent = '一致する基板がありません';
+				empty.textContent = '一致する Board がありません';
 				empty.disabled = true;
 				empty.selected = true;
 				boardId.appendChild(empty);
@@ -2059,40 +2478,65 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 					boardId.value = prev;
 				}
 			}
-
-			boardSearchMeta.textContent = filtered.length + ' / ' + allBoards.length + ' 件を表示';
+			boardSearchMeta.textContent = filtered.length + ' / ' + allBoards.length + ' 件 (Board DB)';
 			updateBoardMeta();
 		}
 
 		function updateBoardMeta() {
 			if (boardId.disabled || boardId.selectedIndex < 0) {
-				boardMcu.textContent = 'MCU: -';
-				boardDesc.textContent = '一致する基板がありません。検索キーワードを変更してください。';
+				boardMcu.textContent = 'CPN: -';
+				boardDesc.textContent = '一致する Board がありません。';
 				return;
 			}
 			const opt = boardId.options[boardId.selectedIndex];
-			boardMcu.textContent = 'MCU: ' + (opt.dataset.mcu || '-');
+			boardMcu.textContent = 'CPN: ' + (opt.dataset.mcu || '-');
 			boardDesc.textContent = opt.dataset.desc || '-';
-			if (!projectName.value || projectName.value === 'stm32-project') {
-				projectName.value = (opt.value || 'stm32-project').replace(/[^a-zA-Z0-9_-]/g, '-');
-			}
 		}
+
+		function renderMcuOptions(query) {
+			const q = (query || '').trim().toLowerCase();
+			const prev = mcuId.value;
+			const filtered = allMcu.filter(item => !q || item.toLowerCase().includes(q));
+			mcuId.innerHTML = '';
+			for (const item of filtered) {
+				const opt = document.createElement('option');
+				opt.value = item;
+				opt.textContent = item;
+				mcuId.appendChild(opt);
+			}
+			if (filtered.length > 0 && filtered.includes(prev)) {
+				mcuId.value = prev;
+			}
+			mcuSearchMeta.textContent = filtered.length + ' / ' + allMcu.length + ' 件 (MCU DB)';
+			mcuMetaTag.textContent = 'CPN: ' + (mcuId.value || '-');
+		}
+
 		boardSearch.addEventListener('input', () => renderBoardOptions(boardSearch.value));
 		boardId.addEventListener('change', updateBoardMeta);
+		mcuSearch.addEventListener('input', () => renderMcuOptions(mcuSearch.value));
+		mcuId.addEventListener('change', () => { mcuMetaTag.textContent = 'CPN: ' + (mcuId.value || '-'); });
+
+		for (const mode of document.querySelectorAll('input[name="selectMode"]')) {
+			mode.addEventListener('change', () => {
+				const useMcu = document.querySelector('input[name="selectMode"]:checked').value === 'mcu';
+				boardPanel.classList.toggle('hidden', useMcu);
+				mcuPanel.classList.toggle('hidden', !useMcu);
+				if (useMcu && (!projectName.value || projectName.value === 'stm32-project')) {
+					projectName.value = (mcuId.value || 'stm32-project').replace(/[^a-zA-Z0-9_-]/g, '-');
+				}
+			});
+		}
+
 		renderBoardOptions('');
+		renderMcuOptions('');
 
 		document.getElementById('createBtn').addEventListener('click', () => {
+			const selectionMode = document.querySelector('input[name="selectMode"]:checked').value;
 			const payload = {
+				selectionMode,
 				boardId: boardId.value,
+				mcuName: mcuId.value,
 				projectName: projectName.value,
-				clockSource: document.getElementById('clockSource').value,
-				sysclkMHz: Number(document.getElementById('sysclkMHz').value),
-				debugPort: document.getElementById('debugPort').value,
-				enableFreeRtos: document.getElementById('enableFreeRtos').checked,
-				enableUsb: document.getElementById('enableUsb').checked,
-				enableEthernet: document.getElementById('enableEthernet').checked,
-				stackSize: Number(document.getElementById('stackSize').value),
-				heapSize: Number(document.getElementById('heapSize').value),
 				openPinGui: document.getElementById('openPinGui').checked
 			};
 			vscode.postMessage({ type: 'create', payload });
@@ -2127,7 +2571,7 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 </head>
 <body>
 	<div class="hero">
-		<h1>STM32 IDE ダッシュボード</h1>
+		<h1>TovaIDE-STM ダッシュボード</h1>
 		<p>CubeIDEの実運用フローに合わせて、作成・設定・ビルド・書込み・MCP操作をここから開始します。</p>
 	</div>
 	<div class="grid">
@@ -2300,7 +2744,7 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	</style>
 </head>
 <body>
-<h1>STM32 ウェルカム</h1>
+		<h1>TovaIDE-STM ウェルカム</h1>
 <p class="sub">最初に使う操作をテキスト中心でまとめています。必要な項目を選択して開発を開始してください。</p>
 
 <h2>Quick Start</h2>
@@ -2624,7 +3068,7 @@ function comparePinNames(a: { pin: string }, b: { pin: string }): number {
 	return portCmp !== 0 ? portCmp : parseInt(ma[2], 10) - parseInt(mb[2], 10);
 }
 
-function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string; mode: string }>, iocPath: string | undefined): string {
+function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string; mode: string }>, iocPath: string | undefined, iocSettings: IocFullSettings = { pinAssignments: {}, pinGpioConfigs: {}, nvicSettings: {}, dmaLines: [], paramSettings: {}, userConstants: [], systemSettings: {} }): string {
 	const csp = webview.cspSource;
 
 	const sorted = [...pins].sort(comparePinNames);
@@ -2673,6 +3117,92 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 
 	const chipSvg = buildLqfpSvg(sorted);
 
+	// ---- Build settings tab content from parsed ioc settings ----
+
+	// GPIO Settings tab: all configured pins with sub-settings
+	const gpioSpeedOptions = ['GPIO_SPEED_FREQ_LOW', 'GPIO_SPEED_FREQ_MEDIUM', 'GPIO_SPEED_FREQ_HIGH', 'GPIO_SPEED_FREQ_VERY_HIGH'];
+	const gpioPuPdOptions = ['GPIO_NOPULL', 'GPIO_PULLUP', 'GPIO_PULLDOWN'];
+	const gpioModeOptions = ['GPIO_MODE_OUTPUT_PP', 'GPIO_MODE_OUTPUT_OD', 'GPIO_MODE_INPUT', 'GPIO_MODE_ANALOG', 'GPIO_MODE_AF_PP', 'GPIO_MODE_AF_OD', 'GPIO_MODE_IT_RISING', 'GPIO_MODE_IT_FALLING', 'GPIO_MODE_IT_RISING_FALLING', 'GPIO_MODE_EVT_RISING', 'GPIO_MODE_EVT_FALLING', 'GPIO_MODE_EVT_RISING_FALLING'];
+	const gpioRows = sorted
+		.filter(p => /^GPIO/i.test(p.mode) || Object.prototype.hasOwnProperty.call(iocSettings.pinGpioConfigs, p.pin))
+		.map(p => {
+			const cfg = iocSettings.pinGpioConfigs[p.pin] ?? {};
+			const modeKey = `${p.pin}-${p.mode}.GPIO_Mode`;
+			const speedKey = `${p.pin}-${p.mode}.GPIO_Speed`;
+			const pupKey = `${p.pin}-${p.mode}.GPIO_PuPd`;
+			const labelKey = `${p.pin}-${p.mode}.GPIO_Label`;
+			const makeSelect = (key: string, opts: string[], cur: string): string => {
+				const optsHtml = opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? ' selected' : ''}>${escapeHtml(o.replace(/GPIO_(?:MODE_|SPEED_FREQ_|)?/gi, ''))}</option>`).join('');
+				return `<select class="s-sel" data-key="${escapeHtml(key)}" title="${escapeHtml(key)}">${optsHtml}</select>`;
+			};
+			return `<tr>
+				<td class="s-td-pin">${escapeHtml(p.pin)}</td>
+				<td class="s-td-mode">${escapeHtml(p.mode)}</td>
+				<td>${makeSelect(modeKey, gpioModeOptions, cfg['GPIO_Mode'] ?? '')}</td>
+				<td>${makeSelect(speedKey, gpioSpeedOptions, cfg['GPIO_Speed'] ?? '')}</td>
+				<td>${makeSelect(pupKey, gpioPuPdOptions, cfg['GPIO_PuPd'] ?? '')}</td>
+				<td><input class="s-inp" type="text" data-key="${escapeHtml(labelKey)}" value="${escapeHtml(cfg['GPIO_Label'] ?? '')}" placeholder="ラベル" /></td>
+			</tr>`;
+		}).join('');
+
+	// NVIC Settings tab
+	const nvicRows = Object.entries(iocSettings.nvicSettings).sort((a, b) => a[0].localeCompare(b[0])).map(([irq, cfg]) => {
+		const stateKey = `NVIC.${irq}_IRQChannelState`;
+		const preKey = `NVIC.${irq}_IRQChannelPreemptionPriority`;
+		const subKey = `NVIC.${irq}_IRQChannelSubPriority`;
+		const isEnabled = (cfg['IRQChannelState'] ?? '').toUpperCase() === 'ENABLE' || cfg['IRQChannelState'] === '1' || cfg['IRQChannelState'] === 'TRUE';
+		const prePri = cfg['IRQChannelPreemptionPriority'] ?? '0';
+		const subPri = cfg['IRQChannelSubPriority'] ?? '0';
+		return `<tr>
+			<td class="s-td-pin">${escapeHtml(irq)}</td>
+			<td><input type="checkbox" class="s-chk" data-key="${escapeHtml(stateKey)}" data-on="ENABLE" data-off="DISABLE" ${isEnabled ? 'checked' : ''} /></td>
+			<td><input class="s-num" type="number" min="0" max="15" data-key="${escapeHtml(preKey)}" value="${escapeHtml(prePri)}" /></td>
+			<td><input class="s-num" type="number" min="0" max="15" data-key="${escapeHtml(subKey)}" value="${escapeHtml(subPri)}" /></td>
+		</tr>`;
+	}).join('');
+	const nvicEmpty = nvicRows ? '' : '<tr><td colspan="4" class="s-empty">.ioc に NVIC 設定がありません。CubeMX でペリフェラルを有効化してから同期してください。</td></tr>';
+
+	// DMA Settings tab
+	const dmaRows = iocSettings.dmaLines.map(({ key, value }) =>
+		`<tr>
+			<td><code class="s-code">${escapeHtml(key)}</code></td>
+			<td><input class="s-inp" type="text" data-key="${escapeHtml(key)}" value="${escapeHtml(value)}" /></td>
+			<td><button class="s-del-btn" data-removekey="${escapeHtml(key)}" title="削除">✕</button></td>
+		</tr>`
+	).join('');
+	const dmaEmpty = dmaRows ? '' : '<tr><td colspan="3" class="s-empty">DMA 設定はありません。</td></tr>';
+
+	// Parameter Settings tab
+	const skipParamGroups = new Set(['ProjectManager', 'Mcu', 'File', 'KeepUserPlacement', 'NVIC', 'DMA']);
+	const paramGroupsHtml = Object.entries(iocSettings.paramSettings)
+		.filter(([grp]) => !skipParamGroups.has(grp))
+		.sort((a, b) => a[0].localeCompare(b[0]))
+		.map(([grp, props]) => {
+			const rows = Object.entries(props).sort((a, b) => a[0].localeCompare(b[0])).map(([prop, val]) => {
+				const key = `${grp}.${prop}`;
+				return `<tr>
+					<td><code class="s-code">${escapeHtml(prop)}</code></td>
+					<td><input class="s-inp" type="text" data-key="${escapeHtml(key)}" value="${escapeHtml(val)}" /></td>
+					<td><button class="s-del-btn" data-removekey="${escapeHtml(key)}" title="削除">✕</button></td>
+				</tr>`;
+			}).join('');
+			return `<div class="s-pgrp">
+				<div class="s-pgrp-hd">${escapeHtml(grp)}</div>
+				<table class="s-table"><tbody>${rows}</tbody></table>
+			</div>`;
+		}).join('');
+	const paramEmpty = paramGroupsHtml ? '' : '<p class="s-empty-p">パラメータ設定はありません。</p>';
+
+	// User Constants tab
+	const constRows = iocSettings.userConstants.map((c, i) =>
+		`<tr>
+			<td><input class="s-inp s-const-name" type="text" data-idx="${i}" value="${escapeHtml(c.name)}" placeholder="定数名" /></td>
+			<td><input class="s-inp s-const-val" type="text" data-idx="${i}" value="${escapeHtml(c.value)}" placeholder="値" /></td>
+			<td><button class="s-del-btn s-const-del" data-idx="${i}" title="削除">✕</button></td>
+		</tr>`
+	).join('');
+
+	// Serialize iocSettings for JS usage
 	const modeOptionsHtml = Object.entries(PIN_MODE_GROUPS)
 		.map(([grp, modes]) =>
 			`<optgroup label="${escapeHtml(grp)}">` +
@@ -2689,10 +3219,45 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
 		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e}
-		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:18px 22px}
+		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:16px 20px}
+		/* ---- settings tab bar ---- */
+		.stab-bar{display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+		.stab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--mt);padding:7px 14px;font-size:12px;cursor:pointer;margin-bottom:-1px;white-space:nowrap}
+		.stab-btn:hover{color:var(--tx);background:var(--sf)}
+		.stab-btn.active{color:#e8eaed;border-bottom-color:var(--ac);font-weight:600}
+		.stab-panel{display:none}
+		.stab-panel.active{display:block}
+		/* ---- settings tables ---- */
+		.s-panel-hd{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+		.s-panel-title{font-size:13px;font-weight:700;flex:1}
+		.s-save-btn{background:var(--ac);border:none;color:#fff;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600}
+		.s-save-btn:hover{opacity:.9}
+		.s-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px}
+		.s-table th{padding:5px 8px;text-align:left;background:var(--sf);border:1px solid var(--bd);font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--mt);text-transform:uppercase}
+		.s-table td{padding:4px 8px;border:1px solid var(--bd);vertical-align:middle}
+		.s-table tr:hover td{background:rgba(255,255,255,.03)}
+		.s-td-pin{font-family:var(--vscode-editor-font-family,monospace);font-size:12px;font-weight:700;white-space:nowrap;color:#93c5fd}
+		.s-td-mode{font-size:11px;color:var(--mt)}
+		.s-sel{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:4px;padding:3px 6px;font-size:11px;outline:none;width:100%}
+		.s-sel:focus{border-color:var(--ac)}
+		.s-inp{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:4px;padding:3px 7px;font-size:11px;outline:none;width:100%}
+		.s-inp:focus{border-color:var(--ac)}
+		.s-num{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:4px;padding:3px 5px;font-size:11px;outline:none;width:64px}
+		.s-num:focus{border-color:var(--ac)}
+		.s-chk{width:16px;height:16px;accent-color:var(--ac);cursor:pointer}
+		.s-del-btn{background:none;border:1px solid var(--bd);color:#ef4444;border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer}
+		.s-del-btn:hover{background:#7c1d1d}
+		.s-empty{padding:12px 8px;color:var(--mt);font-size:12px;text-align:center}
+		.s-empty-p{padding:16px 0;color:var(--mt);font-size:12px}
+		.s-code{font-family:var(--vscode-editor-font-family,monospace);font-size:11px;color:#9ca3af}
+		.s-pgrp{margin-bottom:18px}
+		.s-pgrp-hd{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mt);margin-bottom:6px;padding:4px 8px;background:var(--sf);border-left:3px solid var(--ac);border-radius:2px}
+		.s-add-btn{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;margin-top:8px}
+		.s-add-btn:hover{border-color:var(--ac)}
+		/* ---- pin view ---- */
 		.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 		.chip-hdr{flex:1;min-width:0}
-		.chip-hdr h1{font-size:16px;font-weight:700;margin-bottom:2px}
+		.chip-hdr h1{font-size:15px;font-weight:700;margin-bottom:2px}
 		.chip-hdr .path{font-size:11px;color:var(--mt);font-family:var(--vscode-editor-font-family,monospace);word-break:break-all}
 		.search-wrap{position:relative}
 		.search-wrap input{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:5px 10px 5px 30px;font-size:12px;outline:none;width:180px}
@@ -2738,7 +3303,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		/* ---- pin edit dialog ---- */
 		#dlgBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
 		#dlgBackdrop.open{display:flex}
-		#dlgBox{background:#1a1d2e;border:1px solid #374151;border-radius:12px;padding:20px 22px;width:min(520px,94vw);max-height:82vh;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+		#dlgBox{background:#1a1d2e;border:1px solid #374151;border-radius:12px;padding:20px 22px;width:min(560px,94vw);max-height:82vh;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,.6)}
 		#dlgTitle{font-size:14px;font-weight:700;color:#e8eaed}
 		#dlgCur{font-size:11px;color:#9ca3af}
 		#dlgSearch{background:#0d0e14;border:1px solid #374151;color:#e8eaed;border-radius:6px;padding:6px 10px;font-size:12px;outline:none;width:100%}
@@ -2776,36 +3341,108 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	</style>
 </head>
 <body>
-	<div class="toolbar">
-		<div class="chip-hdr">
-			<h1>STM32 ピンビジュアライザ</h1>
-			<div class="path">${iocPath ? escapeHtml(iocPath) : '.ioc ファイルなし — MCU パッケージ JSON フォールバック'}</div>
-		</div>
-		<div class="search-wrap">
-			<span class="ic">🔍</span>
-			<input id="filterInput" type="search" placeholder="ピン名 / モードで絞込み" aria-label="ピン絞込み" />
-		</div>
-		<div class="view-toggle" role="group" aria-label="表示切替">
-			<button id="btnList" class="vtbtn" aria-pressed="false">リスト</button>
-			<button id="btnChip" class="vtbtn active" aria-pressed="true">チップ図</button>
-		</div>
-		<button id="btnAddPin" class="vtbtn" style="border-color:rgba(15,118,110,.45)" aria-label="ピンを追加">+ ピン追加</button>
-		<span class="pin-count" id="pinCount">${sorted.length} ピン</span>
+	<!-- ===== Settings tab bar ===== -->
+	<div class="stab-bar" role="tablist">
+		<button class="stab-btn active" data-show="tab-pins" role="tab" aria-selected="true">📌 ピン設定</button>
+		<button class="stab-btn" data-show="tab-gpio" role="tab" aria-selected="false">⚡ GPIO設定</button>
+		<button class="stab-btn" data-show="tab-nvic" role="tab" aria-selected="false">🔔 NVIC設定</button>
+		<button class="stab-btn" data-show="tab-dma" role="tab" aria-selected="false">↔ DMA設定</button>
+		<button class="stab-btn" data-show="tab-param" role="tab" aria-selected="false">⚙ パラメータ設定</button>
+		<button class="stab-btn" data-show="tab-const" role="tab" aria-selected="false">🔑 ユーザー定数</button>
 	</div>
-	<div class="hint">ピンをクリックするとモードを変更して .ioc に反映できます</div>
-	<div class="legend" aria-label="カラーレジェンド">${legendHtml}</div>
-	<div id="groupsView">${cardHtml || '<p class="empty-msg">.ioc ファイルが見つからないか、ピン情報を解析できませんでした。</p>'}</div>
-	<div id="chipView">
-		<div class="zoom-row">
-			<button class="zbtn" id="zoomIn" title="拡大 (+)" aria-label="拡大">+</button>
-			<span class="zoom-label" id="zoomLabel">100%</span>
-			<button class="zbtn" id="zoomOut" title="縮小 (-)" aria-label="縮小">−</button>
-			<button class="zbtn" id="zoomReset" title="リセット" aria-label="リセット" style="width:auto;padding:0 8px;font-size:11px">リセット</button>
+
+	<!-- ===== Pin Visualizer Panel ===== -->
+	<div id="tab-pins" class="stab-panel active">
+		<div class="toolbar">
+			<div class="chip-hdr">
+				<h1>STM32 ピンビジュアライザ</h1>
+				<div class="path">${iocPath ? escapeHtml(iocPath) : '.ioc ファイルなし — MCU パッケージ JSON フォールバック'}</div>
+			</div>
+			<div class="search-wrap">
+				<span class="ic">🔍</span>
+				<input id="filterInput" type="search" placeholder="ピン名 / モードで絞込み" aria-label="ピン絞込み" />
+			</div>
+			<div class="view-toggle" role="group" aria-label="表示切替">
+				<button id="btnList" class="vtbtn" aria-pressed="false">リスト</button>
+				<button id="btnChip" class="vtbtn active" aria-pressed="true">チップ図</button>
+			</div>
+			<button id="btnAddPin" class="vtbtn" style="border-color:rgba(15,118,110,.45)" aria-label="ピンを追加">+ ピン追加</button>
+			<span class="pin-count" id="pinCount">${sorted.length} ピン</span>
 		</div>
-		<div id="chipWrap"><div id="chipSvg">${chipSvg}</div></div>
+		<div class="hint">ピンをクリックするとモードを変更して .ioc に反映できます</div>
+		<div class="legend" aria-label="カラーレジェンド">${legendHtml}</div>
+		<div id="groupsView">${cardHtml || '<p class="empty-msg">.ioc ファイルが見つからないか、ピン情報を解析できませんでした。</p>'}</div>
+		<div id="chipView">
+			<div class="zoom-row">
+				<button class="zbtn" id="zoomIn" title="拡大 (+)" aria-label="拡大">+</button>
+				<span class="zoom-label" id="zoomLabel">100%</span>
+				<button class="zbtn" id="zoomOut" title="縮小 (-)" aria-label="縮小">−</button>
+				<button class="zbtn" id="zoomReset" title="リセット" aria-label="リセット" style="width:auto;padding:0 8px;font-size:11px">リセット</button>
+			</div>
+			<div id="chipWrap"><div id="chipSvg">${chipSvg}</div></div>
+		</div>
 	</div>
 	<div id="pinTooltip"><div class="tt-num"></div><div class="tt-pin"></div><div class="tt-mode"></div></div>
 
+	<!-- ===== GPIO Settings Panel ===== -->
+	<div id="tab-gpio" class="stab-panel">
+		<div class="s-panel-hd">
+			<span class="s-panel-title">GPIO 詳細設定</span>
+			<button class="s-save-btn" id="saveGpio">💾 保存</button>
+		</div>
+		<table class="s-table">
+			<thead><tr><th>ピン</th><th>割当モード</th><th>GPIO Mode</th><th>Speed</th><th>Pull</th><th>ユーザーラベル</th></tr></thead>
+			<tbody>${gpioRows || '<tr><td colspan="6" class="s-empty">GPIO 設定可能なピンがありません。まずピン設定タブでピンを割り当ててください。</td></tr>'}</tbody>
+		</table>
+	</div>
+
+	<!-- ===== NVIC Settings Panel ===== -->
+	<div id="tab-nvic" class="stab-panel">
+		<div class="s-panel-hd">
+			<span class="s-panel-title">NVIC 割込み設定</span>
+			<button class="s-save-btn" id="saveNvic">💾 保存</button>
+		</div>
+		<table class="s-table">
+			<thead><tr><th>割込み名 (IRQ)</th><th>有効</th><th>PreemptPriority</th><th>SubPriority</th></tr></thead>
+			<tbody>${nvicRows}${nvicEmpty}</tbody>
+		</table>
+	</div>
+
+	<!-- ===== DMA Settings Panel ===== -->
+	<div id="tab-dma" class="stab-panel">
+		<div class="s-panel-hd">
+			<span class="s-panel-title">DMA 設定</span>
+			<button class="s-save-btn" id="saveDma">💾 保存</button>
+		</div>
+		<table class="s-table">
+			<thead><tr><th>キー</th><th>値</th><th></th></tr></thead>
+			<tbody>${dmaRows}${dmaEmpty}</tbody>
+		</table>
+	</div>
+
+	<!-- ===== Parameter Settings Panel ===== -->
+	<div id="tab-param" class="stab-panel">
+		<div class="s-panel-hd">
+			<span class="s-panel-title">パラメータ設定</span>
+			<button class="s-save-btn" id="saveParam">💾 保存</button>
+		</div>
+		${paramGroupsHtml}${paramEmpty}
+	</div>
+
+	<!-- ===== User Constants Panel ===== -->
+	<div id="tab-const" class="stab-panel">
+		<div class="s-panel-hd">
+			<span class="s-panel-title">ユーザー定数 (ProjectManager.UserConstants)</span>
+			<button class="s-save-btn" id="saveConst">💾 保存</button>
+		</div>
+		<table class="s-table">
+			<thead><tr><th>定数名</th><th>値</th><th></th></tr></thead>
+			<tbody id="constBody">${constRows}</tbody>
+		</table>
+		<button class="s-add-btn" id="addConst">+ 定数を追加</button>
+	</div>
+
+	<!-- ===== Dialogs ===== -->
 	<div id="addDlgBackdrop" role="dialog" aria-modal="true" aria-labelledby="addDlgTitle">
 		<div id="addDlgBox">
 			<div id="addDlgTitle">ピンを追加</div>
@@ -2841,6 +3478,104 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<script>
 		const vscode = acquireVsCodeApi();
 
+		// ---- Settings tab switching ----
+		const stabBtns = document.querySelectorAll('.stab-btn');
+		const stabPanels = document.querySelectorAll('.stab-panel');
+		for (const btn of stabBtns) {
+			btn.addEventListener('click', () => {
+				const targetId = btn.dataset.show;
+				for (const b of stabBtns) { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); }
+				for (const p of stabPanels) { p.classList.remove('active'); }
+				btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
+				const panel = document.getElementById(targetId);
+				if (panel) { panel.classList.add('active'); }
+			});
+		}
+
+		// ---- Settings save helpers ----
+		function collectLines(panel) {
+			const lines = [];
+			for (const el of panel.querySelectorAll('.s-sel,.s-inp,.s-num')) {
+				if (el.dataset.key) { lines.push({ key: el.dataset.key, value: el.value.trim() }); }
+			}
+			for (const el of panel.querySelectorAll('.s-chk')) {
+				if (el.dataset.key) { lines.push({ key: el.dataset.key, value: el.checked ? (el.dataset.on || 'ENABLE') : (el.dataset.off || 'DISABLE') }); }
+			}
+			return lines;
+		}
+		function removeIocKey(key) {
+			if (confirm('キー「' + key + '」を削除しますか？')) {
+				vscode.postMessage({ type: 'removeIocKey', key });
+			}
+		}
+
+		const saveGpioEl = document.getElementById('saveGpio');
+		if (saveGpioEl) {
+			saveGpioEl.addEventListener('click', () => {
+				const lines = collectLines(document.getElementById('tab-gpio'));
+				if (lines.length) { vscode.postMessage({ type: 'applyIocLines', lines }); }
+			});
+		}
+		const saveNvicEl = document.getElementById('saveNvic');
+		if (saveNvicEl) {
+			saveNvicEl.addEventListener('click', () => {
+				const lines = collectLines(document.getElementById('tab-nvic'));
+				if (lines.length) { vscode.postMessage({ type: 'applyIocLines', lines }); }
+			});
+		}
+		const saveDmaEl = document.getElementById('saveDma');
+		if (saveDmaEl) {
+			saveDmaEl.addEventListener('click', () => {
+				const lines = collectLines(document.getElementById('tab-dma'));
+				if (lines.length) { vscode.postMessage({ type: 'applyIocLines', lines }); }
+			});
+		}
+		for (const btn of document.querySelectorAll('#tab-dma .s-del-btn')) {
+			btn.addEventListener('click', () => { if (btn.dataset.removekey) { removeIocKey(btn.dataset.removekey); } });
+		}
+		const saveParamEl = document.getElementById('saveParam');
+		if (saveParamEl) {
+			saveParamEl.addEventListener('click', () => {
+				const lines = collectLines(document.getElementById('tab-param'));
+				if (lines.length) { vscode.postMessage({ type: 'applyIocLines', lines }); }
+			});
+		}
+		for (const btn of document.querySelectorAll('#tab-param .s-del-btn')) {
+			btn.addEventListener('click', () => { if (btn.dataset.removekey) { removeIocKey(btn.dataset.removekey); } });
+		}
+
+		// User constants
+		let constRowIdx = ${iocSettings.userConstants.length};
+		function addConstRow(name, value) {
+			const tbody = document.getElementById('constBody');
+			if (!tbody) { return; }
+			const tr = document.createElement('tr');
+			const idx = constRowIdx++;
+			tr.innerHTML = '<td><input class="s-inp s-const-name" type="text" value="' + (name || '').replace(/"/g, '&quot;') + '" placeholder="定数名" /></td>' +
+				'<td><input class="s-inp s-const-val" type="text" value="' + (value || '').replace(/"/g, '&quot;') + '" placeholder="値" /></td>' +
+				'<td><button class="s-del-btn s-const-del" title="削除">✕</button></td>';
+			tr.querySelector('.s-const-del').addEventListener('click', () => tbody.removeChild(tr));
+			tbody.appendChild(tr);
+		}
+		for (const btn of document.querySelectorAll('#constBody .s-const-del')) {
+			btn.addEventListener('click', () => btn.closest('tr').remove());
+		}
+		const addConstEl = document.getElementById('addConst');
+		if (addConstEl) { addConstEl.addEventListener('click', () => addConstRow('', '')); }
+		const saveConstEl = document.getElementById('saveConst');
+		if (saveConstEl) {
+			saveConstEl.addEventListener('click', () => {
+				const parts = [];
+				for (const tr of document.querySelectorAll('#constBody tr')) {
+					const n = tr.querySelector('.s-const-name')?.value.trim();
+					const v = tr.querySelector('.s-const-val')?.value.trim();
+					if (n) { parts.push(n + ':' + (v || '')); }
+				}
+				vscode.postMessage({ type: 'applyIocLine', key: 'ProjectManager.UserConstants', value: parts.join(',') });
+			});
+		}
+
+		// ---- Pin Visualizer ----
 		for (const btn of document.querySelectorAll('.pin-card')) {
 			btn.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: btn.dataset.pin }));
 			btn.addEventListener('keydown', e => {
@@ -2848,15 +3583,10 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			});
 		}
 		for (const g of document.querySelectorAll('.lqfp-pin')) {
-			if (g.dataset.mode !== '未使用') {
-				g.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }));
-				g.addEventListener('keydown', e => {
-					if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }); }
-				});
-			} else {
-				// 未使用ピンはクリックで割り当てダイアログを開く
-				g.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }));
-			}
+			g.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }));
+			g.addEventListener('keydown', e => {
+				if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }); }
+			});
 		}
 
 		// ---- zoom ----
@@ -2880,12 +3610,13 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			applyZoom(idx >= 0 ? [...ZOOM_STEPS].reverse()[idx] : 0.25);
 		});
 		document.getElementById('zoomReset').addEventListener('click', () => applyZoom(1));
-		// スクロールホイールでズーム（修飾キー不要、chipWrap に付ける）
-		chipWrap.addEventListener('wheel', e => {
-			e.preventDefault();
-			const delta = e.deltaY < 0 ? 0.1 : -0.1;
-			applyZoom(zoom + delta);
-		}, { passive: false });
+		if (chipWrap) {
+			chipWrap.addEventListener('wheel', e => {
+				e.preventDefault();
+				applyZoom(zoom + (e.deltaY < 0 ? 0.1 : -0.1));
+			}, { passive: false });
+		}
+
 		// ---- tooltip ----
 		const tooltip = document.getElementById('pinTooltip');
 		const ttNum = tooltip.querySelector('.tt-num');
@@ -2908,7 +3639,6 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			g.addEventListener('mousemove', e => positionTip(e));
 			g.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
 		}
-		// ---- end zoom/tooltip ----
 
 		// ---- dialog ----
 		const dlgBackdrop = document.getElementById('dlgBackdrop');
@@ -2955,17 +3685,15 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		}
 
 		function closeDialog() { dlgBackdrop.classList.remove('open'); }
-
+		function closeAddDialog() { document.getElementById('addDlgBackdrop').classList.remove('open'); }
 		dlgCancel.addEventListener('click', closeDialog);
 		dlgBackdrop.addEventListener('click', e => { if (e.target === dlgBackdrop) { closeDialog(); } });
-		document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeDialog(); } });
-
+		document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeDialog(); closeAddDialog(); } });
 		dlgApply.addEventListener('click', () => {
 			if (!dlgSelected) { return; }
 			vscode.postMessage({ type: 'applyPin', pin: dlgPin, mode: dlgSelected });
 			closeDialog();
 		});
-
 		dlgSearch.addEventListener('input', () => {
 			const q = dlgSearch.value.trim().toLowerCase();
 			for (const sec of dlgGroups.querySelectorAll('.dg-section')) {
@@ -2978,14 +3706,10 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 				sec.classList.toggle('hidden', vis === 0);
 			}
 		});
-
 		window.addEventListener('message', event => {
 			const msg = event.data;
-			if (msg && msg.type === 'openDialog') {
-				openDialog(msg.pin, msg.currentMode, msg.groups);
-			}
+			if (msg && msg.type === 'openDialog') { openDialog(msg.pin, msg.currentMode, msg.groups); }
 		});
-		// ---- end dialog ----
 
 		// ---- add pin dialog ----
 		const addDlgBackdrop = document.getElementById('addDlgBackdrop');
@@ -2996,18 +3720,14 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		const addDlgCancel = document.getElementById('addDlgCancel');
 		const PIN_RE = /^P[A-Ka-k][0-9]{1,2}$/;
 		function openAddDialog() {
-			addPinInput.value = '';
-			addPinErr.textContent = '';
-			addPinInput.classList.remove('invalid');
-			addModeSelect.selectedIndex = 0;
+			addPinInput.value = ''; addPinErr.textContent = '';
+			addPinInput.classList.remove('invalid'); addModeSelect.selectedIndex = 0;
 			addDlgBackdrop.classList.add('open');
 			setTimeout(() => addPinInput.focus(), 60);
 		}
-		function closeAddDialog() { addDlgBackdrop.classList.remove('open'); }
 		document.getElementById('btnAddPin').addEventListener('click', openAddDialog);
 		addDlgCancel.addEventListener('click', closeAddDialog);
 		addDlgBackdrop.addEventListener('click', e => { if (e.target === addDlgBackdrop) { closeAddDialog(); } });
-		document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddDialog(); } });
 		addPinInput.addEventListener('input', () => {
 			const ok = PIN_RE.test(addPinInput.value.trim());
 			addPinInput.classList.toggle('invalid', addPinInput.value.length > 0 && !ok);
@@ -3016,12 +3736,11 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		addDlgApply.addEventListener('click', () => {
 			const pin = addPinInput.value.trim().toUpperCase();
 			if (!PIN_RE.test(pin)) { addPinErr.textContent = '有効なピン名を入力してください。'; addPinInput.classList.add('invalid'); return; }
-			const mode = addModeSelect.value;
-			vscode.postMessage({ type: 'addPin', pin, mode });
+			vscode.postMessage({ type: 'addPin', pin, mode: addModeSelect.value });
 			closeAddDialog();
 		});
-		// ---- end add pin dialog ----
 
+		// ---- Pin filter + list/chip view toggle ----
 		const filterInput = document.getElementById('filterInput');
 		const pinCountEl = document.getElementById('pinCount');
 		const groupsView = document.getElementById('groupsView');
@@ -3029,29 +3748,22 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		const btnList = document.getElementById('btnList');
 		const btnChip = document.getElementById('btnChip');
 		const hasChipPins = document.querySelectorAll('.lqfp-pin').length > 0;
-
 		if (!hasChipPins) {
-			groupsView.style.display = '';
-			chipView.style.display = 'none';
-			btnList.classList.add('active');
-			btnList.setAttribute('aria-pressed', 'true');
-			btnChip.classList.remove('active');
-			btnChip.setAttribute('aria-pressed', 'false');
+			groupsView.style.display = ''; chipView.style.display = 'none';
+			btnList.classList.add('active'); btnList.setAttribute('aria-pressed', 'true');
+			btnChip.classList.remove('active'); btnChip.setAttribute('aria-pressed', 'false');
 			btnChip.disabled = true;
 		}
-		filterInput.disabled = false;
-
 		btnList.addEventListener('click', () => {
 			groupsView.style.display = ''; chipView.style.display = 'none';
-			btnList.classList.add('active'); btnList.setAttribute('aria-pressed','true');
-			btnChip.classList.remove('active'); btnChip.setAttribute('aria-pressed','false');
+			btnList.classList.add('active'); btnList.setAttribute('aria-pressed', 'true');
+			btnChip.classList.remove('active'); btnChip.setAttribute('aria-pressed', 'false');
 		});
 		btnChip.addEventListener('click', () => {
 			groupsView.style.display = 'none'; chipView.style.display = '';
-			btnChip.classList.add('active'); btnChip.setAttribute('aria-pressed','true');
-			btnList.classList.remove('active'); btnList.setAttribute('aria-pressed','false');
+			btnChip.classList.add('active'); btnChip.setAttribute('aria-pressed', 'true');
+			btnList.classList.remove('active'); btnList.setAttribute('aria-pressed', 'false');
 		});
-
 		function applyFilter(q) {
 			let visible = 0;
 			for (const group of document.querySelectorAll('.port-group')) {

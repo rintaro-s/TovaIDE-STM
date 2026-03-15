@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CubeForge IDE — Standalone MCP Server
+ * TovaIDE-STM — Standalone MCP Server
  * JSON-RPC 2.0 over HTTP, port 3737 (configurable)
  * Compatible with GitHub Copilot MCP and external AI clients.
  *
@@ -43,7 +43,7 @@ function initToken() {
       SERVER_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf8').trim();
       if (SERVER_TOKEN.length > 0) return;
     }
-  } catch (_) {}
+  } catch (_) { }
   SERVER_TOKEN = crypto.randomBytes(24).toString('hex');
   fs.writeFileSync(TOKEN_FILE, SERVER_TOKEN, { mode: 0o600 });
   log(`Token written to ${TOKEN_FILE}`);
@@ -110,10 +110,10 @@ const TOOLS = [
       type: 'object',
       required: ['cfsr'],
       properties: {
-        cfsr:  { type: 'string', description: 'ConfigurableFaultStatus Register value (e.g. 0x00008200)' },
-        hfsr:  { type: 'string', description: 'HardFault Status Register (optional)' },
+        cfsr: { type: 'string', description: 'ConfigurableFaultStatus Register value (e.g. 0x00008200)' },
+        hfsr: { type: 'string', description: 'HardFault Status Register (optional)' },
         mmfar: { type: 'string', description: 'MemManage Fault Address Register (optional)' },
-        bfar:  { type: 'string', description: 'BusFault Address Register (optional)' }
+        bfar: { type: 'string', description: 'BusFault Address Register (optional)' }
       }
     }
   },
@@ -404,7 +404,7 @@ async function toolRegenerateCode(params) {
   } catch (err) {
     return { success: false, iocPath, exitCode: err.code ?? 1, stdout: err.stdout ?? '', stderr: err.stderr ?? err.message };
   } finally {
-    fs.unlink(scriptPath, () => {});
+    fs.unlink(scriptPath, () => { });
   }
 }
 
@@ -417,27 +417,27 @@ function toolAnalyzeHardFault(params) {
 
   // UFSR (Usage Fault) bits 15:0 of CFSR
   if (cfsr & 0x0001) issues.push({ type: 'UsageFault', bit: 'UNDEFINSTR', desc: '未定義命令を実行しました。不正なメモリ番地へのジャンプの可能性があります。' });
-  if (cfsr & 0x0002) issues.push({ type: 'UsageFault', bit: 'INVSTATE',   desc: '不正なEPSR状態。Thumbビット未設定でジャンプした可能性があります。' });
-  if (cfsr & 0x0004) issues.push({ type: 'UsageFault', bit: 'INVPC',      desc: '不正なPC値によるEXC_RETURNエラーです。' });
-  if (cfsr & 0x0008) issues.push({ type: 'UsageFault', bit: 'NOCP',       desc: 'コプロセッサ(FPU等)が無効なのに使用されました。' });
-  if (cfsr & 0x0100) issues.push({ type: 'UsageFault', bit: 'UNALIGNED',  desc: '非アラインアクセス。SCB->CCR の UNALIGN_TRP が設定されています。' });
-  if (cfsr & 0x0200) issues.push({ type: 'UsageFault', bit: 'DIVBYZERO',  desc: 'ゼロ除算が発生しました。SCB->CCR の DIV_0_TRP が設定されています。' });
+  if (cfsr & 0x0002) issues.push({ type: 'UsageFault', bit: 'INVSTATE', desc: '不正なEPSR状態。Thumbビット未設定でジャンプした可能性があります。' });
+  if (cfsr & 0x0004) issues.push({ type: 'UsageFault', bit: 'INVPC', desc: '不正なPC値によるEXC_RETURNエラーです。' });
+  if (cfsr & 0x0008) issues.push({ type: 'UsageFault', bit: 'NOCP', desc: 'コプロセッサ(FPU等)が無効なのに使用されました。' });
+  if (cfsr & 0x0100) issues.push({ type: 'UsageFault', bit: 'UNALIGNED', desc: '非アラインアクセス。SCB->CCR の UNALIGN_TRP が設定されています。' });
+  if (cfsr & 0x0200) issues.push({ type: 'UsageFault', bit: 'DIVBYZERO', desc: 'ゼロ除算が発生しました。SCB->CCR の DIV_0_TRP が設定されています。' });
 
   // BFSR bits 15:8 of CFSR
-  if (cfsr & 0x0100_0000 >> 16) {}  // alias correction — use direct bit test
+  if (cfsr & 0x0100_0000 >> 16) { }  // alias correction — use direct bit test
   const bfsr = (cfsr >> 8) & 0xFF;
-  if (bfsr & 0x01) issues.push({ type: 'BusFault', bit: 'IBUSERR',    desc: '命令フェッチBusエラー。PCが不正なFlash/RAM番地を指しています。' });
-  if (bfsr & 0x02) issues.push({ type: 'BusFault', bit: 'PRECISERR',  desc: `正確なデータBusエラー。アドレス: ${bfar ?? '不明'}`, address: bfar });
+  if (bfsr & 0x01) issues.push({ type: 'BusFault', bit: 'IBUSERR', desc: '命令フェッチBusエラー。PCが不正なFlash/RAM番地を指しています。' });
+  if (bfsr & 0x02) issues.push({ type: 'BusFault', bit: 'PRECISERR', desc: `正確なデータBusエラー。アドレス: ${bfar ?? '不明'}`, address: bfar });
   if (bfsr & 0x04) issues.push({ type: 'BusFault', bit: 'IMPRECISERR', desc: 'バッファリングによる不正確なBusエラー。DMAや非同期アクセスを確認してください。' });
-  if (bfsr & 0x08) issues.push({ type: 'BusFault', bit: 'UNSTKERR',   desc: 'スタック復元中にBusエラー。スタックオーバーフローの可能性があります。' });
-  if (bfsr & 0x10) issues.push({ type: 'BusFault', bit: 'STKERR',     desc: 'スタック保存中にBusエラー。スタックポインタが不正です。' });
+  if (bfsr & 0x08) issues.push({ type: 'BusFault', bit: 'UNSTKERR', desc: 'スタック復元中にBusエラー。スタックオーバーフローの可能性があります。' });
+  if (bfsr & 0x10) issues.push({ type: 'BusFault', bit: 'STKERR', desc: 'スタック保存中にBusエラー。スタックポインタが不正です。' });
 
   // MMFSR bits 7:0 of CFSR
   const mmfsr = cfsr & 0xFF;
-  if (mmfsr & 0x01) issues.push({ type: 'MemManage', bit: 'IACCVIOL',  desc: '命令フェッチでMPU違反。MPUの設定を確認してください。' });
-  if (mmfsr & 0x02) issues.push({ type: 'MemManage', bit: 'DACCVIOL',  desc: `データアクセスでMPU違反。アドレス: ${mmfar ?? '不明'}`, address: mmfar });
+  if (mmfsr & 0x01) issues.push({ type: 'MemManage', bit: 'IACCVIOL', desc: '命令フェッチでMPU違反。MPUの設定を確認してください。' });
+  if (mmfsr & 0x02) issues.push({ type: 'MemManage', bit: 'DACCVIOL', desc: `データアクセスでMPU違反。アドレス: ${mmfar ?? '不明'}`, address: mmfar });
   if (mmfsr & 0x08) issues.push({ type: 'MemManage', bit: 'MUNSTKERR', desc: 'スタック復元中にMPU違反。' });
-  if (mmfsr & 0x10) issues.push({ type: 'MemManage', bit: 'MSTKERR',   desc: 'スタック保存中にMPU違反。' });
+  if (mmfsr & 0x10) issues.push({ type: 'MemManage', bit: 'MSTKERR', desc: 'スタック保存中にMPU違反。' });
 
   // HFSR
   const hfsrIssues = [];
@@ -468,7 +468,7 @@ function buildRecommendations(issues) {
     recs.push('スタックオーバーフローでPCが破損している可能性があります。スタックサイズを確認してください。');
   }
   if (issues.some(i => i.type === 'BusFault' && i.bit === 'PRECISERR')) {
-    recs.push(`BFARアドレス(${issues.find(i=>i.bit==='PRECISERR')?.address ?? '不明'})を確認してください。NULLポインタや範囲外アクセスの可能性があります。`);
+    recs.push(`BFARアドレス(${issues.find(i => i.bit === 'PRECISERR')?.address ?? '不明'})を確認してください。NULLポインタや範囲外アクセスの可能性があります。`);
   }
   if (issues.some(i => i.bit === 'STKERR' || i.bit === 'UNSTKERR')) {
     recs.push('FreeRTOSタスクのスタックサイズを増やし、uxTaskGetStackHighWaterMark()で残量を確認してください。');
@@ -542,7 +542,7 @@ function findElfFile(wsRoot) {
       const files = fs.readdirSync(dir);
       const elf = files.find(f => f.toLowerCase().endsWith('.elf'));
       if (elf) return path.join(dir, elf);
-    } catch (_) {}
+    } catch (_) { }
   }
   return null;
 }
@@ -623,7 +623,7 @@ function toolPatchUserCode(params) {
     const { sectionName, content: newCode } = patch;
     if (!sectionName) { results.push({ sectionName: '?', success: false, error: 'sectionName missing' }); continue; }
     const begin = `/* USER CODE BEGIN ${sectionName} */`;
-    const end   = `/* USER CODE END ${sectionName} */`;
+    const end = `/* USER CODE END ${sectionName} */`;
     const idx1 = content.indexOf(begin);
     const idx2 = content.indexOf(end, idx1 + begin.length);
     if (idx1 === -1 || idx2 === -1) {
@@ -705,7 +705,7 @@ function toolParseBuildErrors(params) {
   while ((m = linkerRe.exec(params.buildOutput)) !== null && diagnostics.length < topN) {
     diagnostics.push({ file: m[1].trim(), line: 0, column: 0, severity: 'error', message: `Undefined reference to: ${m[2]}` });
   }
-  const errors   = diagnostics.filter(d => d.severity === 'error').length;
+  const errors = diagnostics.filter(d => d.severity === 'error').length;
   const warnings = diagnostics.filter(d => d.severity === 'warning').length;
   return { errors, warnings, total: diagnostics.length, diagnostics };
 }
