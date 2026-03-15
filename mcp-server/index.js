@@ -149,6 +149,142 @@ const TOOLS = [
         programmerPath: { type: 'string', description: 'Path to STM32_Programmer_CLI (optional)' }
       }
     }
+  },
+  {
+    name: 'stm32.listWorkspaceFiles',
+    description: 'List all relevant source files (.c, .h, .ioc, .s, CMakeLists.txt, Makefile) in the workspace. Use this to understand project structure before reading or editing files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workspacePath: { type: 'string', description: 'Workspace root path (optional)' },
+        extensions: { type: 'array', items: { type: 'string' }, description: 'File extensions to include (default: [".c",".h",".ioc",".s",".cmake","Makefile"])' }
+      }
+    }
+  },
+  {
+    name: 'stm32.readFile',
+    description: 'Read the contents of a file in the workspace. Use this to inspect main.c user code sections, .ioc configuration, or build scripts before making changes.',
+    inputSchema: {
+      type: 'object',
+      required: ['filePath'],
+      properties: {
+        filePath: { type: 'string', description: 'Relative path from workspace root (e.g. Core/Src/main.c)' },
+        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+      }
+    }
+  },
+  {
+    name: 'stm32.writeFile',
+    description: 'Write or overwrite a file in the workspace. Only writes files inside the workspace root for safety. Use stm32.patchUserCode for generated files to preserve CubeMX sections.',
+    inputSchema: {
+      type: 'object',
+      required: ['filePath', 'content'],
+      properties: {
+        filePath: { type: 'string', description: 'Relative path from workspace root (e.g. Core/Src/app.c)' },
+        content: { type: 'string', description: 'Full file content to write' },
+        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+      }
+    }
+  },
+  {
+    name: 'stm32.patchUserCode',
+    description: 'Patch only the /* USER CODE BEGIN xxx */ ... /* USER CODE END xxx */ sections in a CubeMX-generated file (e.g. main.c). Preserves all generated code outside user sections. Ideal for writing application logic without breaking CubeMX regeneration.',
+    inputSchema: {
+      type: 'object',
+      required: ['filePath', 'patches'],
+      properties: {
+        filePath: { type: 'string', description: 'Relative path from workspace root (e.g. Core/Src/main.c)' },
+        patches: {
+          type: 'array',
+          description: 'List of sections to patch',
+          items: {
+            type: 'object',
+            required: ['sectionName', 'content'],
+            properties: {
+              sectionName: { type: 'string', description: 'USER CODE section name (e.g. "Includes", "PV", "0", "2", "BEGIN 3")' },
+              content: { type: 'string', description: 'Code to insert between BEGIN and END markers (replaces existing content)' }
+            }
+          }
+        },
+        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+      }
+    }
+  },
+  {
+    name: 'stm32.createIocFromPins',
+    description: 'Create a minimal .ioc file from scratch given MCU name and pin assignments. Use this to bootstrap a project before running stm32.regenerateCode. The .ioc will be placed at the workspace root.',
+    inputSchema: {
+      type: 'object',
+      required: ['mcuName'],
+      properties: {
+        mcuName: { type: 'string', description: 'MCU name (e.g. STM32F446RETx, STM32H743ZITx)' },
+        projectName: { type: 'string', description: 'CubeMX project name (default: project)' },
+        pins: {
+          type: 'array',
+          description: 'Pin assignments to write into the .ioc',
+          items: {
+            type: 'object',
+            required: ['pin', 'mode'],
+            properties: {
+              pin: { type: 'string', description: 'Pin name (e.g. PA5, PB10)' },
+              mode: { type: 'string', description: 'Mode string (e.g. GPIO_Output, USART2_TX, TIM2_CH1)' }
+            }
+          }
+        },
+        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+      }
+    }
+  },
+  {
+    name: 'stm32.parseBuildErrors',
+    description: 'Parse raw make/gcc build output (stdout+stderr) into structured error and warning objects with file, line, column, severity, and message. Use this after stm32.build fails to understand what to fix.',
+    inputSchema: {
+      type: 'object',
+      required: ['buildOutput'],
+      properties: {
+        buildOutput: { type: 'string', description: 'Raw stdout+stderr from make / arm-none-eabi-gcc build' },
+        topN: { type: 'number', description: 'Maximum number of diagnostics to return (default: 30)' }
+      }
+    }
+  },
+  {
+    name: 'stm32.autoWorkflow',
+    description: 'End-to-end automation: given a board/MCU, pin assignments, and a natural-language goal, this tool orchestrates createIocFromPins → regenerateCode → patchUserCode (LLM writes code) → build → parseBuildErrors in sequence. Returns each step result so the LLM can iterate on errors. Call this as the entry point for new project generation.',
+    inputSchema: {
+      type: 'object',
+      required: ['mcuName', 'goal'],
+      properties: {
+        mcuName: { type: 'string', description: 'MCU name (e.g. STM32F446RETx)' },
+        projectName: { type: 'string', description: 'Project name (default: project)' },
+        pins: {
+          type: 'array',
+          description: 'Pin assignments',
+          items: {
+            type: 'object',
+            required: ['pin', 'mode'],
+            properties: {
+              pin: { type: 'string' },
+              mode: { type: 'string' }
+            }
+          }
+        },
+        userCodePatches: {
+          type: 'array',
+          description: 'USER CODE section patches to apply to main.c after code generation (LLM-generated application logic)',
+          items: {
+            type: 'object',
+            required: ['sectionName', 'content'],
+            properties: {
+              sectionName: { type: 'string' },
+              content: { type: 'string' }
+            }
+          }
+        },
+        goal: { type: 'string', description: 'Natural language description of what the firmware should do (for reference in the response)' },
+        workspacePath: { type: 'string', description: 'Workspace root path (optional)' },
+        skipRegenerate: { type: 'boolean', description: 'Skip CubeMX code generation step (use if CubeMX is not installed)' }
+      }
+    }
   }
 ];
 
@@ -417,6 +553,224 @@ function findExecutable(name) {
   return name + ext;
 }
 
+// ─── New Tool Implementations ─────────────────────────────────────────────────
+
+function resolveWorkspacePath(params) {
+  return params.workspacePath
+    ? path.resolve(params.workspacePath)
+    : wsRoot;
+}
+
+function safeResolvePath(wsBase, relPath) {
+  const resolved = path.resolve(wsBase, relPath);
+  if (!resolved.startsWith(wsBase + path.sep) && resolved !== wsBase) {
+    throw Object.assign(new Error(`Access denied: path escapes workspace root`), { code: -32600 });
+  }
+  return resolved;
+}
+
+function collectFilesSync(dir, extensions, found = []) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return found; }
+  for (const e of entries) {
+    if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'Middlewares' || e.name === 'Drivers') continue;
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      collectFilesSync(full, extensions, found);
+    } else if (extensions.some(ext => ext === 'Makefile' ? e.name === 'Makefile' : e.name.endsWith(ext))) {
+      found.push(full);
+    }
+  }
+  return found;
+}
+
+function toolListWorkspaceFiles(params) {
+  const base = resolveWorkspacePath(params);
+  const exts = params.extensions ?? ['.c', '.h', '.ioc', '.s', 'Makefile'];
+  const files = collectFilesSync(base, exts);
+  const relative = files.map(f => path.relative(base, f).replace(/\\/g, '/'));
+  return { workspacePath: base, count: relative.length, files: relative };
+}
+
+function toolReadFile(params) {
+  if (!params.filePath) throw Object.assign(new Error('filePath required'), { code: -32602 });
+  const base = resolveWorkspacePath(params);
+  const full = safeResolvePath(base, params.filePath);
+  if (!fs.existsSync(full)) throw Object.assign(new Error(`File not found: ${params.filePath}`), { code: -32602 });
+  const content = fs.readFileSync(full, 'utf8');
+  return { filePath: params.filePath, size: content.length, content };
+}
+
+function toolWriteFile(params) {
+  if (!params.filePath) throw Object.assign(new Error('filePath required'), { code: -32602 });
+  if (params.content === undefined) throw Object.assign(new Error('content required'), { code: -32602 });
+  const base = resolveWorkspacePath(params);
+  const full = safeResolvePath(base, params.filePath);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, params.content, 'utf8');
+  return { filePath: params.filePath, bytesWritten: Buffer.byteLength(params.content, 'utf8'), success: true };
+}
+
+function toolPatchUserCode(params) {
+  if (!params.filePath) throw Object.assign(new Error('filePath required'), { code: -32602 });
+  if (!Array.isArray(params.patches) || params.patches.length === 0) throw Object.assign(new Error('patches array required'), { code: -32602 });
+  const base = resolveWorkspacePath(params);
+  const full = safeResolvePath(base, params.filePath);
+  if (!fs.existsSync(full)) throw Object.assign(new Error(`File not found: ${params.filePath}`), { code: -32602 });
+  let content = fs.readFileSync(full, 'utf8');
+  const results = [];
+  for (const patch of params.patches) {
+    const { sectionName, content: newCode } = patch;
+    if (!sectionName) { results.push({ sectionName: '?', success: false, error: 'sectionName missing' }); continue; }
+    const begin = `/* USER CODE BEGIN ${sectionName} */`;
+    const end   = `/* USER CODE END ${sectionName} */`;
+    const idx1 = content.indexOf(begin);
+    const idx2 = content.indexOf(end, idx1 + begin.length);
+    if (idx1 === -1 || idx2 === -1) {
+      results.push({ sectionName, success: false, error: `Section markers not found in file` });
+      continue;
+    }
+    const prefix = content.slice(0, idx1 + begin.length);
+    const suffix = content.slice(idx2);
+    const nl = newCode.startsWith('\n') ? '' : '\n';
+    const nl2 = newCode.endsWith('\n') ? '' : '\n';
+    content = prefix + nl + newCode + nl2 + suffix;
+    results.push({ sectionName, success: true });
+  }
+  fs.writeFileSync(full, content, 'utf8');
+  return { filePath: params.filePath, patches: results };
+}
+
+function toolCreateIocFromPins(params) {
+  if (!params.mcuName) throw Object.assign(new Error('mcuName required'), { code: -32602 });
+  const base = resolveWorkspacePath(params);
+  const mcuName = params.mcuName;
+  const projectName = params.projectName ?? 'project';
+  const pins = params.pins ?? [];
+
+  const pinLines = pins.map(p => `${p.pin}.Signal=${p.mode}`).join('\n');
+  const pinGpioLines = pins
+    .filter(p => p.mode === 'GPIO_Output' || p.mode === 'GPIO_Input')
+    .map(p => `${p.pin}.GPIO_Label=`)
+    .join('\n');
+
+  const iocContent = [
+    `#MicroXplorer Configuration settings - do not modify`,
+    `File.Version=6`,
+    `LibraryCopySrc=1`,
+    `Mcu.CPN=${mcuName}`,
+    `Mcu.Family=${mcuName.slice(0, 7)}`,
+    `Mcu.Name=${mcuName}`,
+    `Mcu.Package=LQFP64`,
+    `Mcu.Pin0=OSC_IN`,
+    `Mcu.Pin1=OSC_OUT`,
+    ...pins.map((p, i) => `Mcu.Pin${i + 2}=${p.pin}`),
+    `Mcu.PinsNb=${pins.length + 2}`,
+    `Mcu.UserName=${mcuName}`,
+    `MxCube.Version=6.10.0`,
+    `MxDb.Version=DB.6.0.110`,
+    pinLines,
+    pinGpioLines,
+    `ProjectManager.ProjectBaudRate=115200`,
+    `ProjectManager.ProjectFileName=${projectName}.ioc`,
+    `ProjectManager.ProjectName=${projectName}`,
+    `ProjectManager.ToolChain=Makefile`,
+    `ProjectManager.LibraryCopySrc=1`,
+    ``
+  ].filter(l => l !== undefined).join('\n');
+
+  const iocPath = path.join(base, `${projectName}.ioc`);
+  fs.writeFileSync(iocPath, iocContent, 'utf8');
+  return { iocPath: path.relative(base, iocPath).replace(/\\/g, '/'), mcuName, projectName, pinCount: pins.length, success: true };
+}
+
+function toolParseBuildErrors(params) {
+  if (!params.buildOutput) throw Object.assign(new Error('buildOutput required'), { code: -32602 });
+  const topN = params.topN ?? 30;
+  const diagnostics = [];
+  // GCC error/warning format: file:line:col: severity: message
+  const re = /^([^:\n]+):(\d+):(\d+):\s*(error|warning|note):\s*(.+)$/gm;
+  let m;
+  while ((m = re.exec(params.buildOutput)) !== null && diagnostics.length < topN) {
+    diagnostics.push({
+      file: m[1].trim(),
+      line: parseInt(m[2], 10),
+      column: parseInt(m[3], 10),
+      severity: m[4],
+      message: m[5].trim()
+    });
+  }
+  // Also catch linker errors: e.g. undefined reference
+  const linkerRe = /^(.*): undefined reference to `(.+)'$/gm;
+  while ((m = linkerRe.exec(params.buildOutput)) !== null && diagnostics.length < topN) {
+    diagnostics.push({ file: m[1].trim(), line: 0, column: 0, severity: 'error', message: `Undefined reference to: ${m[2]}` });
+  }
+  const errors   = diagnostics.filter(d => d.severity === 'error').length;
+  const warnings = diagnostics.filter(d => d.severity === 'warning').length;
+  return { errors, warnings, total: diagnostics.length, diagnostics };
+}
+
+async function toolAutoWorkflow(params) {
+  const base = resolveWorkspacePath(params);
+  const steps = [];
+
+  // 1. createIocFromPins
+  let iocResult;
+  try {
+    iocResult = toolCreateIocFromPins({ ...params, workspacePath: base });
+    steps.push({ step: 'createIoc', success: true, result: iocResult });
+  } catch (e) {
+    steps.push({ step: 'createIoc', success: false, error: e.message });
+    return { success: false, goal: params.goal, steps };
+  }
+
+  // 2. regenerateCode (optional, skip if skipRegenerate)
+  if (!params.skipRegenerate) {
+    let regenResult;
+    try {
+      regenResult = await toolRegenerateCode({ workspacePath: base });
+      steps.push({ step: 'regenerateCode', success: true, result: regenResult });
+    } catch (e) {
+      steps.push({ step: 'regenerateCode', success: false, error: e.message, note: 'Continue with patchUserCode anyway' });
+    }
+  } else {
+    steps.push({ step: 'regenerateCode', success: true, skipped: true });
+  }
+
+  // 3. patchUserCode
+  if (Array.isArray(params.userCodePatches) && params.userCodePatches.length > 0) {
+    const projectName = params.projectName ?? 'project';
+    const mainC = `Core/Src/main.c`;
+    try {
+      const patchResult = toolPatchUserCode({ filePath: mainC, patches: params.userCodePatches, workspacePath: base });
+      steps.push({ step: 'patchUserCode', success: true, result: patchResult });
+    } catch (e) {
+      steps.push({ step: 'patchUserCode', success: false, error: e.message });
+    }
+  } else {
+    steps.push({ step: 'patchUserCode', success: true, skipped: true, note: 'No userCodePatches provided' });
+  }
+
+  // 4. build
+  let buildResult;
+  try {
+    buildResult = await toolBuild({ workspacePath: base });
+    steps.push({ step: 'build', success: true, result: { exitCode: buildResult.exitCode, stdout: buildResult.stdout?.slice(-2000) } });
+  } catch (e) {
+    steps.push({ step: 'build', success: false, error: e.message });
+    return { success: false, goal: params.goal, steps };
+  }
+
+  // 5. parseBuildErrors if build failed
+  if (buildResult.exitCode !== 0) {
+    const errResult = toolParseBuildErrors({ buildOutput: (buildResult.stdout ?? '') + (buildResult.stderr ?? '') });
+    steps.push({ step: 'parseBuildErrors', success: true, result: errResult });
+    return { success: false, goal: params.goal, steps, buildFailed: true, buildErrors: errResult };
+  }
+
+  return { success: true, goal: params.goal, steps, message: 'Build succeeded! Firmware ready in Debug/' };
+}
+
 // ─── JSON-RPC Dispatch ────────────────────────────────────────────────────────
 
 async function dispatch(method, params) {
@@ -440,6 +794,20 @@ async function dispatch(method, params) {
       return await toolCheckStLink(params);
     case 'stm32.readRegister':
       return await toolReadRegister(params);
+    case 'stm32.listWorkspaceFiles':
+      return toolListWorkspaceFiles(params);
+    case 'stm32.readFile':
+      return toolReadFile(params);
+    case 'stm32.writeFile':
+      return toolWriteFile(params);
+    case 'stm32.patchUserCode':
+      return toolPatchUserCode(params);
+    case 'stm32.createIocFromPins':
+      return toolCreateIocFromPins(params);
+    case 'stm32.parseBuildErrors':
+      return toolParseBuildErrors(params);
+    case 'stm32.autoWorkflow':
+      return await toolAutoWorkflow(params);
     default:
       throw Object.assign(new Error(`Unknown method: ${method}`), { code: -32601 });
   }

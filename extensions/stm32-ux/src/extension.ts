@@ -136,10 +136,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPinVisualizer', () => openPinVisualizer()));
 
 	const shouldOpenWelcome = vscode.workspace.getConfiguration('stm32ux').get<boolean>('autoOpenWelcome', true);
-	const hasShown = context.workspaceState.get<boolean>('stm32ux.welcomeShown', false);
-	if (shouldOpenWelcome && !hasShown) {
-		void revealStm32StartView();
-		void context.workspaceState.update('stm32ux.welcomeShown', true);
+	if (shouldOpenWelcome) {
+		void openWelcomeWizard();
 	}
 }
 
@@ -251,7 +249,7 @@ async function openMcpOperationDesk(): Promise<void> {
 				? JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
 				: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method });
 			const result = await vscode.window.showInputBox({
-				title: vscode.l10n.t('MCP 呼び出し JSON (実行済み)') ,
+				title: vscode.l10n.t('MCP 呼び出し JSON (実行済み)'),
 				value: payload,
 				prompt: vscode.l10n.t('下記 JSON は MCP クライアントから同等に実行できます。')
 			});
@@ -293,10 +291,6 @@ async function openMcpOperationDesk(): Promise<void> {
 				break;
 		}
 	});
-}
-
-async function revealStm32StartView(): Promise<void> {
-	await vscode.commands.executeCommand('workbench.view.extension.stm32-ux');
 }
 
 async function openWelcomeWizard(): Promise<void> {
@@ -613,7 +607,7 @@ async function loadMcuPackagePins(mcuName?: string): Promise<Array<{ pin: string
 		let text = '';
 		for (const value of bytes) { text += String.fromCharCode(value); }
 		const data = JSON.parse(text) as { pins?: Array<{ pin: string; mode: string }> };
-		return (data.pins ?? []).slice(0, 64);
+		return data.pins ?? [];
 	} catch {
 		return [];
 	}
@@ -796,14 +790,14 @@ async function openPinVisualizer(): Promise<void> {
 			for (const value of bytes) {
 				text += String.fromCharCode(value);
 			}
-			pins = parsePinLines(text);
+			const configuredPins = parsePinLines(text);
 			detectedMcu = detectMcuFromIocText(text);
-			if (pins.length === 0) {
-				pins = await loadMcuPackagePins(detectedMcu);
-			}
-			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu}`;
+			const totalPins = getPackagePinCount(text, detectedMcu);
+			pins = buildFullPackagePins(configuredPins, totalPins);
+			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu} (${totalPins} pin)`;
 		} else {
-			pins = await loadMcuPackagePins();
+			const fallback = await loadMcuPackagePins();
+			pins = fallback.length > 0 ? fallback : buildFullPackagePins([], 64);
 			panel.title = 'STM32 ピンビジュアライザ — STM32F446RE (デフォルト)';
 		}
 		panel.webview.html = getPinVisualizerHtml(panel.webview, pins, iocUri?.fsPath);
@@ -1774,7 +1768,47 @@ function parsePinLines(text: string): Array<{ pin: string; mode: string }> {
 		}
 	}
 
-	return Array.from(byPin.entries()).map(([pin, mode]) => ({ pin, mode })).slice(0, 128);
+	return Array.from(byPin.entries()).map(([pin, mode]) => ({ pin, mode }));
+}
+
+/** パッケージのピン総数を .ioc テキストまたは MCU 名から推定する */
+function getPackagePinCount(iocText: string, mcuName: string): number {
+	const pkgMatch = iocText.match(/Mcu\.Package\s*=\s*(\w+)/);
+	const pkg = (pkgMatch?.[1] ?? '').toUpperCase();
+	const pkgNum = pkg.match(/(\d{2,3})/);
+	if (pkgNum) { return parseInt(pkgNum[1], 10); }
+	// MCU 名末尾のパッケージサフィックスで推定
+	const upper = (mcuName ?? '').toUpperCase();
+	if (/ZI|ZG|ZE/.test(upper.slice(-4))) { return 144; }
+	if (/VI|VG|VE/.test(upper.slice(-4))) { return 100; }
+	if (/RE|RG|RB/.test(upper.slice(-4))) { return 64; }
+	if (/CB|CC|CE/.test(upper.slice(-4))) { return 48; }
+	if (/KB|KC/.test(upper.slice(-4))) { return 32; }
+	return 64;
+}
+
+/** パッケージ全ピンリストを生成し .ioc 設定済みピンをマージする */
+function buildFullPackagePins(
+	configured: Array<{ pin: string; mode: string }>,
+	totalPins: number,
+): Array<{ pin: string; mode: string }> {
+	const configMap = new Map(configured.map(p => [p.pin.toUpperCase(), p.mode]));
+
+	const bankSizes: Array<[string, number, number]> =
+		totalPins >= 144 ? [['A',16,0],['B',16,0],['C',16,0],['D',16,0],['E',16,0],['F',16,0],['G',16,0],['H',2,0]]
+		: totalPins >= 100 ? [['A',16,0],['B',16,0],['C',16,0],['D',16,0],['E',16,0]]
+		: totalPins >= 64  ? [['A',16,0],['B',16,0],['C',16,0],['D',3,0],['H',2,0]]
+		: totalPins >= 48  ? [['A',16,0],['B',16,0],['C',4,13]] // PC13-16
+		:                    [['A',10,0],['B',16,0],['C',3,13]];
+
+	const all: Array<{ pin: string; mode: string }> = [];
+	for (const [bank, count, start] of bankSizes) {
+		for (let i = 0; i < count; i++) {
+			const pinName = `P${bank}${start + i}`;
+			all.push({ pin: pinName, mode: configMap.get(pinName.toUpperCase()) ?? '未使用' });
+		}
+	}
+	return all;
 }
 
 function getErrorHint(message: string): string {
@@ -1915,6 +1949,11 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 		<div class="card">
 			<div class="hd">1. 基板</div>
 			<div class="row">
+				<label for="boardSearch">基板を文字検索</label>
+				<input id="boardSearch" type="search" placeholder="例: nucleo / f446 / discovery" aria-label="基板を文字検索" />
+				<div class="desc" id="boardSearchMeta">${profiles.length} 件の基板定義</div>
+			</div>
+			<div class="row">
 				<label for="boardId">基板を選択</label>
 				<select id="boardId" aria-label="基板を選択">${boardOptions}</select>
 				<div class="mcu-tag" id="boardMcu">MCU: -</div>
@@ -1972,11 +2011,65 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 
 	<script>
 		const vscode = acquireVsCodeApi();
+		const boardSearch = document.getElementById('boardSearch');
 		const boardId = document.getElementById('boardId');
+		const boardSearchMeta = document.getElementById('boardSearchMeta');
 		const boardMcu = document.getElementById('boardMcu');
 		const boardDesc = document.getElementById('boardDesc');
 		const projectName = document.getElementById('projectName');
+		const allBoards = Array.from(boardId.options).map(opt => ({
+			value: opt.value,
+			label: opt.textContent || '',
+			mcu: opt.dataset.mcu || '',
+			desc: opt.dataset.desc || ''
+		}));
+
+		function renderBoardOptions(query) {
+			const q = (query || '').trim().toLowerCase();
+			const prev = boardId.value;
+			const filtered = allBoards.filter(item => {
+				if (!q) { return true; }
+				return item.value.toLowerCase().includes(q)
+					|| item.label.toLowerCase().includes(q)
+					|| item.mcu.toLowerCase().includes(q)
+					|| item.desc.toLowerCase().includes(q);
+			});
+
+			boardId.innerHTML = '';
+			for (const item of filtered) {
+				const opt = document.createElement('option');
+				opt.value = item.value;
+				opt.textContent = item.label;
+				opt.dataset.mcu = item.mcu;
+				opt.dataset.desc = item.desc;
+				boardId.appendChild(opt);
+			}
+
+			if (filtered.length === 0) {
+				const empty = document.createElement('option');
+				empty.value = '';
+				empty.textContent = '一致する基板がありません';
+				empty.disabled = true;
+				empty.selected = true;
+				boardId.appendChild(empty);
+				boardId.disabled = true;
+			} else {
+				boardId.disabled = false;
+				if (filtered.some(item => item.value === prev)) {
+					boardId.value = prev;
+				}
+			}
+
+			boardSearchMeta.textContent = filtered.length + ' / ' + allBoards.length + ' 件を表示';
+			updateBoardMeta();
+		}
+
 		function updateBoardMeta() {
+			if (boardId.disabled || boardId.selectedIndex < 0) {
+				boardMcu.textContent = 'MCU: -';
+				boardDesc.textContent = '一致する基板がありません。検索キーワードを変更してください。';
+				return;
+			}
 			const opt = boardId.options[boardId.selectedIndex];
 			boardMcu.textContent = 'MCU: ' + (opt.dataset.mcu || '-');
 			boardDesc.textContent = opt.dataset.desc || '-';
@@ -1984,8 +2077,9 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 				projectName.value = (opt.value || 'stm32-project').replace(/[^a-zA-Z0-9_-]/g, '-');
 			}
 		}
+		boardSearch.addEventListener('input', () => renderBoardOptions(boardSearch.value));
 		boardId.addEventListener('change', updateBoardMeta);
-		updateBoardMeta();
+		renderBoardOptions('');
 
 		document.getElementById('createBtn').addEventListener('click', () => {
 			const payload = {
@@ -2185,108 +2279,67 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<style>
-		*{box-sizing:border-box;margin:0;padding:0}
-		:root{
-			--bg:var(--vscode-editor-background,#0d0e14);
-			--sf:var(--vscode-sideBar-background,#13151e);
-			--bd:var(--vscode-panel-border,#1e2030);
-			--tx:var(--vscode-editor-foreground,#e8eaed);
-			--mt:var(--vscode-descriptionForeground,#6b7280);
-			--ac:#0f766e;--ac2:rgba(15,118,110,.14);
-			--ok:#22c55e;--wn:#f59e0b;
+		*{box-sizing:border-box}
+		body{font:13px/1.65 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);margin:0;padding:24px 28px}
+		h1{font-size:22px;font-weight:700;margin:0 0 4px}
+		.sub{color:var(--vscode-descriptionForeground);margin:0 0 20px;max-width:920px}
+		h2{font-size:13px;font-weight:700;margin:22px 0 10px;color:var(--vscode-descriptionForeground);text-transform:uppercase;letter-spacing:.06em}
+		.action-list{margin:0;padding:0;list-style:none}
+		.action-item{display:grid;grid-template-columns:minmax(160px,200px) 1fr auto;gap:14px;align-items:start;padding:9px 0;border-bottom:1px solid var(--vscode-panel-border)}
+		.action-name{font-weight:600}
+		.action-desc{color:var(--vscode-descriptionForeground)}
+		.action-btn{background:none;border:none;color:var(--vscode-textLink-foreground);cursor:pointer;font:600 12px var(--vscode-font-family,'Segoe UI',sans-serif);padding:0;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+		.action-btn:hover{color:var(--vscode-textLink-activeForeground)}
+		.links{display:flex;gap:18px;flex-wrap:wrap;margin-top:18px}
+		.link-btn{background:none;border:none;color:var(--vscode-textLink-foreground);cursor:pointer;font:12px var(--vscode-font-family,'Segoe UI',sans-serif);padding:0;text-decoration:underline;text-underline-offset:2px}
+		.link-btn:hover{color:var(--vscode-textLink-activeForeground)}
+		@media (max-width: 760px){
+			body{padding:18px 16px}
+			.action-item{grid-template-columns:1fr;gap:6px}
 		}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:0;min-height:100vh}
-		.hero{background:linear-gradient(135deg,#0d0e14 0%,#131630 100%);border-bottom:1px solid var(--bd);padding:32px 28px 24px}
-		.hero-logo{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-		.logo-mark{width:36px;height:36px;border-radius:8px;background:var(--ac);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0}
-		.logo-text{font-size:20px;font-weight:700;letter-spacing:-.01em}
-		.logo-sub{font-size:11px;color:var(--mt);letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
-		.hero p{font-size:13px;color:var(--mt);max-width:480px;line-height:1.6}
-		.content{padding:24px 28px;max-width:900px}
-		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:24px}
-		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
-		.card:hover{border-color:rgba(15,118,110,.55)}
-		.card-icon{font-size:22px;line-height:1}
-		.card h3{font-size:14px;font-weight:600}
-		.card p{font-size:12px;color:var(--mt);line-height:1.5;flex:1}
-		.btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font:600 12px/1 var(--vscode-font-family,'Segoe UI',sans-serif);transition:background .1s}
-		.btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-		.btn-pri{background:var(--ac);color:#fff}
-		.btn-pri:hover{background:#0d9488}
-		.btn-sec{background:transparent;color:var(--tx);border:1px solid var(--bd)}
-		.btn-sec:hover{background:var(--ac2);border-color:rgba(15,118,110,.45)}
-		.btns{display:flex;flex-direction:column;gap:6px}
-		.divider{height:1px;background:var(--bd);margin:8px 0 20px}
-		.links{display:flex;gap:16px;flex-wrap:wrap}
-		.link{background:none;border:none;color:var(--ac);cursor:pointer;font:12px var(--vscode-font-family,'Segoe UI',sans-serif);padding:0;text-decoration:underline;text-underline-offset:2px}
-		.link:hover{color:#14b8a6}
 	</style>
 </head>
 <body>
-<div class="hero">
-	<div class="hero-logo">
-		<div class="logo-mark">⬡</div>
+<h1>STM32 ウェルカム</h1>
+<p class="sub">最初に使う操作をテキスト中心でまとめています。必要な項目を選択して開発を開始してください。</p>
+
+<h2>Quick Start</h2>
+<ul class="action-list" aria-label="クイックスタート操作">
+	<li class="action-item">
+		<div class="action-name">チュートリアル</div>
+		<div class="action-desc">Lチカの手順を順番に実行して、ビルドから書込みまで確認します。</div>
+		<button class="action-btn" id="tutorial" aria-label="チュートリアルを開始">開始</button>
+	</li>
+	<li class="action-item">
+		<div class="action-name">CubeIDE から移行</div>
+		<div class="action-desc">既存の STM32CubeIDE プロジェクトをインポートします。</div>
+		<button class="action-btn" id="import" aria-label="CubeIDEインポート">インポート</button>
+	</li>
+	<li class="action-item">
+		<div class="action-name">テンプレート作成</div>
+		<div class="action-desc">用途別テンプレートから新規プロジェクトを生成します。</div>
+		<button class="action-btn" id="templates" aria-label="テンプレートギャラリー">開く</button>
+	</li>
+	<li class="action-item">
+		<div class="action-name">基板設定</div>
+		<div class="action-desc">基板を選択し、クロックやデバッグ設定を行ってプロジェクトを作成します。</div>
+		<button class="action-btn" id="board" aria-label="ボード設定スタジオ">開く</button>
+	</li>
+	<li class="action-item">
+		<div class="action-name">作業フロー</div>
+		<div class="action-desc">新規作成 / コーディング / 設定をモード別に起動します。</div>
 		<div>
-			<div class="logo-text">CubeForge IDE</div>
-			<div class="logo-sub">STM32 Development Environment</div>
+			<button class="action-btn" id="studio" aria-label="ワークフロースタジオ">スタジオを開く</button>
+			<button class="action-btn" id="syncCatalog" aria-label="CubeMXカタログ同期">カタログ同期</button>
 		</div>
-	</div>
-	<p>STM32マイコン開発のための統合開発環境です。<br>初心者からCubeIDEユーザーまで、すぐに開発を始められます。</p>
-</div>
+	</li>
+</ul>
 
-<div class="content">
-	<div class="grid">
-		<div class="card">
-			<div class="card-icon">🌱</div>
-			<h3>はじめて使う</h3>
-			<p>STM32開発が初めての方向け。7ステップのLチカチュートリアルで基本的な開発フローを学べます。</p>
-			<div class="btns">
-				<button class="btn btn-pri" id="tutorial" aria-label="チュートリアルを開始">チュートリアルを開始 →</button>
-				<button class="btn btn-sec" id="env" aria-label="環境チェック">環境チェックを実行</button>
-			</div>
-		</div>
-		<div class="card">
-			<div class="card-icon">🔄</div>
-			<h3>CubeIDE から移行</h3>
-			<p>STM32CubeIDEからの移行ユーザー向け。既存プロジェクトをインポートしてすぐに使い始められます。</p>
-			<div class="btns">
-				<button class="btn btn-pri" id="import" aria-label="CubeIDEインポート">CubeIDEプロジェクトをインポート →</button>
-			</div>
-		</div>
-		<div class="card">
-			<div class="card-icon">⚡</div>
-			<h3>すぐに始める</h3>
-			<p>テンプレートから新規プロジェクトを素早く作成。GPIO/UART/I2C/FreeRTOS等の30種類以上から選択できます。</p>
-			<div class="btns">
-				<button class="btn btn-pri" id="templates" aria-label="テンプレートギャラリー">テンプレートギャラリーを開く →</button>
-			</div>
-		</div>
-		<div class="card">
-			<div class="card-icon">◧</div>
-			<h3>作業モードから始める</h3>
-			<p>新規作成・コーディング・設定を画面分離したワークフロースタジオで、最初の一手を迷わず選べます。</p>
-			<div class="btns">
-				<button class="btn btn-pri" id="studio" aria-label="ワークフロースタジオ">ワークフロースタジオを開く →</button>
-				<button class="btn btn-sec" id="syncCatalog" aria-label="CubeMXカタログ同期">CubeMX カタログ同期</button>
-			</div>
-		</div>
-		<div class="card">
-			<div class="card-icon">🧭</div>
-			<h3>CubeMXなしで作る</h3>
-			<p>基板を選んで、クロック・デバッグ・RTOS・USB等を日本語UIで設定できます。作成後はピンGUIで配線設定可能です。</p>
-			<div class="btns">
-				<button class="btn btn-pri" id="board" aria-label="ボード設定スタジオ">ボード設定スタジオを開く →</button>
-			</div>
-		</div>
-	</div>
-
-	<div class="divider"></div>
-
-	<div class="links">
-		<button class="link" id="env2" aria-label="環境チェック">ツール環境チェック</button>
-		<button class="link" id="pin" aria-label="ピンビジュアライザ">ピンビジュアライザ</button>
-		<button class="link" id="error" aria-label="エラー解説">エラー自動解説</button>
-	</div>
+<div class="links">
+	<button class="link-btn" id="env" aria-label="環境チェック">環境チェック</button>
+	<button class="link-btn" id="env2" aria-label="環境チェック 2">環境チェック (同機能)</button>
+	<button class="link-btn" id="pin" aria-label="ピンビジュアライザ">ピンビジュアライザ</button>
+	<button class="link-btn" id="error" aria-label="エラー解説">エラー自動解説</button>
 </div>
 
 <script>
@@ -2518,8 +2571,9 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 	elements += `<text x="${OFFSET + CHIP_SIZE / 2}" y="${OFFSET + CHIP_SIZE / 2 + 8}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="Segoe UI,sans-serif">LQFP${n}</text>`;
 
 	const renderPin = (item: { pin: string; mode: string }, index: number, side: number) => {
-		const fill = colorForMode(item.mode);
-		const stroke = colorForModeBorder(item.mode);
+		const isUnused = item.mode === '未使用';
+		const fill = isUnused ? '#161820' : colorForMode(item.mode);
+		const stroke = isUnused ? '#2a2d3a' : colorForModeBorder(item.mode);
 		const label = item.pin.length > 6 ? item.pin.slice(0, 5) + '…' : item.pin;
 		const pos = 12 + index * PIN_PITCH + PIN_PITCH / 2;
 
@@ -2794,37 +2848,43 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			});
 		}
 		for (const g of document.querySelectorAll('.lqfp-pin')) {
-			g.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }));
-			g.addEventListener('keydown', e => {
-				if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }); }
-			});
+			if (g.dataset.mode !== '未使用') {
+				g.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }));
+				g.addEventListener('keydown', e => {
+					if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }); }
+				});
+			} else {
+				// 未使用ピンはクリックで割り当てダイアログを開く
+				g.addEventListener('click', () => vscode.postMessage({ type: 'editPin', pin: g.dataset.pin }));
+			}
 		}
 
 		// ---- zoom ----
 		const chipSvgEl = document.getElementById('chipSvg');
+		const chipWrap = document.getElementById('chipWrap');
 		const zoomLabel = document.getElementById('zoomLabel');
 		let zoom = 1;
 		const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
 		function applyZoom(z) {
-			zoom = Math.max(0.5, Math.min(3, z));
+			zoom = Math.max(0.25, Math.min(4, z));
 			chipSvgEl.style.transform = 'scale(' + zoom + ')';
 			chipSvgEl.style.transformOrigin = 'top left';
 			zoomLabel.textContent = Math.round(zoom * 100) + '%';
 		}
 		document.getElementById('zoomIn').addEventListener('click', () => {
 			const idx = ZOOM_STEPS.findIndex(z => z > zoom);
-			applyZoom(idx >= 0 ? ZOOM_STEPS[idx] : 3);
+			applyZoom(idx >= 0 ? ZOOM_STEPS[idx] : 4);
 		});
 		document.getElementById('zoomOut').addEventListener('click', () => {
 			const idx = [...ZOOM_STEPS].reverse().findIndex(z => z < zoom);
-			applyZoom(idx >= 0 ? [...ZOOM_STEPS].reverse()[idx] : 0.5);
+			applyZoom(idx >= 0 ? [...ZOOM_STEPS].reverse()[idx] : 0.25);
 		});
 		document.getElementById('zoomReset').addEventListener('click', () => applyZoom(1));
-		chipSvgEl.addEventListener('wheel', e => {
-			if (e.ctrlKey || e.metaKey) {
-				e.preventDefault();
-				applyZoom(zoom + (e.deltaY < 0 ? 0.1 : -0.1));
-			}
+		// スクロールホイールでズーム（修飾キー不要、chipWrap に付ける）
+		chipWrap.addEventListener('wheel', e => {
+			e.preventDefault();
+			const delta = e.deltaY < 0 ? 0.1 : -0.1;
+			applyZoom(zoom + delta);
 		}, { passive: false });
 		// ---- tooltip ----
 		const tooltip = document.getElementById('pinTooltip');
@@ -2978,22 +3038,18 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			btnChip.classList.remove('active');
 			btnChip.setAttribute('aria-pressed', 'false');
 			btnChip.disabled = true;
-			filterInput.disabled = false;
-		} else {
-			filterInput.disabled = true;
 		}
+		filterInput.disabled = false;
 
 		btnList.addEventListener('click', () => {
 			groupsView.style.display = ''; chipView.style.display = 'none';
 			btnList.classList.add('active'); btnList.setAttribute('aria-pressed','true');
 			btnChip.classList.remove('active'); btnChip.setAttribute('aria-pressed','false');
-			filterInput.disabled = false;
 		});
 		btnChip.addEventListener('click', () => {
 			groupsView.style.display = 'none'; chipView.style.display = '';
 			btnChip.classList.add('active'); btnChip.setAttribute('aria-pressed','true');
 			btnList.classList.remove('active'); btnList.setAttribute('aria-pressed','false');
-			filterInput.disabled = true;
 		});
 
 		function applyFilter(q) {

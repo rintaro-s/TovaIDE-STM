@@ -22,12 +22,22 @@
 				"--no-daemon-hint",
 				"Start the daemon by running the 'Launch Component Explorer' VS Code task (use the run_task tool). When you start the task, try up to 4 times to give the daemon enough time to start."
 			]
+		},
+		"cubeforge-stm32": {
+			"type": "stdio",
+			"command": "node",
+			"cwd": "${workspaceFolder}",
+			"args": [
+				"mcp-server/index.js",
+				"--workspace",
+				"${workspaceFolder}",
+				"--verbose"
+			]
+		},
+		"cubeforge-stm32-http": {
+			"type": "http",
+			"url": "http://127.0.0.1:3737/mcp"
 		}
 	},
-	"inputs": [],
-	"_cubeforge_note": "CubeForge MCP server — start via: node mcp-server/index.js --workspace ${workspaceFolder}",
-	"cubeforge-stm32": {
-		"type": "http",
-		"url": "http://127.0.0.1:3737/mcp"
-	}
+	"inputs": []
 }
