@@ -67,12 +67,6 @@ export function activate(context: vscode.ExtensionContext): void {
 	extensionContextRef = context;
 	assistantOutput = vscode.window.createOutputChannel('STM32 AI');
 	context.subscriptions.push(assistantOutput);
-
-	const viewProvider = new Stm32AssistantViewProvider(context.extensionUri);
-	context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ai.assistantView', viewProvider));
-
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.openAssistantPanel', () => openAssistantPanel()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.openChat', () => openStm32Chat()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.runSemiAutoFlow', () => runSemiAutoFlow()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.runAutoUntilFlash', () => runAutoUntilFlash()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.runFullAutoFlow', () => runFullAutoFlow()));
@@ -83,7 +77,6 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push({ dispose: () => void stopMcpServer() });
 
 	registerLanguageModelTools(context);
-	registerChatParticipant(context);
 
 	void ensureMcpServerToken(context);
 	const autoStartServer = vscode.workspace.getConfiguration('stm32ai').get<boolean>('mcp.autoStartServer', true);
@@ -319,9 +312,15 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 	}
 }
 
+const _unusedAssistantViewProviderRef = Stm32AssistantViewProvider;
+void _unusedAssistantViewProviderRef;
+
 async function openAssistantPanel(): Promise<void> {
 	await vscode.commands.executeCommand('workbench.view.extension.stm32-ai-assistant');
 }
+
+const _unusedOpenAssistantPanelRef = openAssistantPanel;
+void _unusedOpenAssistantPanelRef;
 
 async function openStm32Chat(extraPrompt?: string): Promise<void> {
 	const basePrompt = vscode.workspace.getConfiguration('stm32ai').get<string>('chat.defaultPrompt', '現在のSTM32プロジェクトをレビューして、次の作業を提案してください。');
@@ -530,16 +529,51 @@ async function handleMcpHttpRequest(req: IncomingMessageLike, res: ServerRespons
 }
 
 async function executeMcpMethod(method: string, params: Record<string, unknown> | undefined): Promise<unknown> {
+	if (method === 'tools/call') {
+		const name = typeof params?.name === 'string' ? params.name : '';
+		const argumentsValue = isRecord(params?.arguments) ? params.arguments : undefined;
+		if (!name) {
+			throw new Error('tools/call requires params.name');
+		}
+		return executeMcpMethod(name, argumentsValue);
+	}
+
 	switch (method) {
 		case 'tools/list':
 			return {
 				tools: [
 					{ name: 'stm32.build' },
 					{ name: 'stm32.flash' },
+					{ name: 'stm32.buildAndFlash' },
+					{ name: 'stm32.startDebug' },
+					{ name: 'stm32.stopDebug' },
+					{ name: 'stm32.newProject' },
+					{ name: 'stm32.importCubeIDE' },
 					{ name: 'stm32.regenerateCode' },
+					{ name: 'stm32.openBoardConfigurator' },
+					{ name: 'stm32.openPinVisualizer' },
+					{ name: 'stm32.runEnvironmentCheck' },
+					{ name: 'stm32.syncMcuCatalog' },
+					{ name: 'stm32.refreshRegisters' },
+					{ name: 'stm32.collab.openPanel' },
+					{ name: 'stm32.collab.startSession' },
+					{ name: 'stm32.collab.startWsSync' },
+					{ name: 'stm32.collab.stopWsSync' },
+					{ name: 'stm32.mcp.start' },
+					{ name: 'stm32.mcp.stop' },
 					{ name: 'stm32.analyzeHardFault' },
 				]
 			};
+		case 'stm32.mcp.start': {
+			if (extensionContextRef) {
+				await startMcpServer(extensionContextRef);
+			}
+			return { success: true };
+		}
+		case 'stm32.mcp.stop': {
+			stopMcpServer();
+			return { success: true };
+		}
 		case 'stm32.build': {
 			const ok = await vscode.commands.executeCommand<boolean>('stm32.buildDebug');
 			return { success: Boolean(ok) };
@@ -548,8 +582,64 @@ async function executeMcpMethod(method: string, params: Record<string, unknown> 
 			const ok = await vscode.commands.executeCommand<boolean>('stm32.flash');
 			return { success: Boolean(ok) };
 		}
+		case 'stm32.buildAndFlash': {
+			await vscode.commands.executeCommand('stm32.buildAndFlash');
+			return { success: true };
+		}
+		case 'stm32.startDebug': {
+			await vscode.commands.executeCommand('stm32.startDebug');
+			return { success: true };
+		}
+		case 'stm32.stopDebug': {
+			await vscode.commands.executeCommand('stm32.stopDebug');
+			return { success: true };
+		}
+		case 'stm32.newProject': {
+			await vscode.commands.executeCommand('stm32.newProject');
+			return { success: true };
+		}
+		case 'stm32.importCubeIDE': {
+			await vscode.commands.executeCommand('stm32.importCubeIDE');
+			return { success: true };
+		}
 		case 'stm32.regenerateCode': {
 			await vscode.commands.executeCommand('stm32.regenerateCode');
+			return { success: true };
+		}
+		case 'stm32.openBoardConfigurator': {
+			await vscode.commands.executeCommand('stm32ux.openBoardConfigurator');
+			return { success: true };
+		}
+		case 'stm32.openPinVisualizer': {
+			await vscode.commands.executeCommand('stm32ux.openPinVisualizer');
+			return { success: true };
+		}
+		case 'stm32.runEnvironmentCheck': {
+			await vscode.commands.executeCommand('stm32ux.runEnvironmentCheck');
+			return { success: true };
+		}
+		case 'stm32.syncMcuCatalog': {
+			await vscode.commands.executeCommand('stm32ux.syncMcuCatalogFromCubeMX');
+			return { success: true };
+		}
+		case 'stm32.refreshRegisters': {
+			await vscode.commands.executeCommand('stm32.debug.refreshRegisters');
+			return { success: true };
+		}
+		case 'stm32.collab.openPanel': {
+			await vscode.commands.executeCommand('stm32collab.openPanel');
+			return { success: true };
+		}
+		case 'stm32.collab.startSession': {
+			await vscode.commands.executeCommand('stm32collab.startSession');
+			return { success: true };
+		}
+		case 'stm32.collab.startWsSync': {
+			await vscode.commands.executeCommand('stm32collab.startWsSync');
+			return { success: true };
+		}
+		case 'stm32.collab.stopWsSync': {
+			await vscode.commands.executeCommand('stm32collab.stopWsSync');
 			return { success: true };
 		}
 		case 'stm32.analyzeHardFault': {
@@ -666,6 +756,9 @@ function registerChatParticipant(context: vscode.ExtensionContext): void {
 	});
 	context.subscriptions.push(participant);
 }
+
+const _unusedRegisterChatParticipantRef = registerChatParticipant;
+void _unusedRegisterChatParticipantRef;
 
 function collectBuildDiagnostics(): string[] {
 	const lines: string[] = [];

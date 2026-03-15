@@ -11,6 +11,14 @@ declare const process: { platform: string };
 const childProcess = require('child_process') as {
 	execFile: (command: string, args: string[], options: { cwd?: string; shell?: boolean }, callback: (error: Error | null, stdout: string, stderr: string) => void) => void;
 };
+const pathModule = require('path') as {
+	dirname: (path: string) => string;
+	join: (...parts: string[]) => string;
+	resolve: (...parts: string[]) => string;
+};
+
+const CUBEMX_MCU_CATALOG_KEY = 'stm32ux.cubemxMcuCatalog';
+let extensionContextRef: vscode.ExtensionContext;
 
 interface ExecFileResult {
 	stdout: string;
@@ -47,7 +55,7 @@ interface BoardConfiguratorPayload {
 	openPinGui: boolean;
 }
 
-const BOARD_PROFILES: BoardProfile[] = [
+const PREFERRED_BOARD_PROFILES: BoardProfile[] = [
 	{
 		id: 'nucleo-f446re',
 		name: 'Nucleo-F446RE',
@@ -112,10 +120,14 @@ let extensionUri: vscode.Uri;
 export function activate(context: vscode.ExtensionContext): void {
 	outputChannel = vscode.window.createOutputChannel('STM32 UX');
 	extensionUri = context.extensionUri;
+	extensionContextRef = context;
 	context.subscriptions.push(outputChannel);
 
 	context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ux.onboardingView', new OnboardingViewProvider()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWorkflowStudio', () => openWorkflowStudio()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWelcomeWizard', () => openWelcomeWizard()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openMcpOperationDesk', () => openMcpOperationDesk()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.syncMcuCatalogFromCubeMX', () => syncMcuCatalogFromCubeMX()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.startBlinkTutorial', () => openBlinkTutorial()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openTemplateGallery', () => openTemplateGallery()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openBoardConfigurator', () => openBoardConfigurator()));
@@ -126,7 +138,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	const shouldOpenWelcome = vscode.workspace.getConfiguration('stm32ux').get<boolean>('autoOpenWelcome', true);
 	const hasShown = context.workspaceState.get<boolean>('stm32ux.welcomeShown', false);
 	if (shouldOpenWelcome && !hasShown) {
-		void openWelcomeWizard();
+		void revealStm32StartView();
 		void context.workspaceState.update('stm32ux.welcomeShown', true);
 	}
 }
@@ -143,6 +155,31 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 			switch (message.type) {
+				case 'studio':
+					await openWorkflowStudio();
+					break;
+				case 'mcp':
+					await openMcpOperationDesk();
+					break;
+				case 'collab':
+					await vscode.commands.executeCommand('stm32collab.openPanel');
+					break;
+				case 'svd':
+					await vscode.commands.executeCommand('workbench.view.extension.stm32-debug');
+					await vscode.commands.executeCommand('stm32.debug.refreshRegisters');
+					break;
+				case 'build':
+					await vscode.commands.executeCommand('stm32.buildDebug');
+					break;
+				case 'flash':
+					await vscode.commands.executeCommand('stm32.flash');
+					break;
+				case 'debug':
+					await vscode.commands.executeCommand('stm32.startDebug');
+					break;
+				case 'syncCatalog':
+					await syncMcuCatalogFromCubeMX();
+					break;
 				case 'welcome':
 					await openWelcomeWizard();
 					break;
@@ -169,6 +206,99 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 	}
 }
 
+async function openWorkflowStudio(): Promise<void> {
+	const panel = vscode.window.createWebviewPanel('stm32ux.workflowStudio', 'STM32 ワークフロースタジオ', vscode.ViewColumn.Active, { enableScripts: true });
+	panel.webview.html = getWorkflowStudioHtml(panel.webview);
+	panel.webview.onDidReceiveMessage(async message => {
+		if (!isRecord(message) || typeof message.type !== 'string') {
+			return;
+		}
+
+		switch (message.type) {
+			case 'create':
+				await openBoardConfigurator();
+				break;
+			case 'syncCatalog':
+				await syncMcuCatalogFromCubeMX();
+				break;
+			case 'coding':
+				await vscode.commands.executeCommand('stm32.openCommandCenter');
+				break;
+			case 'settings':
+				await runEnvironmentCheck();
+				break;
+			case 'tutorial':
+				await openBlinkTutorial();
+				break;
+			case 'pins':
+				await openPinVisualizer();
+				break;
+		}
+	});
+}
+
+async function openMcpOperationDesk(): Promise<void> {
+	const panel = vscode.window.createWebviewPanel('stm32ux.mcpDesk', 'STM32 MCP オペレーションデスク', vscode.ViewColumn.Active, { enableScripts: true });
+	panel.webview.html = getMcpOperationDeskHtml(panel.webview);
+	panel.webview.onDidReceiveMessage(async message => {
+		if (!isRecord(message) || typeof message.type !== 'string') {
+			return;
+		}
+
+		const run = async (method: string, params?: Record<string, unknown>): Promise<void> => {
+			await vscode.commands.executeCommand('stm32ai.startMcpServer');
+			const payload = params
+				? JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
+				: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method });
+			const result = await vscode.window.showInputBox({
+				title: vscode.l10n.t('MCP 呼び出し JSON (実行済み)') ,
+				value: payload,
+				prompt: vscode.l10n.t('下記 JSON は MCP クライアントから同等に実行できます。')
+			});
+			if (typeof result === 'string') {
+				void result;
+			}
+		};
+
+		switch (message.type) {
+			case 'startMcp':
+				await vscode.commands.executeCommand('stm32ai.startMcpServer');
+				break;
+			case 'stopMcp':
+				await vscode.commands.executeCommand('stm32ai.stopMcpServer');
+				break;
+			case 'build':
+				await run('stm32.build');
+				await vscode.commands.executeCommand('stm32.buildDebug');
+				break;
+			case 'flash':
+				await run('stm32.flash');
+				await vscode.commands.executeCommand('stm32.flash');
+				break;
+			case 'regen':
+				await run('stm32.regenerateCode');
+				await vscode.commands.executeCommand('stm32.regenerateCode');
+				break;
+			case 'board':
+				await run('stm32.openBoardConfigurator');
+				await openBoardConfigurator();
+				break;
+			case 'collab':
+				await run('stm32.collab.openPanel');
+				await vscode.commands.executeCommand('stm32collab.openPanel');
+				break;
+			case 'svd':
+				await run('stm32.refreshRegisters');
+				await vscode.commands.executeCommand('stm32.debug.refreshRegisters');
+				break;
+		}
+	});
+}
+
+async function revealStm32StartView(): Promise<void> {
+	await vscode.commands.executeCommand('workbench.view.extension.stm32-ux');
+}
+
 async function openWelcomeWizard(): Promise<void> {
 	const panel = vscode.window.createWebviewPanel('stm32ux.welcome', 'STM32 ウェルカム', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getWelcomeHtml(panel.webview);
@@ -177,9 +307,15 @@ async function openWelcomeWizard(): Promise<void> {
 			return;
 		}
 		switch (message.type) {
-				case 'board':
-					await openBoardConfigurator();
-					break;
+			case 'studio':
+				await openWorkflowStudio();
+				break;
+			case 'syncCatalog':
+				await syncMcuCatalogFromCubeMX();
+				break;
+			case 'board':
+				await openBoardConfigurator();
+				break;
 			case 'tutorial':
 				await openBlinkTutorial();
 				break;
@@ -248,8 +384,14 @@ async function openTemplateGallery(): Promise<void> {
 }
 
 async function openBoardConfigurator(): Promise<void> {
+	const profiles = await getBoardProfilesFromCatalog();
+	if (profiles.length === 0) {
+		vscode.window.showErrorMessage(vscode.l10n.t('利用可能なMCU定義が見つかりません。resources/stm32/mcu を確認してください。'));
+		return;
+	}
+
 	const panel = vscode.window.createWebviewPanel('stm32ux.boardConfigurator', 'STM32 ボード設定スタジオ', vscode.ViewColumn.Active, { enableScripts: true });
-	panel.webview.html = getBoardConfiguratorHtml(panel.webview);
+	panel.webview.html = getBoardConfiguratorHtml(panel.webview, profiles);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || message.type !== 'create' || !isRecord(message.payload)) {
 			return;
@@ -258,7 +400,7 @@ async function openBoardConfigurator(): Promise<void> {
 		const payload = message.payload as Record<string, unknown>;
 		const boardId = typeof payload.boardId === 'string' ? payload.boardId : '';
 		const projectName = typeof payload.projectName === 'string' ? payload.projectName.trim() : '';
-		const profile = BOARD_PROFILES.find(item => item.id === boardId);
+		const profile = profiles.find(item => item.id === boardId);
 		if (!profile || projectName.length === 0) {
 			vscode.window.showErrorMessage(vscode.l10n.t('ボードとプロジェクト名を入力してください。'));
 			return;
@@ -412,7 +554,15 @@ function detectMcuFromIocText(iocText: string): string {
 	return normalized.length > 4 ? normalized : 'STM32F446RE';
 }
 
-function resolveMcuJsonName(mcuKey: string): string {
+function normalizeMcuKey(mcuKey: string): string {
+	return mcuKey
+		.trim()
+		.replace(/\.json$/i, '')
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, '');
+}
+
+async function resolveMcuJsonName(mcuKey: string): Promise<string> {
 	const map: Record<string, string> = {
 		'STM32H743ZI': 'STM32H743ZI',
 		'STM32H743': 'STM32H743ZI',
@@ -431,11 +581,32 @@ function resolveMcuJsonName(mcuKey: string): string {
 		'STM32C031C6': 'STM32C031C6',
 		'STM32C031': 'STM32C031C6',
 	};
-	return map[mcuKey] ?? 'STM32F446RE';
+
+	const raw = normalizeMcuKey(mcuKey);
+	const trimmedVariant = raw.replace(/TX$/, '').replace(/X$/, '');
+	const candidates = [
+		raw,
+		trimmedVariant,
+		map[raw],
+		map[trimmedVariant],
+		'STM32F446RE',
+	].filter((candidate): candidate is string => Boolean(candidate));
+
+	const mcuCatalogUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu');
+	for (const candidate of Array.from(new Set(candidates))) {
+		try {
+			await vscode.workspace.fs.stat(vscode.Uri.joinPath(mcuCatalogUri, `${candidate}.json`));
+			return candidate;
+		} catch {
+			// Try next candidate.
+		}
+	}
+
+	return 'STM32F446RE';
 }
 
 async function loadMcuPackagePins(mcuName?: string): Promise<Array<{ pin: string; mode: string }>> {
-	const fileName = resolveMcuJsonName(mcuName ?? 'STM32F446RE');
+	const fileName = await resolveMcuJsonName(mcuName ?? 'STM32F446RE');
 	try {
 		const jsonUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu', `${fileName}.json`);
 		const bytes = await vscode.workspace.fs.readFile(jsonUri);
@@ -446,6 +617,171 @@ async function loadMcuPackagePins(mcuName?: string): Promise<Array<{ pin: string
 	} catch {
 		return [];
 	}
+}
+
+async function getBoardProfilesFromCatalog(): Promise<BoardProfile[]> {
+	const preferredByMcu = new Map<string, BoardProfile>();
+	for (const profile of PREFERRED_BOARD_PROFILES) {
+		preferredByMcu.set(normalizeMcuKey(profile.mcu), profile);
+	}
+
+	const mcuCatalogUri = vscode.Uri.joinPath(extensionUri, '..', '..', 'resources', 'stm32', 'mcu');
+	let entries: [string, vscode.FileType][] = [];
+	try {
+		entries = await vscode.workspace.fs.readDirectory(mcuCatalogUri);
+	} catch {
+		return [...PREFERRED_BOARD_PROFILES];
+	}
+
+	const profiles: BoardProfile[] = [];
+	const seen = new Set<string>();
+	const appendProfile = (profile: BoardProfile): void => {
+		const normalized = normalizeMcuKey(profile.mcu);
+		if (seen.has(normalized)) {
+			return;
+		}
+		seen.add(normalized);
+		profiles.push(profile);
+	};
+
+	for (const [name, type] of entries) {
+		if (type !== vscode.FileType.File || !name.toLowerCase().endsWith('.json')) {
+			continue;
+		}
+
+		const mcu = name.slice(0, -5);
+		const normalized = normalizeMcuKey(mcu);
+		const preferred = preferredByMcu.get(normalized);
+		if (preferred) {
+			appendProfile({
+				...preferred,
+				mcu,
+			});
+			continue;
+		}
+
+		appendProfile({
+			id: `catalog-${mcu.toLowerCase()}`,
+			name: mcu,
+			mcu,
+			description: `MCUカタログ (${mcu}) から生成`,
+			defaultPins: [],
+		});
+	}
+
+	const cubeMxCatalog = extensionContextRef.globalState.get<string[]>(CUBEMX_MCU_CATALOG_KEY, []);
+	for (const mcu of cubeMxCatalog) {
+		const preferred = preferredByMcu.get(normalizeMcuKey(mcu));
+		if (preferred) {
+			appendProfile({
+				...preferred,
+				mcu,
+				description: `${preferred.description} (CubeMX DB)`
+			});
+			continue;
+		}
+
+		appendProfile({
+			id: `cubemx-${mcu.toLowerCase()}`,
+			name: mcu,
+			mcu,
+			description: `CubeMX DB から取得 (${mcu})`,
+			defaultPins: [],
+		});
+	}
+
+	profiles.sort((a, b) => a.name.localeCompare(b.name));
+	return profiles;
+}
+
+async function syncMcuCatalogFromCubeMX(): Promise<void> {
+	const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
+	const candidates = buildCubeMxMcuDbCandidates(configured);
+	let selectedRoot: string | undefined;
+	for (const candidate of candidates) {
+		if (await fileExists(candidate)) {
+			selectedRoot = candidate;
+			break;
+		}
+	}
+
+	if (!selectedRoot) {
+		vscode.window.showErrorMessage(vscode.l10n.t('CubeMX の MCU DB が見つかりません。stm32.cubemx.path を設定して再実行してください。'));
+		return;
+	}
+
+	const mcuNames = await vscode.window.withProgress({
+		location: vscode.ProgressLocation.Notification,
+		title: vscode.l10n.t('CubeMX MCU カタログを同期中...'),
+		cancellable: false,
+	}, async progress => {
+		progress.report({ message: vscode.l10n.t('MCU 定義を走査しています') });
+		return scanCubeMxMcuNames(vscode.Uri.file(selectedRoot));
+	});
+
+	await extensionContextRef.globalState.update(CUBEMX_MCU_CATALOG_KEY, mcuNames);
+	outputChannel.appendLine(`[STM32-UX] Synced MCU catalog from CubeMX: ${mcuNames.length} entries (${selectedRoot})`);
+	vscode.window.showInformationMessage(vscode.l10n.t('CubeMX から MCU カタログを同期しました: {0} 件', mcuNames.length));
+}
+
+function buildCubeMxMcuDbCandidates(configuredPath: string): string[] {
+	const candidates: string[] = [];
+	const add = (path: string): void => {
+		const resolved = pathModule.resolve(path);
+		if (!candidates.includes(resolved)) {
+			candidates.push(resolved);
+		}
+	};
+
+	if (configuredPath.length > 0) {
+		const base = configuredPath.toLowerCase().endsWith('.exe') ? pathModule.dirname(configuredPath) : configuredPath;
+		add(pathModule.join(base, 'db', 'mcu'));
+		add(pathModule.join(pathModule.dirname(base), 'db', 'mcu'));
+		add(pathModule.join(base, 'STM32CubeMX', 'db', 'mcu'));
+	}
+
+	if (process.platform === 'win32') {
+		add('C:/ST/STM32CubeMX/db/mcu');
+		add('C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeMX/db/mcu');
+	}
+
+	return candidates;
+}
+
+async function scanCubeMxMcuNames(root: vscode.Uri): Promise<string[]> {
+	const names = new Set<string>();
+	const queue: vscode.Uri[] = [root];
+	let scannedFiles = 0;
+
+	while (queue.length > 0 && scannedFiles < 40000) {
+		const current = queue.shift();
+		if (!current) {
+			break;
+		}
+
+		let entries: [string, vscode.FileType][] = [];
+		try {
+			entries = await vscode.workspace.fs.readDirectory(current);
+		} catch {
+			entries = [];
+		}
+		for (const [name, type] of entries) {
+			if (type === vscode.FileType.Directory) {
+				queue.push(vscode.Uri.joinPath(current, name));
+				continue;
+			}
+			if (type !== vscode.FileType.File || !name.toLowerCase().endsWith('.xml')) {
+				continue;
+			}
+			scannedFiles += 1;
+			const mcuName = name.slice(0, -4).toUpperCase();
+			if (/^STM32[A-Z0-9]+$/.test(mcuName)) {
+				names.add(mcuName);
+			}
+		}
+	}
+
+	return Array.from(names).sort();
 }
 
 async function openPinVisualizer(): Promise<void> {
@@ -462,6 +798,9 @@ async function openPinVisualizer(): Promise<void> {
 			}
 			pins = parsePinLines(text);
 			detectedMcu = detectMcuFromIocText(text);
+			if (pins.length === 0) {
+				pins = await loadMcuPackagePins(detectedMcu);
+			}
 			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu}`;
 		} else {
 			pins = await loadMcuPackagePins();
@@ -1418,15 +1757,24 @@ async function findIocFile(): Promise<vscode.Uri | undefined> {
 }
 
 function parsePinLines(text: string): Array<{ pin: string; mode: string }> {
-	const result: Array<{ pin: string; mode: string }> = [];
+	const byPin = new Map<string, string>();
 	for (const line of text.split(/\r?\n/)) {
-		const matched = line.match(/^(P[A-K][0-9]{1,2})=([^\r\n]+)/);
-		if (!matched) {
+		const signal = line.match(/^((P[A-K][0-9]{1,2})(?:[-_][^.=]+)?)\.Signal=([^\r\n]+)/);
+		if (signal) {
+			byPin.set(signal[2], signal[3].trim());
 			continue;
 		}
-		result.push({ pin: matched[1], mode: matched[2] });
+
+		const direct = line.match(/^(P[A-K][0-9]{1,2})=([^\r\n]+)/);
+		if (direct) {
+			const mode = direct[2].trim();
+			if (mode.length > 0 && !mode.includes('.')) {
+				byPin.set(direct[1], mode);
+			}
+		}
 	}
-	return result.slice(0, 64);
+
+	return Array.from(byPin.entries()).map(([pin, mode]) => ({ pin, mode })).slice(0, 128);
 }
 
 function getErrorHint(message: string): string {
@@ -1525,9 +1873,9 @@ function execFileAsync(command: string, args: string[], cwd: string | undefined)
 	});
 }
 
-function getBoardConfiguratorHtml(webview: vscode.Webview): string {
+function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfile[]): string {
 	const csp = webview.cspSource;
-	const boardOptions = BOARD_PROFILES.map(profile =>
+	const boardOptions = profiles.map(profile =>
 		`<option value="${escapeHtml(profile.id)}" data-mcu="${escapeHtml(profile.mcu)}" data-desc="${escapeHtml(profile.description)}">${escapeHtml(profile.name)} (${escapeHtml(profile.mcu)})</option>`
 	).join('');
 
@@ -1662,22 +2010,100 @@ function getBoardConfiguratorHtml(webview: vscode.Webview): string {
 
 function getOnboardingHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
-	const items = [
-		{ id: 'welcome', ic: '⬡', label: 'ウェルカムウィザード', desc: '初回セットアップ' },
-		{ id: 'board', ic: '▣', label: 'ボード設定スタジオ', desc: 'CubeMX不要で初期設定' },
-		{ id: 'tutorial', ic: '▶', label: 'Lチカチュートリアル', desc: '7ステップ入門ガイド' },
-		{ id: 'templates', ic: '◫', label: 'テンプレートギャラリー', desc: '30種のプロジェクト雛形' },
-		{ id: 'env', ic: '✓', label: '環境チェック', desc: 'ツール検出レポート' },
-		{ id: 'pin', ic: '◉', label: 'ピンビジュアライザ', desc: 'IOCピン配置を可視化' },
-		{ id: 'error', ic: '⚑', label: 'エラー自動解説', desc: 'ビルドエラーを日本語で' },
-	];
-	const cards = items.map(it =>
-		`<button class="card" id="${it.id}" aria-label="${escapeHtml(it.label)}">` +
-		`<span class="ic">${it.ic}</span>` +
-		`<span class="body"><span class="lbl">${escapeHtml(it.label)}</span>` +
-		`<span class="desc">${escapeHtml(it.desc)}</span></span>` +
-		`<span class="arr">›</span></button>`
-	).join('');
+	return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<style>
+		*{box-sizing:border-box;margin:0;padding:0}
+		:root{--bg:var(--vscode-sideBar-background,#121621);--card:#181d2a;--bd:var(--vscode-panel-border,#273146);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#8b9bb5);--ac:#0f766e;--ac2:rgba(15,118,110,.2);--ok:#22c55e}
+		body{font:12px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);padding:8px;background:radial-gradient(circle at 85% -10%, rgba(15,118,110,.25), transparent 35%),var(--bg);color:var(--tx)}
+		.hero{padding:10px 10px 12px;border:1px solid var(--bd);border-radius:10px;background:linear-gradient(160deg,#101523,#1a2234);margin-bottom:8px}
+		.hero h1{font-size:13px;letter-spacing:.02em;margin-bottom:4px}
+		.hero p{font-size:10px;color:var(--mt)}
+		.grid{display:grid;gap:6px}
+		.btn{display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);cursor:pointer;text-align:left;transition:background .12s,border-color .12s}
+		.btn:hover{background:var(--ac2);border-color:rgba(15,118,110,.55)}
+		.badge{font-size:9px;padding:2px 6px;border-radius:999px;border:1px solid rgba(34,197,94,.45);color:#86efac;background:rgba(34,197,94,.14)}
+		.label{font-size:12px;font-weight:600;flex:1}
+		.meta{font-size:10px;color:var(--mt)}
+	</style>
+</head>
+<body>
+	<div class="hero">
+		<h1>STM32 IDE ダッシュボード</h1>
+		<p>CubeIDEの実運用フローに合わせて、作成・設定・ビルド・書込み・MCP操作をここから開始します。</p>
+	</div>
+	<div class="grid">
+		<button class="btn" id="studio"><span class="badge">MODE</span><span class="label">ワークフロースタジオ</span><span class="meta">作成/コーディング/設定</span></button>
+		<button class="btn" id="board"><span class="badge">NEW</span><span class="label">ボード設定スタジオ</span><span class="meta">CubeMX不要の初期作成</span></button>
+		<button class="btn" id="syncCatalog"><span class="badge">MCU</span><span class="label">CubeMXカタログ同期</span><span class="meta">5000+ MCU取り込み</span></button>
+		<button class="btn" id="pin"><span class="badge">PIN</span><span class="label">ピンビジュアライザ</span><span class="meta">チップ図とピン編集</span></button>
+		<button class="btn" id="svd"><span class="badge">DBG</span><span class="label">SVDレジスタ表示を更新</span><span class="meta">フォールバック含め表示</span></button>
+		<button class="btn" id="build"><span class="badge">BUILD</span><span class="label">Debugビルド</span><span class="meta">エラー位置へ即移動</span></button>
+		<button class="btn" id="flash"><span class="badge">FLASH</span><span class="label">書込み</span><span class="meta">STM32_Programmer_CLI</span></button>
+		<button class="btn" id="debug"><span class="badge">GDB</span><span class="label">デバッグ開始</span><span class="meta">ST-LINK GDB Server</span></button>
+		<button class="btn" id="collab"><span class="badge">COLLAB</span><span class="label">共同作業パネル</span><span class="meta">LAN/WS/Git共有</span></button>
+		<button class="btn" id="mcp"><span class="badge">MCP</span><span class="label">MCPオペレーションデスク</span><span class="meta">全操作のRPC化</span></button>
+	</div>
+<script>
+	const vscode = acquireVsCodeApi();
+	for (const id of ['studio','board','syncCatalog','pin','svd','build','flash','debug','collab','mcp']) {
+		document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
+	}
+</script>
+</body>
+</html>`;
+}
+
+function getMcpOperationDeskHtml(webview: vscode.Webview): string {
+	const csp = webview.cspSource;
+	return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<style>
+		*{box-sizing:border-box;margin:0;padding:0}
+		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14)}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:18px}
+		h1{font-size:18px;margin-bottom:4px}
+		.sub{font-size:11px;color:var(--mt);margin-bottom:14px}
+		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+		button{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:10px;text-align:left;cursor:pointer;font:inherit}
+		button:hover{background:var(--ac2);border-color:rgba(15,118,110,.5)}
+		.t{font-weight:700;font-size:12px}
+		.d{font-size:10px;color:var(--mt)}
+	</style>
+</head>
+<body>
+	<h1>STM32 MCP オペレーションデスク</h1>
+	<div class="sub">ここから起動する操作は、同じ内容を MCP JSON-RPC でも呼べるように実装されています。</div>
+	<div class="grid">
+		<button id="startMcp"><div class="t">MCPサーバー起動</div><div class="d">stm32ai.startMcpServer</div></button>
+		<button id="stopMcp"><div class="t">MCPサーバー停止</div><div class="d">stm32ai.stopMcpServer</div></button>
+		<button id="build"><div class="t">ビルド</div><div class="d">method: stm32.build</div></button>
+		<button id="flash"><div class="t">書込み</div><div class="d">method: stm32.flash</div></button>
+		<button id="regen"><div class="t">コード再生成</div><div class="d">method: stm32.regenerateCode</div></button>
+		<button id="board"><div class="t">ボード設定</div><div class="d">method: stm32.openBoardConfigurator</div></button>
+		<button id="collab"><div class="t">共同作業</div><div class="d">method: stm32.collab.openPanel</div></button>
+		<button id="svd"><div class="t">SVD更新</div><div class="d">method: stm32.refreshRegisters</div></button>
+	</div>
+	<script>
+		const vscode = acquireVsCodeApi();
+		for (const id of ['startMcp','stopMcp','build','flash','regen','board','collab','svd']) {
+			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
+		}
+	</script>
+</body>
+</html>`;
+}
+
+function getWorkflowStudioHtml(webview: vscode.Webview): string {
+	const csp = webview.cspSource;
 	return `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -1694,25 +2120,58 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 			--mt:var(--vscode-descriptionForeground,#6b7280);
 			--ac:#0f766e;--ac2:rgba(15,118,110,.14);
 		}
-		body{font:12px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);padding:6px;background:var(--sf);color:var(--tx)}
-		.card{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;margin-bottom:3px;background:transparent;border:1px solid var(--bd);border-radius:7px;color:var(--tx);cursor:pointer;font:inherit;text-align:left;transition:background .1s,border-color .1s}
-		.card:hover{background:var(--ac2);border-color:rgba(15,118,110,.45)}
-		.card:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
-		.ic{width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:var(--ac2);color:var(--ac);font-size:12px;flex-shrink:0}
-		.body{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
-		.lbl{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-		.desc{font-size:10px;color:var(--mt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-		.arr{color:var(--mt);font-size:14px;flex-shrink:0}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:22px 24px;max-width:980px}
+		h1{font-size:20px;font-weight:700;margin-bottom:6px}
+		.sub{font-size:12px;color:var(--mt);margin-bottom:18px}
+		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
+		.ttl{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+		.badge{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--ac2);color:#99f6e4;border:1px solid rgba(15,118,110,.45)}
+		.desc{font-size:12px;color:var(--mt)}
+		.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+		button{background:transparent;border:1px solid var(--bd);color:var(--tx);border-radius:7px;padding:8px 10px;font:600 12px var(--vscode-font-family,'Segoe UI',sans-serif);cursor:pointer}
+		button:hover{background:var(--ac2);border-color:rgba(15,118,110,.55)}
+		button.primary{background:var(--ac);border-color:var(--ac);color:#fff}
+		button.primary:hover{background:#0d9488;border-color:#0d9488}
+		.tip{margin-top:16px;font-size:11px;color:var(--mt)}
 	</style>
 </head>
 <body>
-${cards}
-<script>
-	const vscode = acquireVsCodeApi();
-	for (const id of ['welcome','board','tutorial','templates','env','pin','error']) {
-		document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
-	}
-</script>
+	<h1>STM32 ワークフロースタジオ</h1>
+	<p class="sub">作業文脈ごとに画面を分離: 新規作成・コーディング・設定の3モードから開始できます。</p>
+	<div class="grid">
+		<div class="card">
+			<div class="ttl">1) 新規作成 <span class="badge">Create</span></div>
+			<p class="desc">ボード選択、クロック、ミドルウェア、メモリ設定までを1画面で実施します。必要ならCubeMX DBからMCUカタログを同期します。</p>
+			<div class="actions">
+				<button class="primary" id="create">ボード設定スタジオを開く</button>
+				<button id="syncCatalog">CubeMX カタログ同期</button>
+				<button id="tutorial">Lチカチュートリアル</button>
+			</div>
+		</div>
+		<div class="card">
+			<div class="ttl">2) コーディング <span class="badge">Code</span></div>
+			<p class="desc">ビルド/書き込み/AI支援/ピン編集へ直接アクセスし、実装作業に集中します。</p>
+			<div class="actions">
+				<button class="primary" id="coding">STM32 コマンドセンター</button>
+				<button id="pins">ピンビジュアライザ</button>
+			</div>
+		</div>
+		<div class="card">
+			<div class="ttl">3) 設定 <span class="badge">Setup</span></div>
+			<p class="desc">ツール検出、パス確認、環境診断を実行し、開発環境の不整合を即時解決します。</p>
+			<div class="actions">
+				<button class="primary" id="settings">環境チェックを実行</button>
+			</div>
+		</div>
+	</div>
+	<p class="tip">最初に迷ったら「新規作成」から開始すると、CubeMX相当の初期設定フローへ移動します。</p>
+	<script>
+		const vscode = acquireVsCodeApi();
+		for (const id of ['create', 'coding', 'settings', 'tutorial', 'pins', 'syncCatalog']) {
+			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
+		}
+	</script>
 </body>
 </html>`;
 }
@@ -1803,6 +2262,15 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 			</div>
 		</div>
 		<div class="card">
+			<div class="card-icon">◧</div>
+			<h3>作業モードから始める</h3>
+			<p>新規作成・コーディング・設定を画面分離したワークフロースタジオで、最初の一手を迷わず選べます。</p>
+			<div class="btns">
+				<button class="btn btn-pri" id="studio" aria-label="ワークフロースタジオ">ワークフロースタジオを開く →</button>
+				<button class="btn btn-sec" id="syncCatalog" aria-label="CubeMXカタログ同期">CubeMX カタログ同期</button>
+			</div>
+		</div>
+		<div class="card">
 			<div class="card-icon">🧭</div>
 			<h3>CubeMXなしで作る</h3>
 			<p>基板を選んで、クロック・デバッグ・RTOS・USB等を日本語UIで設定できます。作成後はピンGUIで配線設定可能です。</p>
@@ -1823,6 +2291,8 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 
 <script>
 	const vscode = acquireVsCodeApi();
+	document.getElementById('studio').addEventListener('click', () => vscode.postMessage({ type: 'studio' }));
+	document.getElementById('syncCatalog').addEventListener('click', () => vscode.postMessage({ type: 'syncCatalog' }));
 	document.getElementById('tutorial').addEventListener('click', () => vscode.postMessage({ type: 'tutorial' }));
 	document.getElementById('import').addEventListener('click', () => vscode.postMessage({ type: 'import' }));
 	document.getElementById('templates').addEventListener('click', () => vscode.postMessage({ type: 'templates' }));
@@ -2194,7 +2664,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		.pin-mode{font-size:10px;color:rgba(232,234,237,.65);margin-top:1px}
 		.empty-msg{color:var(--mt);font-size:13px;margin-top:20px}
 		.hint{font-size:11px;color:var(--mt);margin-bottom:14px}
-		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:10px;background:#13151e;padding:12px;display:none}
+		#chipView{overflow:auto;border:1px solid var(--bd);border-radius:10px;background:#13151e;padding:12px;display:block}
 		#chipView .lqfp-pin{cursor:pointer}
 		#chipView .lqfp-pin:focus rect{stroke:#fff;stroke-width:2}
 		#chipView .lqfp-pin:hover rect{filter:brightness(1.25)}
@@ -2210,7 +2680,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		#pinTooltip .tt-pin{font-weight:700;font-size:12px}
 		#pinTooltip .tt-num{color:#6b7280;font-size:10px}
 		#pinTooltip .tt-mode{color:#9ca3af;font-size:10px;margin-top:2px}
-		#groupsView{display:block}
+		#groupsView{display:none}
 		/* ---- pin edit dialog ---- */
 		#dlgBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
 		#dlgBackdrop.open{display:flex}
@@ -2262,8 +2732,8 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			<input id="filterInput" type="search" placeholder="ピン名 / モードで絞込み" aria-label="ピン絞込み" />
 		</div>
 		<div class="view-toggle" role="group" aria-label="表示切替">
-			<button id="btnList" class="vtbtn active" aria-pressed="true">リスト</button>
-			<button id="btnChip" class="vtbtn" aria-pressed="false">チップ図</button>
+			<button id="btnList" class="vtbtn" aria-pressed="false">リスト</button>
+			<button id="btnChip" class="vtbtn active" aria-pressed="true">チップ図</button>
 		</div>
 		<button id="btnAddPin" class="vtbtn" style="border-color:rgba(15,118,110,.45)" aria-label="ピンを追加">+ ピン追加</button>
 		<span class="pin-count" id="pinCount">${sorted.length} ピン</span>
@@ -2498,6 +2968,20 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		const chipView = document.getElementById('chipView');
 		const btnList = document.getElementById('btnList');
 		const btnChip = document.getElementById('btnChip');
+		const hasChipPins = document.querySelectorAll('.lqfp-pin').length > 0;
+
+		if (!hasChipPins) {
+			groupsView.style.display = '';
+			chipView.style.display = 'none';
+			btnList.classList.add('active');
+			btnList.setAttribute('aria-pressed', 'true');
+			btnChip.classList.remove('active');
+			btnChip.setAttribute('aria-pressed', 'false');
+			btnChip.disabled = true;
+			filterInput.disabled = false;
+		} else {
+			filterInput.disabled = true;
+		}
 
 		btnList.addEventListener('click', () => {
 			groupsView.style.display = ''; chipView.style.display = 'none';

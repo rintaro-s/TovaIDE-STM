@@ -382,7 +382,7 @@ class SvdRegisterProvider implements vscode.TreeDataProvider<RegisterTreeElement
 
 		const svdPath = await resolveSvdPath(workspaceRoot);
 		if (!svdPath) {
-			this.cachedRootElements = [];
+			this.cachedRootElements = await buildFallbackRegisterTree(workspaceRoot, this.dependencies);
 			this.cachedSvdPath = '';
 			this.onDidChangeTreeDataEmitter.fire();
 			return;
@@ -390,7 +390,8 @@ class SvdRegisterProvider implements vscode.TreeDataProvider<RegisterTreeElement
 
 		this.cachedSvdPath = svdPath;
 		const raw = await fs.readFile(svdPath, 'utf8').catch(() => '');
-		this.cachedRootElements = parseSvdToTree(raw);
+		const parsed = parseSvdToTree(raw);
+		this.cachedRootElements = parsed.length > 0 ? parsed : await buildFallbackRegisterTree(workspaceRoot, this.dependencies);
 		this.onDidChangeTreeDataEmitter.fire();
 	}
 
@@ -488,6 +489,8 @@ export function registerPhase2Features(context: vscode.ExtensionContext, depende
 		{ label: vscode.l10n.t('.ioc エディタを開く'), command: 'stm32.openIocEditor', icon: 'edit' },
 	]);
 	const commandCenterQuickActions = new QuickActionsProvider([
+		{ label: vscode.l10n.t('STM32 ワークフロースタジオを開く'), command: 'stm32ux.openWorkflowStudio', icon: 'layout' },
+		{ label: vscode.l10n.t('CubeMX からMCUカタログを同期'), command: 'stm32ux.syncMcuCatalogFromCubeMX', icon: 'cloud-download' },
 		{ label: vscode.l10n.t('新規STM32プロジェクトを作成'), command: 'stm32.newProject', icon: 'new-file' },
 		{ label: vscode.l10n.t('ボード設定スタジオを開く'), command: 'stm32ux.openBoardConfigurator', icon: 'settings-gear' },
 		{ label: vscode.l10n.t('STM32 テンプレートギャラリーを開く'), command: 'stm32ux.openTemplateGallery', icon: 'library' },
@@ -495,17 +498,11 @@ export function registerPhase2Features(context: vscode.ExtensionContext, depende
 		{ label: vscode.l10n.t('CubeCLT メタデータを検出'), command: 'stm32.detectCubeCLT', icon: 'search' },
 		{ label: vscode.l10n.t('Debugビルドを実行'), command: 'stm32.buildDebug', icon: 'tools' },
 		{ label: vscode.l10n.t('ビルドして書き込み'), command: 'stm32.buildAndFlash', icon: 'rocket' },
-		{ label: vscode.l10n.t('STM32 AI チャットを開く'), command: 'stm32ai.openChat', icon: 'comment' },
 	]);
 	const buildQuickActions = new QuickActionsProvider([
 		{ label: vscode.l10n.t('ビルド (Debug)'), command: 'stm32.buildDebug', icon: 'tools' },
 		{ label: vscode.l10n.t('書き込み'), command: 'stm32.flash', icon: 'zap' },
 		{ label: vscode.l10n.t('ビルド + 書き込み'), command: 'stm32.buildAndFlash', icon: 'rocket' },
-	]);
-	const aiQuickActions = new QuickActionsProvider([
-		{ label: vscode.l10n.t('AI チャットを開く'), command: 'stm32ai.openChat', icon: 'comment' },
-		{ label: vscode.l10n.t('ビルドエラーを修正'), command: 'stm32ai.fixBuildError', icon: 'wrench' },
-		{ label: vscode.l10n.t('HardFault 解析'), command: 'stm32ai.analyzeHardFault', icon: 'bug' },
 	]);
 
 	context.subscriptions.push(vscode.window.registerCustomEditorProvider(IOC_EDITOR_VIEW_TYPE, iocProvider, {
@@ -517,7 +514,6 @@ export function registerPhase2Features(context: vscode.ExtensionContext, depende
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-control.center', commandCenterQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-pin.quickActions', pinQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-build.quickActions', buildQuickActions));
-	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-ai.quickActions', aiQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-debug.registers', svdProvider));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-debug.liveExpressions', liveExpressionsProvider));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.openCommandCenter', async () => {
@@ -786,7 +782,7 @@ async function regenerateCodeFromIoc(uri: vscode.Uri | undefined, dependencies: 
 
 	const iocPath = iocUri.fsPath;
 	const snapshot = await captureUserCodeSnapshot(workspaceRoot);
-	const cubeMxExecutable = getCubeMxExecutable();
+	const cubeMxExecutable = await getCubeMxExecutable();
 	const argsTemplate = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.generateCliArgsTemplate', '-q "{ioc}" -s');
 
 	const generationResult = await runCubeMxGeneration(cubeMxExecutable, argsTemplate, iocPath, workspaceRoot, dependencies);
@@ -1001,7 +997,7 @@ async function refreshSvdRegisters(provider: SvdRegisterProvider): Promise<void>
 	if (currentPath.length > 0) {
 		vscode.window.setStatusBarMessage(vscode.l10n.t('SVDレジスタを更新しました。'), 1500);
 	} else {
-		vscode.window.showWarningMessage(vscode.l10n.t('SVDファイルが見つかりません。設定 `stm32.debug.svdPath` を確認してください。'));
+		vscode.window.showWarningMessage(vscode.l10n.t('SVDファイルが見つかりません。フォールバックレジスタを表示中です。設定 `stm32.debug.svdPath` を確認してください。'));
 	}
 }
 
@@ -1027,9 +1023,26 @@ async function resolveIocUri(uri: vscode.Uri | undefined, dependencies: Phase2De
 	return vscode.Uri.file(topLevelIoc);
 }
 
-function getCubeMxExecutable(): string {
+async function getCubeMxExecutable(): Promise<string> {
 	const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
-	return configured.length > 0 ? configured : 'STM32CubeMX';
+	if (configured.length === 0) {
+		return 'STM32CubeMX';
+	}
+
+	if (await pathExists(configured)) {
+		const separator = configured.includes('\\') ? '\\' : '/';
+		const trimmed = configured.endsWith(separator) ? configured.slice(0, -1) : configured;
+		if (trimmed.toLowerCase().endsWith('.exe') || trimmed.toLowerCase().endsWith('stm32cubemx')) {
+			return trimmed;
+		}
+
+		const executable = join(trimmed, process.platform === 'win32' ? 'STM32CubeMX.exe' : 'STM32CubeMX');
+		if (await pathExists(executable)) {
+			return executable;
+		}
+	}
+
+	return configured;
 }
 
 async function ensureStm32Scaffold(projectRoot: string): Promise<void> {
@@ -1233,6 +1246,102 @@ function parseIocSummary(iocText: string): IocSummary {
 		usedPeripherals: Array.from(usedPeripherals).sort().slice(0, 24),
 		clockHints: clockHints.slice(0, 12),
 	};
+}
+
+async function buildFallbackRegisterTree(workspaceRoot: string, dependencies: Phase2Dependencies): Promise<RegisterTreeElement[]> {
+	const iocPath = await dependencies.findTopLevelIocFile(workspaceRoot);
+	let summary: IocSummary | undefined;
+	if (iocPath) {
+		const iocText = await fs.readFile(iocPath, 'utf8').catch(() => '');
+		if (iocText.length > 0) {
+			summary = parseIocSummary(iocText);
+		}
+	}
+
+	const peripheralNames = summary?.usedPeripherals.length ? summary.usedPeripherals : ['RCC', 'GPIOA', 'USART1', 'SPI1', 'I2C1'];
+	const roots: RegisterTreeElement[] = [];
+	for (const name of peripheralNames) {
+		const template = getFallbackRegisterTemplate(name);
+		if (!template) {
+			continue;
+		}
+		roots.push(templateToTreeElement(template));
+		if (roots.length >= 24) {
+			break;
+		}
+	}
+
+	if (roots.length > 0) {
+		return roots;
+	}
+
+	return [templateToTreeElement(createPeripheralTemplate('SYSTEM', 0xE000E000, ['ICSR', 'VTOR', 'AIRCR']))];
+}
+
+interface FallbackPeripheralTemplate {
+	name: string;
+	baseAddress: number;
+	registers: string[];
+}
+
+function createPeripheralTemplate(name: string, baseAddress: number, registers: string[]): FallbackPeripheralTemplate {
+	return { name, baseAddress, registers };
+}
+
+function templateToTreeElement(template: FallbackPeripheralTemplate): RegisterTreeElement {
+	return {
+		kind: 'peripheral',
+		label: template.name,
+		description: 'SVD未検出時のフォールバック表示',
+		children: template.registers.map((registerName, index) => {
+			const address = template.baseAddress + index * 4;
+			const addressHex = toHex(address >>> 0, 8);
+			return {
+				kind: 'register',
+				label: registerName,
+				description: 'Fallback',
+				addressHex,
+				evaluationExpression: `*((volatile unsigned int*)${addressHex})`,
+			};
+		}),
+	};
+}
+
+function getFallbackRegisterTemplate(peripheralName: string): FallbackPeripheralTemplate | undefined {
+	const normalized = peripheralName.toUpperCase();
+	if (normalized.startsWith('GPIO')) {
+		const suffix = normalized.charCodeAt(normalized.length - 1) - 65;
+		const offset = suffix >= 0 && suffix < 11 ? suffix * 0x400 : 0;
+		return createPeripheralTemplate(normalized, 0x48000000 + offset, ['MODER', 'OTYPER', 'OSPEEDR', 'PUPDR', 'IDR', 'ODR', 'BSRR', 'AFRL', 'AFRH']);
+	}
+	if (normalized.startsWith('USART') || normalized.startsWith('UART') || normalized.startsWith('LPUART')) {
+		return createPeripheralTemplate(normalized, 0x40011000, ['CR1', 'CR2', 'CR3', 'BRR', 'ISR', 'RDR', 'TDR']);
+	}
+	if (normalized.startsWith('SPI')) {
+		return createPeripheralTemplate(normalized, 0x40013000, ['CR1', 'CR2', 'SR', 'DR', 'CRCPR', 'RXCRCR', 'TXCRCR']);
+	}
+	if (normalized.startsWith('I2C')) {
+		return createPeripheralTemplate(normalized, 0x40005400, ['CR1', 'CR2', 'OAR1', 'OAR2', 'TIMINGR', 'ISR', 'ICR', 'RXDR', 'TXDR']);
+	}
+	if (normalized.startsWith('ADC')) {
+		return createPeripheralTemplate(normalized, 0x50000000, ['ISR', 'IER', 'CR', 'CFGR', 'SMPR1', 'SMPR2', 'SQR1', 'DR']);
+	}
+	if (normalized.startsWith('TIM')) {
+		return createPeripheralTemplate(normalized, 0x40000000, ['CR1', 'CR2', 'SMCR', 'DIER', 'SR', 'CNT', 'PSC', 'ARR', 'CCR1']);
+	}
+	if (normalized.startsWith('RCC')) {
+		return createPeripheralTemplate('RCC', 0x40021000, ['CR', 'CFGR', 'PLLCKSELR', 'PLLCFGR', 'AHB1ENR', 'APB1ENR1', 'APB2ENR']);
+	}
+	if (normalized.startsWith('DMA')) {
+		return createPeripheralTemplate(normalized, 0x40020000, ['ISR', 'IFCR', 'CCR1', 'CNDTR1', 'CPAR1', 'CMAR1']);
+	}
+	if (normalized.startsWith('CAN')) {
+		return createPeripheralTemplate(normalized, 0x40006400, ['MCR', 'MSR', 'TSR', 'RF0R', 'RF1R', 'IER', 'ESR']);
+	}
+	if (normalized.startsWith('USB')) {
+		return createPeripheralTemplate(normalized, 0x50000000, ['EP0R', 'EP1R', 'CNTR', 'ISTR', 'FNR', 'DADDR', 'BTABLE']);
+	}
+	return undefined;
 }
 
 async function resolveSvdPath(workspaceRoot: string): Promise<string | undefined> {

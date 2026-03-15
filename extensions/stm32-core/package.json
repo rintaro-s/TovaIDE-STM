@@ -42,7 +42,6 @@
     "onView:stm32-control.center",
     "onView:stm32-pin.quickActions",
     "onView:stm32-build.quickActions",
-    "onView:stm32-ai.quickActions",
     "onView:stm32-debug.registers",
     "onView:stm32-debug.liveExpressions",
     "onCustomEditor:stm32.iocEditor"
@@ -204,11 +203,6 @@
           "icon": "./media/icons/stm32-build.svg"
         },
         {
-          "id": "stm32-ai",
-          "title": "STM32 AI",
-          "icon": "./media/icons/stm32-ai.svg"
-        },
-        {
           "id": "stm32-debug",
           "title": "STM32 Debug",
           "icon": "./media/icons/stm32-build.svg"
@@ -235,13 +229,6 @@
           "id": "stm32-build.quickActions",
           "name": "ビルドクイック操作",
           "icon": "./media/icons/stm32-build.svg"
-        }
-      ],
-      "stm32-ai": [
-        {
-          "id": "stm32-ai.quickActions",
-          "name": "AIクイック操作",
-          "icon": "./media/icons/stm32-ai.svg"
         }
       ],
       "stm32-debug": [

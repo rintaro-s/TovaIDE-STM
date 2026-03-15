@@ -13,6 +13,7 @@
   ],
   "main": "./out/extension",
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:stm32collab.startSession",
     "onCommand:stm32collab.joinSession",
     "onCommand:stm32collab.discoverSessions",
@@ -25,7 +26,8 @@
     "onCommand:stm32collab.shareDebugSnapshot",
     "onCommand:stm32collab.runQualityAudit",
     "onCommand:stm32collab.exportProjectZip",
-    "onCommand:stm32collab.openPanel"
+    "onCommand:stm32collab.openPanel",
+    "onView:stm32-collab.panel"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -124,6 +126,7 @@
       "stm32-collab": [
         {
           "id": "stm32-collab.panel",
+          "type": "webview",
           "name": "共同作業",
           "icon": "../stm32-core/media/icons/stm32-collab.svg"
         }

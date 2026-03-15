@@ -14,6 +14,7 @@
 	},
 	"chat.viewSessions.enabled": true,
 	"chat.editing.explainChanges.enabled": true,
+	"stm32.cubemx.path": "C:\\Users\\s-rin\\AppData\\Local\\Programs\\STM32CubeMX",
 	// --- Editor ---
 	"editor.insertSpaces": false,
 	"editor.experimental.asyncTokenization": true,

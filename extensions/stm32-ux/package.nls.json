@@ -1,7 +1,10 @@
 {
   "displayName": "STM32 UX",
   "description": "Beginner onboarding and migration UX for STM32 in TovaIDE",
+  "command.openWorkflowStudio.title": "Open STM32 Workflow Studio",
   "command.openWelcomeWizard.title": "Open STM32 Welcome Wizard",
+  "command.openMcpOperationDesk.title": "Open STM32 MCP Operation Desk",
+  "command.syncMcuCatalogFromCubeMX.title": "Sync MCU Catalog from STM32CubeMX",
   "command.startBlinkTutorial.title": "Start STM32 Blink Tutorial",
   "command.openTemplateGallery.title": "Open STM32 Template Gallery",
   "command.openBoardConfigurator.title": "Open STM32 Board Configurator",

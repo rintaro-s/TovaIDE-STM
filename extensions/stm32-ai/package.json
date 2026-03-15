@@ -16,16 +16,14 @@
   ],
   "main": "./out/extension",
   "activationEvents": [
-    "onCommand:stm32ai.openAssistantPanel",
-    "onCommand:stm32ai.openChat",
+    "onStartupFinished",
     "onCommand:stm32ai.runSemiAutoFlow",
     "onCommand:stm32ai.runAutoUntilFlash",
     "onCommand:stm32ai.runFullAutoFlow",
     "onCommand:stm32ai.fixBuildError",
     "onCommand:stm32ai.analyzeHardFault",
     "onCommand:stm32ai.startMcpServer",
-    "onCommand:stm32ai.stopMcpServer",
-    "onView:stm32-ai.assistantView"
+    "onCommand:stm32ai.stopMcpServer"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -35,16 +33,6 @@
   },
   "contributes": {
     "commands": [
-      {
-        "command": "stm32ai.openAssistantPanel",
-        "title": "%command.openAssistantPanel.title%",
-        "category": "STM32 AI"
-      },
-      {
-        "command": "stm32ai.openChat",
-        "title": "%command.openChat.title%",
-        "category": "STM32 AI"
-      },
       {
         "command": "stm32ai.runSemiAutoFlow",
         "title": "%command.runSemiAutoFlow.title%",
@@ -81,24 +69,6 @@
         "category": "STM32 AI"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "stm32-ai-assistant",
-          "title": "STM32 AI",
-          "icon": "../stm32-core/media/icons/stm32-ai.svg"
-        }
-      ]
-    },
-    "views": {
-      "stm32-ai-assistant": [
-        {
-          "id": "stm32-ai.assistantView",
-          "name": "AIアシスタント",
-          "icon": "../stm32-core/media/icons/stm32-ai.svg"
-        }
-      ]
-    },
     "chatParticipants": [
       {
         "id": "stm32ai",

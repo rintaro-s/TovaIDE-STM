@@ -367,8 +367,7 @@ async function openCubeMx(): Promise<void> {
 		return;
 	}
 
-	const configuredPath = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
-	const cubeMxExecutable = configuredPath.length > 0 ? configuredPath : 'STM32CubeMX';
+	const cubeMxExecutable = await resolveCubeMxExecutable();
 	const iocPath = await findTopLevelIocFile(workspaceRoot);
 	const args = iocPath ? [iocPath] : [];
 
@@ -379,8 +378,27 @@ async function openCubeMx(): Promise<void> {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		outputChannel.appendLine(`[STM32] CubeMX launch failed: ${message}`);
-		vscode.window.showErrorMessage(vscode.l10n.t('CubeMXの起動に失敗しました。設定を確認してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('CubeMXの起動に失敗しました。`stm32.cubemx.path` は実行ファイルまたはインストールフォルダを指定してください。'));
 	}
+}
+
+async function resolveCubeMxExecutable(): Promise<string> {
+	const configuredPath = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
+	if (configuredPath.length === 0) {
+		return 'STM32CubeMX';
+	}
+
+	const isExecutablePath = configuredPath.toLowerCase().endsWith('.exe') || configuredPath.toLowerCase().endsWith('stm32cubemx');
+	if (isExecutablePath) {
+		return configuredPath;
+	}
+
+	const candidate = join(configuredPath, process.platform === 'win32' ? 'STM32CubeMX.exe' : 'STM32CubeMX');
+	if (await probeFilePath(candidate)) {
+		return candidate;
+	}
+
+	return configuredPath;
 }
 
 async function jumpToFirstBuildError(): Promise<void> {
