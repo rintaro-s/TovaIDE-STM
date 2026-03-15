@@ -45,6 +45,14 @@ const execFileAsync = utilModule.promisify(execFile);
 interface CubeMetadata {
 	make_path?: string;
 	programmer_path?: string;
+	GNUToolsForSTM32?: string;
+	STM32CubeProgrammer?: string;
+	STM32CubeTargetRepo?: string;
+	STM32CubeSVDRepo?: string;
+	STLinkGDBServer?: string;
+	CMake?: string;
+	Ninja?: string;
+	'st-arm-clang'?: string;
 }
 
 interface CliResult {
@@ -148,14 +156,20 @@ export function deactivate(): void {
 
 async function showNewProjectGuide(): Promise<void> {
 	const choice = await vscode.window.showInformationMessage(
-		vscode.l10n.t('新規STM32プロジェクトは、まず .ioc の作成または既存プロジェクトのインポートから開始します。'),
+		vscode.l10n.t('新規STM32プロジェクトの開始方法を選択してください。'),
+		vscode.l10n.t('テンプレートから作成'),
 		vscode.l10n.t('CubeMXを起動'),
-		vscode.l10n.t('設定を開く'),
+		vscode.l10n.t('CubeIDEプロジェクトをインポート'),
+		vscode.l10n.t('STM32 設定を開く'),
 	);
 
-	if (choice === vscode.l10n.t('CubeMXを起動')) {
+	if (choice === vscode.l10n.t('テンプレートから作成')) {
+		await vscode.commands.executeCommand('stm32ux.openTemplateGallery');
+	} else if (choice === vscode.l10n.t('CubeMXを起動')) {
 		await openCubeMx();
-	} else if (choice === vscode.l10n.t('設定を開く')) {
+	} else if (choice === vscode.l10n.t('CubeIDEプロジェクトをインポート')) {
+		await vscode.commands.executeCommand('stm32.importCubeIDE');
+	} else if (choice === vscode.l10n.t('STM32 設定を開く')) {
 		await vscode.commands.executeCommand('workbench.action.openSettings', 'stm32.');
 	}
 }
@@ -197,12 +211,33 @@ async function detectCubeCLTMetadata(): Promise<CubeMetadata | undefined> {
 		outputChannel.appendLine(`[STM32] Detecting metadata using ${metadataExecutable}`);
 		const needsShell = metadataExecutable.endsWith('.bat') || metadataExecutable.endsWith('.sh');
 		await execFileAsync(metadataExecutable, ['-j', tempJsonPath], { cwd: workspaceRoot, shell: needsShell });
-		const raw = await fs.readFile(tempJsonPath, 'utf8');
+		let raw = await fs.readFile(tempJsonPath, 'utf8');
+		raw = raw.replace(/\\/g, '\\\\');
 		const parsed = JSON.parse(raw) as CubeMetadata;
-		cachedMetadata = parsed;
+		const metadata: CubeMetadata = {
+			make_path: parsed.GNUToolsForSTM32 || parsed.make_path,
+			programmer_path: parsed.STM32CubeProgrammer || parsed.programmer_path,
+		};
+		cachedMetadata = metadata;
 		outputChannel.appendLine('[STM32] Metadata detected successfully.');
+		outputChannel.appendLine(`[STM32] - GCC: ${metadata.make_path || '(not found)'}`);
+		outputChannel.appendLine(`[STM32] - Programmer: ${metadata.programmer_path || '(not found)'}`);
+
+		if (metadata.make_path || metadata.programmer_path) {
+			const pathsToAdd: string[] = [];
+			if (metadata.make_path) { pathsToAdd.push(metadata.make_path); }
+			if (metadata.programmer_path) { pathsToAdd.push(metadata.programmer_path); }
+
+			const currentPath = process.env['PATH'] || '';
+			const newPaths = pathsToAdd.filter(p => !currentPath.includes(p));
+			if (newPaths.length > 0) {
+				process.env['PATH'] = newPaths.join(process.platform === 'win32' ? ';' : ':') + (process.platform === 'win32' ? ';' : ':') + currentPath;
+				outputChannel.appendLine(`[STM32] Added to PATH: ${newPaths.join(', ')}`);
+			}
+		}
+
 		vscode.window.showInformationMessage(vscode.l10n.t('CubeCLTメタデータを検出しました。'));
-		return parsed;
+		return metadata;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		outputChannel.appendLine(`[STM32] Metadata detection failed: ${message}`);

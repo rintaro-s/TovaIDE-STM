@@ -1,6 +1,7 @@
 {
   "displayName": "STM32 Core",
   "description": "STM32CubeCLT/CubeMX integration for TovaIDE",
+  "command.openCommandCenter.title": "Open STM32 Command Center",
   "command.newProject.title": "Create New Project",
   "command.importCubeIDE.title": "Import CubeIDE Project",
   "command.detectCubeCLT.title": "Detect CubeCLT Metadata",

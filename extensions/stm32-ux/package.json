@@ -18,6 +18,7 @@
     "onCommand:stm32ux.openWelcomeWizard",
     "onCommand:stm32ux.startBlinkTutorial",
     "onCommand:stm32ux.openTemplateGallery",
+    "onCommand:stm32ux.openBoardConfigurator",
     "onCommand:stm32ux.runEnvironmentCheck",
     "onCommand:stm32ux.explainLatestError",
     "onCommand:stm32ux.openPinVisualizer"
@@ -43,6 +44,11 @@
       {
         "command": "stm32ux.openTemplateGallery",
         "title": "%command.openTemplateGallery.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.openBoardConfigurator",
+        "title": "%command.openBoardConfigurator.title%",
         "category": "STM32"
       },
       {

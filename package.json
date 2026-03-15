@@ -1,6 +1,6 @@
 {
   "name": "cubeforge-ide-dev",
-  "version": "2.0.0",
+  "version": "1.105.0",
   "icon": "resources/win32/code_70x70.png",
   "distro": "2e74305a6fb0a094a3797324d58940dda3d161ff",
   "author": {

@@ -487,6 +487,16 @@ export function registerPhase2Features(context: vscode.ExtensionContext, depende
 		{ label: vscode.l10n.t('ピンビジュアライザを開く'), command: 'stm32ux.openPinVisualizer', icon: 'symbol-color' },
 		{ label: vscode.l10n.t('.ioc エディタを開く'), command: 'stm32.openIocEditor', icon: 'edit' },
 	]);
+	const commandCenterQuickActions = new QuickActionsProvider([
+		{ label: vscode.l10n.t('新規STM32プロジェクトを作成'), command: 'stm32.newProject', icon: 'new-file' },
+		{ label: vscode.l10n.t('ボード設定スタジオを開く'), command: 'stm32ux.openBoardConfigurator', icon: 'settings-gear' },
+		{ label: vscode.l10n.t('STM32 テンプレートギャラリーを開く'), command: 'stm32ux.openTemplateGallery', icon: 'library' },
+		{ label: vscode.l10n.t('STM32 ツール環境チェックを実行'), command: 'stm32ux.runEnvironmentCheck', icon: 'check-all' },
+		{ label: vscode.l10n.t('CubeCLT メタデータを検出'), command: 'stm32.detectCubeCLT', icon: 'search' },
+		{ label: vscode.l10n.t('Debugビルドを実行'), command: 'stm32.buildDebug', icon: 'tools' },
+		{ label: vscode.l10n.t('ビルドして書き込み'), command: 'stm32.buildAndFlash', icon: 'rocket' },
+		{ label: vscode.l10n.t('STM32 AI チャットを開く'), command: 'stm32ai.openChat', icon: 'comment' },
+	]);
 	const buildQuickActions = new QuickActionsProvider([
 		{ label: vscode.l10n.t('ビルド (Debug)'), command: 'stm32.buildDebug', icon: 'tools' },
 		{ label: vscode.l10n.t('書き込み'), command: 'stm32.flash', icon: 'zap' },
@@ -504,11 +514,15 @@ export function registerPhase2Features(context: vscode.ExtensionContext, depende
 		},
 		supportsMultipleEditorsPerDocument: false,
 	}));
+	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-control.center', commandCenterQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-pin.quickActions', pinQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-build.quickActions', buildQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-ai.quickActions', aiQuickActions));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-debug.registers', svdProvider));
 	context.subscriptions.push(vscode.window.registerTreeDataProvider('stm32-debug.liveExpressions', liveExpressionsProvider));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.openCommandCenter', async () => {
+		await vscode.commands.executeCommand('workbench.view.extension.stm32-control');
+	}));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.importCubeIDE', () => importCubeIdeProject(dependencies)));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.openIocEditor', (uri?: vscode.Uri) => openIocEditor(uri, dependencies)));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.regenerateCode', (uri?: vscode.Uri) => regenerateCodeFromIoc(uri, dependencies)));

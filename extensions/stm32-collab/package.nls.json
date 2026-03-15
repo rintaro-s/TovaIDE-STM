@@ -14,9 +14,12 @@
   "command.shareDebugSnapshot.title": "Share STM32 Debug Snapshot (Read-only)",
   "command.runQualityAudit.title": "Run STM32 Quality Audit",
   "command.exportProjectZip.title": "Export STM32 Project as ZIP",
+  "command.startWsSync.title": "Start STM32 Workspace Sync",
+  "command.stopWsSync.title": "Stop STM32 Workspace Sync",
   "configuration.title": "STM32 Collaboration",
   "configuration.sharePort.description": "Port used by the STM32 LAN share server.",
   "configuration.discoveryPort.description": "UDP multicast port used for session discovery.",
   "configuration.syncPort.description": "UDP multicast port used for realtime collaboration sync.",
-  "configuration.gitPort.description": "Port used by the local Git daemon for LAN sharing."
+  "configuration.gitPort.description": "Port used by the local Git daemon for LAN sharing.",
+  "configuration.wsSyncPort.description": "Port used by STM32 workspace synchronization."
 }

@@ -4,6 +4,7 @@
   "command.openWelcomeWizard.title": "Open STM32 Welcome Wizard",
   "command.startBlinkTutorial.title": "Start STM32 Blink Tutorial",
   "command.openTemplateGallery.title": "Open STM32 Template Gallery",
+  "command.openBoardConfigurator.title": "Open STM32 Board Configurator",
   "command.runEnvironmentCheck.title": "Run STM32 Environment Check",
   "command.explainLatestError.title": "Explain Latest Build Error",
   "command.openPinVisualizer.title": "Open STM32 Pin Visualizer",

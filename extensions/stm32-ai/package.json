@@ -99,6 +99,36 @@
         }
       ]
     },
+    "chatParticipants": [
+      {
+        "id": "stm32ai",
+        "name": "stm32ai",
+        "description": "STM32 assistant for project setup, build, flash and debug workflows.",
+        "isDefault": false,
+        "commands": [
+          {
+            "name": "build",
+            "description": "Build Debug target"
+          },
+          {
+            "name": "flash",
+            "description": "Flash latest build to target"
+          },
+          {
+            "name": "fix",
+            "description": "Analyze and fix latest build error"
+          },
+          {
+            "name": "hardfault",
+            "description": "Analyze HardFault registers"
+          },
+          {
+            "name": "flow",
+            "description": "Run guided STM32 workflow"
+          }
+        ]
+      }
+    ],
     "languageModelTools": [
       {
         "name": "stm32Build",

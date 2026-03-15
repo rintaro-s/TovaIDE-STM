@@ -13,6 +13,7 @@
   ],
   "main": "./out/extension",
   "activationEvents": [
+    "onCommand:stm32.openCommandCenter",
     "onCommand:stm32.detectCubeCLT",
     "onCommand:stm32.buildDebug",
     "onCommand:stm32.flash",
@@ -38,6 +39,12 @@
     "onCommand:stm32.liveExpressions.moveUp",
     "onCommand:stm32.liveExpressions.moveDown",
     "onCommand:stm32.debug.refreshRegisters",
+    "onView:stm32-control.center",
+    "onView:stm32-pin.quickActions",
+    "onView:stm32-build.quickActions",
+    "onView:stm32-ai.quickActions",
+    "onView:stm32-debug.registers",
+    "onView:stm32-debug.liveExpressions",
     "onCustomEditor:stm32.iocEditor"
   ],
   "capabilities": {
@@ -48,6 +55,11 @@
   },
   "contributes": {
     "commands": [
+      {
+        "command": "stm32.openCommandCenter",
+        "title": "%command.openCommandCenter.title%",
+        "category": "STM32"
+      },
       {
         "command": "stm32.newProject",
         "title": "%command.newProject.title%",
@@ -177,6 +189,11 @@
     "viewsContainers": {
       "activitybar": [
         {
+          "id": "stm32-control",
+          "title": "STM32",
+          "icon": "./media/icons/stm32-build.svg"
+        },
+        {
           "id": "stm32-pin",
           "title": "STM32 Pin",
           "icon": "./media/icons/stm32-pin.svg"
@@ -199,6 +216,13 @@
       ]
     },
     "views": {
+      "stm32-control": [
+        {
+          "id": "stm32-control.center",
+          "name": "STM32 Command Center",
+          "icon": "./media/icons/stm32-build.svg"
+        }
+      ],
       "stm32-pin": [
         {
           "id": "stm32-pin.quickActions",

@@ -25,6 +25,66 @@ interface TemplateDefinition {
 	userCodeLines: string[];
 }
 
+interface BoardProfile {
+	id: string;
+	name: string;
+	mcu: string;
+	description: string;
+	defaultPins: Array<{ pin: string; mode: string }>;
+}
+
+interface BoardConfiguratorPayload {
+	boardId: string;
+	projectName: string;
+	clockSource: 'Internal' | 'External';
+	sysclkMHz: number;
+	debugPort: 'SWD' | 'JTAG' | 'Disabled';
+	enableFreeRtos: boolean;
+	enableUsb: boolean;
+	enableEthernet: boolean;
+	stackSize: number;
+	heapSize: number;
+	openPinGui: boolean;
+}
+
+const BOARD_PROFILES: BoardProfile[] = [
+	{
+		id: 'nucleo-f446re',
+		name: 'Nucleo-F446RE',
+		mcu: 'STM32F446RETx',
+		description: '汎用評価ボード。初学者向け。',
+		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }]
+	},
+	{
+		id: 'nucleo-l476rg',
+		name: 'Nucleo-L476RG',
+		mcu: 'STM32L476RGTx',
+		description: '低消費電力向け。',
+		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PB6', mode: 'I2C1_SCL' }, { pin: 'PB7', mode: 'I2C1_SDA' }]
+	},
+	{
+		id: 'nucleo-g071rb',
+		name: 'Nucleo-G071RB',
+		mcu: 'STM32G071RBTx',
+		description: 'コスト重視の量産向け。',
+		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }]
+	},
+	{
+		id: 'bluepill-f103c8',
+		name: 'BluePill-F103C8',
+		mcu: 'STM32F103C8Tx',
+		description: '手軽なF1系評価基板。',
+		defaultPins: [{ pin: 'PC13', mode: 'GPIO_Output' }, { pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }]
+	},
+	{
+		id: 'nucleo-h743zi',
+		name: 'Nucleo-H743ZI',
+		mcu: 'STM32H743ZITx',
+		description: '高性能H7向け。',
+		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PB13', mode: 'SPI2_SCK' }, { pin: 'PB14', mode: 'SPI2_MISO' }, { pin: 'PB15', mode: 'SPI2_MOSI' }]
+	}
+];
+
 const TUTORIAL_STEPS = [
 	'1. MCUを選択: タイトルバーのMCUセレクタで対象デバイスを選びます。',
 	'2. 新規プロジェクト: コマンドパレットから STM32: 新規プロジェクト を実行します。',
@@ -58,6 +118,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWelcomeWizard', () => openWelcomeWizard()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.startBlinkTutorial', () => openBlinkTutorial()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openTemplateGallery', () => openTemplateGallery()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openBoardConfigurator', () => openBoardConfigurator()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.runEnvironmentCheck', () => runEnvironmentCheck()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.explainLatestError', () => explainLatestError()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPinVisualizer', () => openPinVisualizer()));
@@ -84,6 +145,9 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 			switch (message.type) {
 				case 'welcome':
 					await openWelcomeWizard();
+					break;
+				case 'board':
+					await openBoardConfigurator();
 					break;
 				case 'tutorial':
 					await openBlinkTutorial();
@@ -113,6 +177,9 @@ async function openWelcomeWizard(): Promise<void> {
 			return;
 		}
 		switch (message.type) {
+				case 'board':
+					await openBoardConfigurator();
+					break;
 			case 'tutorial':
 				await openBlinkTutorial();
 				break;
@@ -180,10 +247,46 @@ async function openTemplateGallery(): Promise<void> {
 	});
 }
 
+async function openBoardConfigurator(): Promise<void> {
+	const panel = vscode.window.createWebviewPanel('stm32ux.boardConfigurator', 'STM32 ボード設定スタジオ', vscode.ViewColumn.Active, { enableScripts: true });
+	panel.webview.html = getBoardConfiguratorHtml(panel.webview);
+	panel.webview.onDidReceiveMessage(async message => {
+		if (!isRecord(message) || message.type !== 'create' || !isRecord(message.payload)) {
+			return;
+		}
+
+		const payload = message.payload as Record<string, unknown>;
+		const boardId = typeof payload.boardId === 'string' ? payload.boardId : '';
+		const projectName = typeof payload.projectName === 'string' ? payload.projectName.trim() : '';
+		const profile = BOARD_PROFILES.find(item => item.id === boardId);
+		if (!profile || projectName.length === 0) {
+			vscode.window.showErrorMessage(vscode.l10n.t('ボードとプロジェクト名を入力してください。'));
+			return;
+		}
+
+		const config: BoardConfiguratorPayload = {
+			boardId,
+			projectName,
+			clockSource: payload.clockSource === 'External' ? 'External' : 'Internal',
+			sysclkMHz: Number(payload.sysclkMHz) || 80,
+			debugPort: payload.debugPort === 'JTAG' ? 'JTAG' : payload.debugPort === 'Disabled' ? 'Disabled' : 'SWD',
+			enableFreeRtos: payload.enableFreeRtos === true,
+			enableUsb: payload.enableUsb === true,
+			enableEthernet: payload.enableEthernet === true,
+			stackSize: Math.max(256, Number(payload.stackSize) || 1024),
+			heapSize: Math.max(256, Number(payload.heapSize) || 1536),
+			openPinGui: payload.openPinGui !== false,
+		};
+
+		await createProjectFromBoardConfigurator(profile, config);
+	});
+}
+
 async function runEnvironmentCheck(): Promise<void> {
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 	const configuredCubeMx = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
 	const configuredMetadata = vscode.workspace.getConfiguration('stm32').get<string>('cubeclt.metadataPath', '').trim();
+	const inferredToolPaths = configuredMetadata ? await inferToolPathsFromMetadataPath(configuredMetadata) : {};
 
 	const rows: string[] = [];
 
@@ -224,7 +327,22 @@ async function runEnvironmentCheck(): Promise<void> {
 	];
 	for (const tool of tools) {
 		const foundPath = await resolveCommandPath(tool.command, workspaceRoot);
-		rows.push(`- ${tool.id}: ${foundPath ? `✅ ${foundPath}` : '❌ 未検出 (PATH に含まれていません)'}`);
+		if (foundPath) {
+			rows.push(`- ${tool.id}: ✅ ${foundPath}`);
+			continue;
+		}
+
+		if (tool.id === 'STM32_Programmer_CLI' && inferredToolPaths.programmerCliPath) {
+			rows.push(`- ${tool.id}: ✅ ${inferredToolPaths.programmerCliPath} (CubeCLT メタデータから推定)`);
+			continue;
+		}
+
+		if (tool.id === 'arm-none-eabi-gcc' && inferredToolPaths.gccPath) {
+			rows.push(`- ${tool.id}: ✅ ${inferredToolPaths.gccPath} (CubeCLT メタデータから推定)`);
+			continue;
+		}
+
+		rows.push(`- ${tool.id}: ❌ 未検出 (PATH に含まれていません)`);
 	}
 
 	const report = [
@@ -238,7 +356,8 @@ async function runEnvironmentCheck(): Promise<void> {
 		`- stm32.cubeclt.metadataPath: ${configuredMetadata.length > 0 ? configuredMetadata : '(未設定)'}`,
 		'',
 		'## ヒント',
-		'- STM32_Programmer_CLI が未検出の場合、CubeCLT メタデータ検出を実行してください',
+		'- STM32_Programmer_CLI / arm-none-eabi-gcc が PATH に無くても、CubeCLT メタデータパスから推定検出される場合があります',
+		'- PATH に通しておくと、外部ターミナルやビルドタスクでも同じ実行ファイルを利用できます',
 		'- コマンドパレット: `STM32: CubeCLT メタデータを検出`',
 	].join('\n');
 
@@ -497,6 +616,112 @@ async function createProjectFromTemplate(templateName: string): Promise<void> {
 	if (openAction === vscode.l10n.t('フォルダを開く')) {
 		await vscode.commands.executeCommand('vscode.openFolder', projectUri, false);
 	}
+}
+
+async function createProjectFromBoardConfigurator(profile: BoardProfile, config: BoardConfiguratorPayload): Promise<void> {
+	const folderPick = await vscode.window.showOpenDialog({
+		canSelectMany: false,
+		canSelectFiles: false,
+		canSelectFolders: true,
+		openLabel: vscode.l10n.t('作成先フォルダを選択')
+	});
+	if (!folderPick || folderPick.length === 0) {
+		return;
+	}
+
+	const projectName = sanitizeProjectName(config.projectName);
+	const projectUri = vscode.Uri.joinPath(folderPick[0], projectName);
+	const allowOverwrite = await confirmCreateProject(projectUri);
+	if (!allowOverwrite) {
+		return;
+	}
+
+	await vscode.workspace.fs.createDirectory(projectUri);
+	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, 'Core'));
+	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, 'Core', 'Inc'));
+	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, 'Core', 'Src'));
+	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, '.vscode'));
+
+	const mcuPins = await loadMcuPackagePins(profile.mcu);
+	const mergedPins = mergePins(mcuPins, profile.defaultPins);
+	const template: TemplateDefinition = {
+		name: profile.name,
+		category: 'ボード設定スタジオ',
+		mcu: profile.mcu,
+		pinModes: mergedPins,
+		userCodeLines: [
+			'/* STM32 ボード設定スタジオで生成 */',
+			'HAL_Delay(100);'
+		]
+	};
+
+	const iocText = generateIocTextFromBoardConfig(projectName, template, config);
+	const mainText = generateMainSource(template);
+	const headerText = generateMainHeader();
+	const readmeText = generateReadme(projectName, template);
+	const extJson = '{\n  "recommendations": [\n    "ms-vscode.cpptools"\n  ]\n}\n';
+	const tasksJson = generateTasksJson();
+	const launchJson = generateLaunchJson(projectName);
+	const cPropertiesJson = generateCProperties(template);
+
+	await writeTextFile(vscode.Uri.joinPath(projectUri, `${projectName}.ioc`), iocText);
+	await writeTextFile(vscode.Uri.joinPath(projectUri, 'Core', 'Src', 'main.c'), mainText);
+	await writeTextFile(vscode.Uri.joinPath(projectUri, 'Core', 'Inc', 'main.h'), headerText);
+	await writeTextFile(vscode.Uri.joinPath(projectUri, 'README.md'), readmeText);
+	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'extensions.json'), extJson);
+	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'tasks.json'), tasksJson);
+	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'launch.json'), launchJson);
+	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'c_cpp_properties.json'), cPropertiesJson);
+
+	const openAction = await vscode.window.showInformationMessage(
+		vscode.l10n.t('ボード設定スタジオでプロジェクトを生成しました: {0}', projectName),
+		vscode.l10n.t('フォルダを開く'),
+		vscode.l10n.t('このままピン設定を開く')
+	);
+	if (openAction === vscode.l10n.t('フォルダを開く')) {
+		await vscode.commands.executeCommand('vscode.openFolder', projectUri, false);
+		return;
+	}
+
+	if (config.openPinGui || openAction === vscode.l10n.t('このままピン設定を開く')) {
+		await vscode.workspace.updateWorkspaceFolders(0, vscode.workspace.workspaceFolders?.length ?? 0, { uri: projectUri });
+		await vscode.commands.executeCommand('stm32ux.openPinVisualizer');
+	}
+}
+
+function mergePins(basePins: Array<{ pin: string; mode: string }>, preferredPins: Array<{ pin: string; mode: string }>): Array<{ pin: string; mode: string }> {
+	const map = new Map<string, string>();
+	for (const item of basePins) {
+		map.set(item.pin, item.mode);
+	}
+	for (const item of preferredPins) {
+		map.set(item.pin, item.mode);
+	}
+	return Array.from(map.entries()).map(([pin, mode]) => ({ pin, mode }));
+}
+
+function generateIocTextFromBoardConfig(projectName: string, template: TemplateDefinition, config: BoardConfiguratorPayload): string {
+	const lines = [
+		'# Auto-generated by STM32 UX board configurator',
+		`Mcu.Name=${template.mcu}`,
+		`ProjectManager.ProjectName=${projectName}`,
+		'ProjectManager.TargetToolchain=STM32CubeIDE',
+		'ProjectManager.NoMain=false',
+		`RCC.ClockSource=${config.clockSource}`,
+		`RCC.SysClkMHz=${config.sysclkMHz}`,
+		`SYS.DebugPort=${config.debugPort}`,
+		`Middleware.FreeRTOS=${config.enableFreeRtos ? 'Enabled' : 'Disabled'}`,
+		`Middleware.USB=${config.enableUsb ? 'Enabled' : 'Disabled'}`,
+		`Middleware.Ethernet=${config.enableEthernet ? 'Enabled' : 'Disabled'}`,
+		`ProjectManager.StackSize=${config.stackSize}`,
+		`ProjectManager.HeapSize=${config.heapSize}`,
+	];
+
+	for (const pin of template.pinModes) {
+		lines.push(`${pin.pin}=${pin.mode}`);
+	}
+
+	return `${lines.join('\n')}\n`;
 }
 
 async function confirmCreateProject(projectUri: vscode.Uri): Promise<boolean> {
@@ -1218,6 +1443,64 @@ function getErrorHint(message: string): string {
 	return 'エラー内容を確認し、該当行と直前の変更を比較してください。必要であれば STM32 AI で /fix を実行します。';
 }
 
+interface InferredToolPaths {
+	programmerCliPath?: string;
+	gccPath?: string;
+}
+
+async function inferToolPathsFromMetadataPath(metadataPath: string): Promise<InferredToolPaths> {
+	const separator = metadataPath.includes('\\') ? '\\' : '/';
+	const root = metadataPath.replace(/[\\/][^\\/]+$/, '');
+	if (root.length === 0) {
+		return {};
+	}
+
+	const joinPath = (...parts: string[]) => parts.join(separator);
+	const programmerCandidates = process.platform === 'win32'
+		? [
+			joinPath(root, 'STM32CubeProgrammer', 'bin', 'STM32_Programmer_CLI.exe'),
+			joinPath(root, 'bin', 'STM32_Programmer_CLI.exe')
+		]
+		: [
+			joinPath(root, 'STM32CubeProgrammer', 'bin', 'STM32_Programmer_CLI'),
+			joinPath(root, 'bin', 'STM32_Programmer_CLI')
+		];
+
+	const gccCandidates = process.platform === 'win32'
+		? [
+			joinPath(root, 'GNU-tools-for-STM32', 'bin', 'arm-none-eabi-gcc.exe'),
+			joinPath(root, 'bin', 'arm-none-eabi-gcc.exe')
+		]
+		: [
+			joinPath(root, 'GNU-tools-for-STM32', 'bin', 'arm-none-eabi-gcc'),
+			joinPath(root, 'bin', 'arm-none-eabi-gcc')
+		];
+
+	return {
+		programmerCliPath: await firstExistingPath(programmerCandidates),
+		gccPath: await firstExistingPath(gccCandidates),
+	};
+}
+
+async function firstExistingPath(candidates: string[]): Promise<string | undefined> {
+	for (const candidate of candidates) {
+		const exists = await fileExists(candidate);
+		if (exists) {
+			return candidate;
+		}
+	}
+	return undefined;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 async function resolveCommandPath(command: string, cwd: string | undefined): Promise<string | undefined> {
 	const locator = process.platform === 'win32' ? 'where' : 'which';
 	try {
@@ -1242,10 +1525,146 @@ function execFileAsync(command: string, args: string[], cwd: string | undefined)
 	});
 }
 
+function getBoardConfiguratorHtml(webview: vscode.Webview): string {
+	const csp = webview.cspSource;
+	const boardOptions = BOARD_PROFILES.map(profile =>
+		`<option value="${escapeHtml(profile.id)}" data-mcu="${escapeHtml(profile.mcu)}" data-desc="${escapeHtml(profile.description)}">${escapeHtml(profile.name)} (${escapeHtml(profile.mcu)})</option>`
+	).join('');
+
+	return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<style>
+		*{box-sizing:border-box;margin:0;padding:0}
+		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14)}
+		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:22px 24px;max-width:900px}
+		h1{font-size:20px;font-weight:700;margin-bottom:6px}
+		.sub{font-size:12px;color:var(--mt);margin-bottom:18px}
+		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:14px}
+		.hd{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mt);margin-bottom:10px}
+		.row{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+		label{font-size:12px;color:#d1d5db}
+		input,select{background:#0d0e14;border:1px solid var(--bd);border-radius:7px;color:var(--tx);padding:8px 10px;font:12px var(--vscode-font-family,'Segoe UI',sans-serif);outline:none}
+		input:focus,select:focus{border-color:var(--ac)}
+		.desc{font-size:11px;color:var(--mt);line-height:1.5}
+		.chk{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+		.chk input{width:16px;height:16px}
+		.btnrow{display:flex;justify-content:flex-end;margin-top:14px}
+		button{background:var(--ac);border:1px solid var(--ac);color:#fff;border-radius:8px;padding:9px 16px;font:600 12px var(--vscode-font-family,'Segoe UI',sans-serif);cursor:pointer}
+		button:hover{background:#0d9488;border-color:#0d9488}
+		.mcu-tag{font-size:11px;color:#99f6e4;background:rgba(15,118,110,.18);border:1px solid rgba(15,118,110,.45);padding:2px 8px;border-radius:999px;display:inline-block;margin-top:6px}
+	</style>
+</head>
+<body>
+	<h1>STM32 ボード設定スタジオ</h1>
+	<p class="sub">CubeMXなしで、基板選択・クロック・デバッグ・ミドルウェアを設定してプロジェクトを生成できます。生成後はピンGUIで詳細設定できます。</p>
+
+	<div class="grid">
+		<div class="card">
+			<div class="hd">1. 基板</div>
+			<div class="row">
+				<label for="boardId">基板を選択</label>
+				<select id="boardId" aria-label="基板を選択">${boardOptions}</select>
+				<div class="mcu-tag" id="boardMcu">MCU: -</div>
+				<div class="desc" id="boardDesc">-</div>
+			</div>
+			<div class="row">
+				<label for="projectName">プロジェクト名</label>
+				<input id="projectName" value="stm32-project" maxlength="64" />
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="hd">2. システム設定</div>
+			<div class="row">
+				<label for="clockSource">クロックソース</label>
+				<select id="clockSource">
+					<option value="Internal">内部クロック (HSI)</option>
+					<option value="External">外部クロック (HSE)</option>
+				</select>
+			</div>
+			<div class="row">
+				<label for="sysclkMHz">SYSCLK [MHz]</label>
+				<input id="sysclkMHz" type="number" min="8" max="480" value="80" />
+			</div>
+			<div class="row">
+				<label for="debugPort">デバッグポート</label>
+				<select id="debugPort">
+					<option value="SWD">SWD</option>
+					<option value="JTAG">JTAG</option>
+					<option value="Disabled">無効</option>
+				</select>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="hd">3. ミドルウェア・メモリ</div>
+			<label class="chk"><input id="enableFreeRtos" type="checkbox" /> FreeRTOS を有効化</label>
+			<label class="chk"><input id="enableUsb" type="checkbox" /> USB を有効化</label>
+			<label class="chk"><input id="enableEthernet" type="checkbox" /> Ethernet を有効化</label>
+			<div class="row">
+				<label for="stackSize">スタックサイズ [bytes]</label>
+				<input id="stackSize" type="number" min="256" step="256" value="1024" />
+			</div>
+			<div class="row">
+				<label for="heapSize">ヒープサイズ [bytes]</label>
+				<input id="heapSize" type="number" min="256" step="256" value="1536" />
+			</div>
+			<label class="chk"><input id="openPinGui" type="checkbox" checked /> 作成後にピン設定GUIを開く</label>
+		</div>
+	</div>
+
+	<div class="btnrow">
+		<button id="createBtn" aria-label="プロジェクトを作成">この設定でプロジェクト作成</button>
+	</div>
+
+	<script>
+		const vscode = acquireVsCodeApi();
+		const boardId = document.getElementById('boardId');
+		const boardMcu = document.getElementById('boardMcu');
+		const boardDesc = document.getElementById('boardDesc');
+		const projectName = document.getElementById('projectName');
+		function updateBoardMeta() {
+			const opt = boardId.options[boardId.selectedIndex];
+			boardMcu.textContent = 'MCU: ' + (opt.dataset.mcu || '-');
+			boardDesc.textContent = opt.dataset.desc || '-';
+			if (!projectName.value || projectName.value === 'stm32-project') {
+				projectName.value = (opt.value || 'stm32-project').replace(/[^a-zA-Z0-9_-]/g, '-');
+			}
+		}
+		boardId.addEventListener('change', updateBoardMeta);
+		updateBoardMeta();
+
+		document.getElementById('createBtn').addEventListener('click', () => {
+			const payload = {
+				boardId: boardId.value,
+				projectName: projectName.value,
+				clockSource: document.getElementById('clockSource').value,
+				sysclkMHz: Number(document.getElementById('sysclkMHz').value),
+				debugPort: document.getElementById('debugPort').value,
+				enableFreeRtos: document.getElementById('enableFreeRtos').checked,
+				enableUsb: document.getElementById('enableUsb').checked,
+				enableEthernet: document.getElementById('enableEthernet').checked,
+				stackSize: Number(document.getElementById('stackSize').value),
+				heapSize: Number(document.getElementById('heapSize').value),
+				openPinGui: document.getElementById('openPinGui').checked
+			};
+			vscode.postMessage({ type: 'create', payload });
+		});
+	</script>
+</body>
+</html>`;
+}
+
 function getOnboardingHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
 	const items = [
 		{ id: 'welcome', ic: '⬡', label: 'ウェルカムウィザード', desc: '初回セットアップ' },
+		{ id: 'board', ic: '▣', label: 'ボード設定スタジオ', desc: 'CubeMX不要で初期設定' },
 		{ id: 'tutorial', ic: '▶', label: 'Lチカチュートリアル', desc: '7ステップ入門ガイド' },
 		{ id: 'templates', ic: '◫', label: 'テンプレートギャラリー', desc: '30種のプロジェクト雛形' },
 		{ id: 'env', ic: '✓', label: '環境チェック', desc: 'ツール検出レポート' },
@@ -1273,11 +1692,11 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 			--bd:var(--vscode-panel-border,#1e2030);
 			--tx:var(--vscode-editor-foreground,#e8eaed);
 			--mt:var(--vscode-descriptionForeground,#6b7280);
-			--ac:#6366f1;--ac2:rgba(99,102,241,.12);
+			--ac:#0f766e;--ac2:rgba(15,118,110,.14);
 		}
 		body{font:12px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);padding:6px;background:var(--sf);color:var(--tx)}
 		.card{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;margin-bottom:3px;background:transparent;border:1px solid var(--bd);border-radius:7px;color:var(--tx);cursor:pointer;font:inherit;text-align:left;transition:background .1s,border-color .1s}
-		.card:hover{background:var(--ac2);border-color:rgba(99,102,241,.4)}
+		.card:hover{background:var(--ac2);border-color:rgba(15,118,110,.45)}
 		.card:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
 		.ic{width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:var(--ac2);color:var(--ac);font-size:12px;flex-shrink:0}
 		.body{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
@@ -1290,7 +1709,7 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 ${cards}
 <script>
 	const vscode = acquireVsCodeApi();
-	for (const id of ['welcome','tutorial','templates','env','pin','error']) {
+	for (const id of ['welcome','board','tutorial','templates','env','pin','error']) {
 		document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 	}
 </script>
@@ -1314,7 +1733,7 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 			--bd:var(--vscode-panel-border,#1e2030);
 			--tx:var(--vscode-editor-foreground,#e8eaed);
 			--mt:var(--vscode-descriptionForeground,#6b7280);
-			--ac:#6366f1;--ac2:rgba(99,102,241,.12);
+			--ac:#0f766e;--ac2:rgba(15,118,110,.14);
 			--ok:#22c55e;--wn:#f59e0b;
 		}
 		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:0;min-height:100vh}
@@ -1327,21 +1746,21 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 		.content{padding:24px 28px;max-width:900px}
 		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:24px}
 		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
-		.card:hover{border-color:rgba(99,102,241,.5)}
+		.card:hover{border-color:rgba(15,118,110,.55)}
 		.card-icon{font-size:22px;line-height:1}
 		.card h3{font-size:14px;font-weight:600}
 		.card p{font-size:12px;color:var(--mt);line-height:1.5;flex:1}
 		.btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font:600 12px/1 var(--vscode-font-family,'Segoe UI',sans-serif);transition:background .1s}
 		.btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 		.btn-pri{background:var(--ac);color:#fff}
-		.btn-pri:hover{background:#4f52d9}
+		.btn-pri:hover{background:#0d9488}
 		.btn-sec{background:transparent;color:var(--tx);border:1px solid var(--bd)}
-		.btn-sec:hover{background:var(--ac2);border-color:rgba(99,102,241,.4)}
+		.btn-sec:hover{background:var(--ac2);border-color:rgba(15,118,110,.45)}
 		.btns{display:flex;flex-direction:column;gap:6px}
 		.divider{height:1px;background:var(--bd);margin:8px 0 20px}
 		.links{display:flex;gap:16px;flex-wrap:wrap}
 		.link{background:none;border:none;color:var(--ac);cursor:pointer;font:12px var(--vscode-font-family,'Segoe UI',sans-serif);padding:0;text-decoration:underline;text-underline-offset:2px}
-		.link:hover{color:#8183f4}
+		.link:hover{color:#14b8a6}
 	</style>
 </head>
 <body>
@@ -1383,6 +1802,14 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 				<button class="btn btn-pri" id="templates" aria-label="テンプレートギャラリー">テンプレートギャラリーを開く →</button>
 			</div>
 		</div>
+		<div class="card">
+			<div class="card-icon">🧭</div>
+			<h3>CubeMXなしで作る</h3>
+			<p>基板を選んで、クロック・デバッグ・RTOS・USB等を日本語UIで設定できます。作成後はピンGUIで配線設定可能です。</p>
+			<div class="btns">
+				<button class="btn btn-pri" id="board" aria-label="ボード設定スタジオ">ボード設定スタジオを開く →</button>
+			</div>
+		</div>
 	</div>
 
 	<div class="divider"></div>
@@ -1399,6 +1826,7 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	document.getElementById('tutorial').addEventListener('click', () => vscode.postMessage({ type: 'tutorial' }));
 	document.getElementById('import').addEventListener('click', () => vscode.postMessage({ type: 'import' }));
 	document.getElementById('templates').addEventListener('click', () => vscode.postMessage({ type: 'templates' }));
+	document.getElementById('board').addEventListener('click', () => vscode.postMessage({ type: 'board' }));
 	document.getElementById('env').addEventListener('click', () => vscode.postMessage({ type: 'env' }));
 	document.getElementById('env2').addEventListener('click', () => vscode.postMessage({ type: 'env' }));
 	document.getElementById('pin').addEventListener('click', () => vscode.postMessage({ type: 'pin' }));
@@ -1420,7 +1848,7 @@ function getTutorialHtml(webview: vscode.Webview): string {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#6366f1;--ac2:rgba(99,102,241,.12);--ok:#22c55e}
+		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14);--ok:#22c55e}
 		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:24px 28px;max-width:700px}
 		h1{font-size:18px;font-weight:700;margin-bottom:4px}
 		.sub{font-size:12px;color:var(--mt);margin-bottom:20px}
@@ -1435,9 +1863,9 @@ function getTutorialHtml(webview: vscode.Webview): string {
 		.btn{padding:7px 16px;border-radius:6px;cursor:pointer;font:600 12px/1 var(--vscode-font-family,'Segoe UI',sans-serif);border:1px solid var(--bd);transition:background .1s}
 		.btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 		.btn-pri{background:var(--ac);color:#fff;border-color:var(--ac)}
-		.btn-pri:hover{background:#4f52d9;border-color:#4f52d9}
+		.btn-pri:hover{background:#0d9488;border-color:#0d9488}
 		.btn-sec{background:transparent;color:var(--tx)}
-		.btn-sec:hover{background:var(--ac2);border-color:rgba(99,102,241,.4)}
+		.btn-sec:hover{background:var(--ac2);border-color:rgba(15,118,110,.45)}
 		.btn-sec:disabled{opacity:.4;cursor:default}
 		.actions-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mt);margin-bottom:8px}
 		.action-row{display:flex;gap:8px;flex-wrap:wrap}
@@ -1543,21 +1971,21 @@ function getTemplateGalleryHtml(webview: vscode.Webview): string {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#6366f1;--ac2:rgba(99,102,241,.12)}
+		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14)}
 		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:24px 28px}
 		.page-hd{margin-bottom:20px}
 		h1{font-size:18px;font-weight:700;margin-bottom:4px}
 		.sub{font-size:12px;color:var(--mt)}
 		.search-row{margin-bottom:18px}
 		#search{width:100%;padding:7px 12px;border-radius:7px;border:1px solid var(--bd);background:var(--sf);color:var(--tx);font:13px var(--vscode-font-family,'Segoe UI',sans-serif);outline:none;transition:border-color .15s}
-		#search:focus{border-color:rgba(99,102,241,.6)}
+		#search:focus{border-color:rgba(15,118,110,.6)}
 		#search::placeholder{color:var(--mt)}
 		.cat-section{margin-bottom:20px}
 		.cat-hd{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mt);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--bd)}
 		.cat-ic{font-size:14px}
 		.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}
 		.tcard{text-align:left;border:1px solid var(--bd);border-radius:7px;padding:9px 11px;background:var(--sf);color:var(--tx);cursor:pointer;font:13px var(--vscode-font-family,'Segoe UI',sans-serif);transition:background .1s,border-color .1s;line-height:1.3}
-		.tcard:hover{background:var(--ac2);border-color:rgba(99,102,241,.45)}
+		.tcard:hover{background:var(--ac2);border-color:rgba(15,118,110,.48)}
 		.tcard:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
 		.tcard.hidden{display:none}
 	</style>
@@ -1706,11 +2134,11 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	}).join('');
 
 	const legend = [
-		{ color: '#4f51b5', border: '#6366f1', label: 'GPIO Output' },
+		{ color: '#0f4c5c', border: '#14b8a6', label: 'GPIO Output' },
 		{ color: '#1a4731', border: '#22c55e', label: 'GPIO Input' },
 		{ color: '#7c3a00', border: '#f59e0b', label: 'UART/USART' },
 		{ color: '#6d1a4c', border: '#ec4899', label: 'I2C' },
-		{ color: '#4a1d8a', border: '#8b5cf6', label: 'SPI' },
+		{ color: '#1f4d7a', border: '#38bdf8', label: 'SPI' },
 		{ color: '#7c1d1d', border: '#ef4444', label: 'ADC' },
 		{ color: '#1a3050', border: '#3b82f6', label: 'TIM/PWM' },
 		{ color: '#1e2030', border: '#4b5563', label: 'その他' },
@@ -1736,7 +2164,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#6366f1}
+		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e}
 		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:var(--bg);color:var(--tx);padding:18px 22px}
 		.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
 		.chip-hdr{flex:1;min-width:0}
@@ -1790,13 +2218,13 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		#dlgTitle{font-size:14px;font-weight:700;color:#e8eaed}
 		#dlgCur{font-size:11px;color:#9ca3af}
 		#dlgSearch{background:#0d0e14;border:1px solid #374151;color:#e8eaed;border-radius:6px;padding:6px 10px;font-size:12px;outline:none;width:100%}
-		#dlgSearch:focus{border-color:#6366f1}
+		#dlgSearch:focus{border-color:#0f766e}
 		#dlgGroups{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
 		.dg-hd{font-size:10px;font-weight:700;letter-spacing:.06em;color:#6b7280;text-transform:uppercase;margin-bottom:4px}
 		.dg-chips{display:flex;flex-wrap:wrap;gap:5px}
 		.dg-chip{padding:4px 10px;border-radius:6px;border:1.5px solid #374151;background:#0d0e14;color:#9ca3af;font-size:11px;cursor:pointer;transition:background .1s,border-color .1s}
-		.dg-chip:hover{background:#1e2030;border-color:#6366f1;color:#e8eaed}
-		.dg-chip.selected{background:#4f46e5;border-color:#6366f1;color:#fff;font-weight:600}
+		.dg-chip:hover{background:#1e2030;border-color:#0f766e;color:#e8eaed}
+		.dg-chip.selected{background:#0f766e;border-color:#0f766e;color:#fff;font-weight:600}
 		.dg-chip.current{border-color:#22c55e;color:#86efac}
 		.dg-section.hidden{display:none}
 		.dg-chip.chip-hidden{display:none}
@@ -1804,8 +2232,8 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		.dlg-btn{padding:6px 18px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid}
 		#dlgCancel{background:transparent;border-color:#374151;color:#9ca3af}
 		#dlgCancel:hover{border-color:#6b7280;color:#e8eaed}
-		#dlgApply{background:#4f46e5;border-color:#6366f1;color:#fff}
-		#dlgApply:hover{background:#4338ca}
+		#dlgApply{background:#0f766e;border-color:#0f766e;color:#fff}
+		#dlgApply:hover{background:#0d9488}
 		#dlgApply:disabled{opacity:.4;cursor:not-allowed}
 		/* ---- add pin dialog ---- */
 		#addDlgBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
@@ -1815,10 +2243,10 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		.add-row{display:flex;flex-direction:column;gap:4px}
 		.add-lbl{font-size:11px;color:#9ca3af}
 		#addPinInput{background:#0d0e14;border:1px solid #374151;color:#e8eaed;border-radius:6px;padding:6px 10px;font-size:12px;outline:none;width:100%;font-family:monospace}
-		#addPinInput:focus{border-color:#6366f1}
+		#addPinInput:focus{border-color:#0f766e}
 		#addPinInput.invalid{border-color:#ef4444}
 		#addModeSelect{background:#0d0e14;border:1px solid #374151;color:#e8eaed;border-radius:6px;padding:6px 10px;font-size:12px;outline:none;width:100%}
-		#addModeSelect:focus{border-color:#6366f1}
+		#addModeSelect:focus{border-color:#0f766e}
 		#addPinErr{font-size:11px;color:#ef4444;min-height:14px}
 		#addDlgActions{display:flex;gap:8px;justify-content:flex-end}
 	</style>
@@ -1837,7 +2265,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			<button id="btnList" class="vtbtn active" aria-pressed="true">リスト</button>
 			<button id="btnChip" class="vtbtn" aria-pressed="false">チップ図</button>
 		</div>
-		<button id="btnAddPin" class="vtbtn" style="border-color:rgba(99,102,241,.4)" aria-label="ピンを追加">+ ピン追加</button>
+		<button id="btnAddPin" class="vtbtn" style="border-color:rgba(15,118,110,.45)" aria-label="ピンを追加">+ ピン追加</button>
 		<span class="pin-count" id="pinCount">${sorted.length} ピン</span>
 	</div>
 	<div class="hint">ピンをクリックするとモードを変更して .ioc に反映できます</div>
@@ -1868,7 +2296,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			</div>
 			<div id="addDlgActions">
 				<button id="addDlgCancel" class="dlg-btn" style="background:transparent;border-color:#374151;color:#9ca3af">キャンセル</button>
-				<button id="addDlgApply" class="dlg-btn" style="background:#4f46e5;border-color:#6366f1;color:#fff">追加</button>
+				<button id="addDlgApply" class="dlg-btn" style="background:#0f766e;border-color:#0f766e;color:#fff">追加</button>
 			</div>
 		</div>
 	</div>
@@ -2115,11 +2543,11 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 
 function colorForMode(mode: string): string {
 	const value = mode.toLowerCase();
-	if (value.includes('gpio_output')) { return '#4f51b5'; }
+	if (value.includes('gpio_output')) { return '#0f4c5c'; }
 	if (value.includes('gpio_input')) { return '#1a4731'; }
 	if (value.includes('usart') || value.includes('uart')) { return '#7c3a00'; }
 	if (value.includes('i2c')) { return '#6d1a4c'; }
-	if (value.includes('spi')) { return '#4a1d8a'; }
+	if (value.includes('spi')) { return '#1f4d7a'; }
 	if (value.includes('adc')) { return '#7c1d1d'; }
 	if (value.includes('tim') || value.includes('pwm')) { return '#1a3050'; }
 	return '#1e2030';
@@ -2127,11 +2555,11 @@ function colorForMode(mode: string): string {
 
 function colorForModeBorder(mode: string): string {
 	const value = mode.toLowerCase();
-	if (value.includes('gpio_output')) { return '#6366f1'; }
+	if (value.includes('gpio_output')) { return '#14b8a6'; }
 	if (value.includes('gpio_input')) { return '#22c55e'; }
 	if (value.includes('usart') || value.includes('uart')) { return '#f59e0b'; }
 	if (value.includes('i2c')) { return '#ec4899'; }
-	if (value.includes('spi')) { return '#8b5cf6'; }
+	if (value.includes('spi')) { return '#38bdf8'; }
 	if (value.includes('adc')) { return '#ef4444'; }
 	if (value.includes('tim') || value.includes('pwm')) { return '#3b82f6'; }
 	return '#4b5563';
