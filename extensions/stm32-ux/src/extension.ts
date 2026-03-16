@@ -1425,14 +1425,17 @@ async function openPinVisualizer(): Promise<void> {
 		let pins: Array<{ pin: string; mode: string }> = [];
 		let detectedMcu: string | undefined;
 		let iocSettings: IocFullSettings = parseFullIocSettings('');
+		let packageName: string | undefined;
+		const generatedConfiguredPins = await loadGeneratedCodePinAssignments();
 		if (iocUri) {
 			const bytes = await vscode.workspace.fs.readFile(iocUri);
 			let text = '';
 			for (const value of bytes) {
 				text += String.fromCharCode(value);
 			}
-			const configuredPins = parsePinLines(text);
+			const configuredPins = mergeConfiguredPins(parsePinLines(text), generatedConfiguredPins);
 			detectedMcu = detectMcuFromIocText(text);
+			packageName = parseIocPackageName(text);
 			iocSettings = parseFullIocSettings(text);
 			// Use canonical pin list from JSON resource (matches real package), then
 			// overlay .ioc configured modes — same logic as CubeMX's reset-state baseline.
@@ -1449,12 +1452,29 @@ async function openPinVisualizer(): Promise<void> {
 			}
 			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu ?? 'STM32'} (${pins.length} pin)`;
 		} else {
-			// No .ioc: load MCU JSON — modes already updated to CubeMX reset state.
-			const fallback = await loadMcuPackagePins();
-			pins = fallback.length > 0 ? fallback : buildFullPackagePins([], 64);
-			panel.title = 'STM32 ピンビジュアライザ — STM32F446RE (デフォルト)';
+			// No .ioc: recover current pin modes from generated sources (gpio.c/main.h) if possible.
+			if (generatedConfiguredPins.length > 0) {
+				const generatedMcu = await inferMcuFromGeneratedCode();
+				const fallback = await loadMcuPackagePins(generatedMcu);
+				if (fallback.length > 0) {
+					const configMap = new Map(generatedConfiguredPins.map(p => [p.pin.toUpperCase(), p.mode]));
+					pins = fallback.map(p => ({
+						pin: p.pin,
+						mode: configMap.get(p.pin.toUpperCase()) ?? p.mode,
+					}));
+					panel.title = `STM32 ピンビジュアライザ — 生成コード復元 ${generatedMcu ? ('(' + generatedMcu + ')') : ''} (${pins.length} pin)`;
+				} else {
+					pins = generatedConfiguredPins;
+					panel.title = `STM32 ピンビジュアライザ — 生成コード復元 (${pins.length} pin)`;
+				}
+			} else {
+				// No .ioc and no generated sources: use default MCU baseline.
+				const fallback = await loadMcuPackagePins();
+				pins = fallback.length > 0 ? fallback : buildFullPackagePins([], 64);
+				panel.title = 'STM32 ピンビジュアライザ — STM32F446RE (デフォルト)';
+			}
 		}
-		panel.webview.html = getPinVisualizerHtml(panel.webview, pins, iocUri?.fsPath, iocSettings);
+		panel.webview.html = getPinVisualizerHtml(panel.webview, pins, iocUri?.fsPath, iocSettings, packageName);
 	};
 
 	let activeIocUri = iocUri;
@@ -2469,6 +2489,211 @@ function parsePinLines(text: string): Array<{ pin: string; mode: string }> {
 	return Array.from(byPin.entries()).map(([pin, mode]) => ({ pin, mode }));
 }
 
+function parseIocPackageName(text: string): string | undefined {
+	const match = text.match(/^Mcu\.Package\s*=\s*([^\r\n]+)/m);
+	if (!match) {
+		return undefined;
+	}
+	const pkg = match[1].trim();
+	return pkg.length > 0 ? pkg : undefined;
+}
+
+function mergeConfiguredPins(
+	preferredPins: Array<{ pin: string; mode: string }>,
+	fallbackPins: Array<{ pin: string; mode: string }>
+): Array<{ pin: string; mode: string }> {
+	const merged = new Map<string, string>();
+	for (const pin of fallbackPins) {
+		merged.set(pin.pin.toUpperCase(), pin.mode);
+	}
+	for (const pin of preferredPins) {
+		merged.set(pin.pin.toUpperCase(), pin.mode);
+	}
+	return Array.from(merged.entries()).map(([pin, mode]) => ({ pin, mode }));
+}
+
+async function loadGeneratedCodePinAssignments(): Promise<Array<{ pin: string; mode: string }>> {
+	const gpioUri = await findFirstWorkspaceFile('**/Core/Src/gpio.c');
+	if (!gpioUri) {
+		return [];
+	}
+
+	let gpioText = '';
+	let mainHeaderText = '';
+	try {
+		gpioText = await readTextFile(gpioUri);
+	} catch {
+		return [];
+	}
+
+	const headerUri = await findFirstWorkspaceFile('**/Core/Inc/main.h');
+	if (headerUri) {
+		try {
+			mainHeaderText = await readTextFile(headerUri);
+		} catch {
+			mainHeaderText = '';
+		}
+	}
+
+	return parseGeneratedPinLines(gpioText, mainHeaderText);
+}
+
+async function inferMcuFromGeneratedCode(): Promise<string | undefined> {
+	const headerUri = await findFirstWorkspaceFile('**/Core/Inc/main.h');
+	if (!headerUri) {
+		return undefined;
+	}
+
+	let text = '';
+	try {
+		text = await readTextFile(headerUri);
+	} catch {
+		return undefined;
+	}
+
+	const match = text.match(/^#define\s+(STM32[A-Z0-9]+)xx\b/im);
+	if (!match) {
+		return undefined;
+	}
+
+	return match[1].toUpperCase();
+}
+
+async function findFirstWorkspaceFile(glob: string): Promise<vscode.Uri | undefined> {
+	const files = await vscode.workspace.findFiles(glob, '**/node_modules/**', 1);
+	return files[0];
+}
+
+async function readTextFile(uri: vscode.Uri): Promise<string> {
+	const bytes = await vscode.workspace.fs.readFile(uri);
+	let text = '';
+	for (const value of bytes) {
+		text += String.fromCharCode(value);
+	}
+	return text;
+}
+
+function parseGeneratedPinLines(gpioText: string, mainHeaderText: string): Array<{ pin: string; mode: string }> {
+	const byPin = new Map<string, string>();
+	const mainHeaderPinMap = parseMainHeaderPinMap(mainHeaderText);
+
+	const pinRegex = /^\s*GPIO_InitStruct\.Pin\s*=\s*([^;]+);/;
+	const modeRegex = /^\s*GPIO_InitStruct\.Mode\s*=\s*([^;]+);/;
+	const initRegex = /^\s*HAL_GPIO_Init\s*\(\s*(GPIO[A-K])\s*,\s*&GPIO_InitStruct\s*\)\s*;/;
+
+	let currentPinsExpr = '';
+	let currentModeExpr = '';
+
+	for (const rawLine of gpioText.split(/\r?\n/)) {
+		const pinMatch = rawLine.match(pinRegex);
+		if (pinMatch) {
+			currentPinsExpr = pinMatch[1].trim();
+			continue;
+		}
+
+		const modeMatch = rawLine.match(modeRegex);
+		if (modeMatch) {
+			currentModeExpr = modeMatch[1].trim();
+			continue;
+		}
+
+		const initMatch = rawLine.match(initRegex);
+		if (!initMatch || !currentPinsExpr || !currentModeExpr) {
+			continue;
+		}
+
+		const gpioPort = initMatch[1].toUpperCase();
+		const mode = normalizeGeneratedGpioMode(currentModeExpr);
+		for (const token of currentPinsExpr.split('|')) {
+			const part = token.trim();
+			if (!part) {
+				continue;
+			}
+
+			const resolved = resolveGeneratedPinToken(part, gpioPort, mainHeaderPinMap);
+			if (resolved) {
+				byPin.set(resolved, mode);
+			}
+		}
+
+		currentPinsExpr = '';
+		currentModeExpr = '';
+	}
+
+	return Array.from(byPin.entries()).map(([pin, mode]) => ({ pin, mode }));
+}
+
+function parseMainHeaderPinMap(mainHeaderText: string): Map<string, string> {
+	const result = new Map<string, string>();
+	if (!mainHeaderText) {
+		return result;
+	}
+
+	const pinNumberByLabel = new Map<string, number>();
+	const portByLabel = new Map<string, string>();
+
+	for (const rawLine of mainHeaderText.split(/\r?\n/)) {
+		const line = rawLine.trim();
+		const pinMatch = line.match(/^#define\s+(\w+_Pin)\s+GPIO_PIN_(\d{1,2})\b/);
+		if (pinMatch) {
+			pinNumberByLabel.set(pinMatch[1], parseInt(pinMatch[2], 10));
+			continue;
+		}
+
+		const portMatch = line.match(/^#define\s+(\w+)_GPIO_Port\s+(GPIO[A-K])\b/);
+		if (portMatch) {
+			portByLabel.set(`${portMatch[1]}_Pin`, portMatch[2].toUpperCase());
+		}
+	}
+
+	for (const [label, pinNumber] of pinNumberByLabel.entries()) {
+		const port = portByLabel.get(label);
+		if (!port) {
+			continue;
+		}
+		const bank = port.replace('GPIO', '');
+		result.set(label, `P${bank}${pinNumber}`);
+	}
+
+	return result;
+}
+
+function resolveGeneratedPinToken(token: string, gpioPort: string, headerMap: Map<string, string>): string | undefined {
+	const mapped = headerMap.get(token);
+	if (mapped) {
+		return mapped;
+	}
+
+	const directPin = token.match(/^GPIO_PIN_(\d{1,2})$/);
+	if (!directPin) {
+		return undefined;
+	}
+
+	const bank = gpioPort.replace('GPIO', '');
+	const pinNumber = parseInt(directPin[1], 10);
+	return `P${bank}${pinNumber}`;
+}
+
+function normalizeGeneratedGpioMode(rawMode: string): string {
+	const mode = rawMode.trim().toUpperCase();
+	if (mode.includes('ANALOG')) {
+		return 'GPIO_Analog';
+	}
+	if (mode.includes('OUTPUT') || mode.includes('_OUT_')) {
+		return 'GPIO_Output';
+	}
+	if (mode.includes('AF')) {
+		return 'GPIO_AF';
+	}
+	if (mode.includes('IT_')) {
+		return 'GPIO_EXTI';
+	}
+	if (mode.includes('EVENT')) {
+		return 'GPIO_Event';
+	}
+	return 'GPIO_Input';
+}
+
 /** パッケージのピン総数を .ioc テキストまたは MCU 名から推定する */
 function getPackagePinCount(iocText: string, mcuName: string): number {
 	const pkgMatch = iocText.match(/Mcu\.Package\s*=\s*(\w+)/);
@@ -3275,24 +3500,34 @@ function getTemplateGalleryHtml(webview: vscode.Webview): string {
 </html>`;
 }
 
-function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
+function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>, packageName?: string): string {
 	const n = pins.length;
 	if (n === 0) { return '<text x="10" y="20" fill="#6B7280" font-size="12">ピンなし</text>'; }
 
-	const perSide = Math.ceil(n / 4);
+	const basePerSide = Math.floor(n / 4);
+	const remainder = n % 4;
+	const sideCounts = [basePerSide, basePerSide, basePerSide, basePerSide];
+	for (let i = 0; i < remainder; i++) {
+		sideCounts[i] += 1;
+	}
+	const maxPerSide = Math.max(...sideCounts);
 
 	// --- Layout constants: fixed at 28px pitch for readable labels ---
 	const PIN_PITCH = 28;   // px per pin slot (always 28 for readability)
 	const PIN_W = 10;       // pin lead width (perpendicular to direction)
 	const PIN_STUB = 12;    // pin lead length from chip edge
 	const LABEL_AREA = 72;  // region outside PIN_STUB reserved for text labels
-	const CHIP_SIZE = perSide * PIN_PITCH + 16;
+	const CHIP_SIZE = maxPerSide * PIN_PITCH + 16;
 	const OFFSET = PIN_STUB + LABEL_AREA; // total margin = 84px
 	const TOTAL = CHIP_SIZE + OFFSET * 2;
 
-	const sides: Array<{ pin: string; mode: string }[]> = [[], [], [], []];
-	for (let i = 0; i < pins.length; i++) {
-		sides[Math.min(3, Math.floor(i / perSide))].push(pins[i]);
+	// Pin numbering follows common QFP convention: pin 1 at top-left, then counter-clockwise.
+	// Side order in this renderer: left(top->bottom), bottom(left->right), right(bottom->top), top(right->left).
+	const sidePins: Array<Array<{ pin: string; mode: string }>> = [[], [], [], []];
+	let cursor = 0;
+	for (let s = 0; s < 4; s++) {
+		sidePins[s] = pins.slice(cursor, cursor + sideCounts[s]);
+		cursor += sideCounts[s];
 	}
 
 	let elements = '';
@@ -3304,53 +3539,53 @@ function buildLqfpSvg(pins: Array<{ pin: string; mode: string }>): string {
 	const midX = CX + CHIP_SIZE / 2;
 	const midY = CY + CHIP_SIZE / 2;
 	elements += `<text x="${midX}" y="${midY - 10}" text-anchor="middle" fill="#9CA3AF" font-size="16" font-weight="600" font-family="Segoe UI,sans-serif">STM32</text>`;
-	elements += `<text x="${midX}" y="${midY + 8}" text-anchor="middle" fill="#6B7280" font-size="12" font-family="Segoe UI,sans-serif">LQFP${n}</text>`;
+	elements += `<text x="${midX}" y="${midY + 8}" text-anchor="middle" fill="#6B7280" font-size="12" font-family="Segoe UI,sans-serif">${escapeHtml(packageName ?? ('PKG' + n))}</text>`;
+	elements += `<circle cx="${CX + 12}" cy="${CY + 12}" r="3" fill="#f59e0b" opacity="0.9"/>`;
 
 	let globalPinNum = 0;
 	for (let s = 0; s < 4; s++) {
-		for (let i = 0; i < sides[s].length; i++) {
+		const sideOffset = ((maxPerSide - sidePins[s].length) * PIN_PITCH) / 2;
+		for (let i = 0; i < sidePins[s].length; i++) {
 			globalPinNum++;
-			const item = sides[s][i];
+			const item = sidePins[s][i];
 			const editable = /^P[A-K][0-9]{1,2}$/i.test(item.pin);
 			const isUnused = item.mode === '未使用';
 			const fill = isUnused ? '#1a1d2e' : colorForMode(item.mode);
 			const stroke = isUnused ? '#374151' : colorForModeBorder(item.mode);
 
 			// center position along this side
-			const sidePos = 8 + i * PIN_PITCH + PIN_PITCH / 2;
+			const sidePos = 8 + sideOffset + i * PIN_PITCH + PIN_PITCH / 2;
 
 			let prect = '', pnum = '', plbl = '';
 
 			if (s === 0) {
-				// bottom: left → right
-				const px = CX + sidePos;
-				const chipBot = CY + CHIP_SIZE;
-				prect = `<rect x="${px - PIN_W / 2}" y="${chipBot}" width="${PIN_W}" height="${PIN_STUB}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
-				pnum = `<text x="${px}" y="${chipBot - 2}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
-				// rotated label: translate to pin tip, rotate +90° → text reads downward away from chip
-				plbl = `<g transform="translate(${px},${chipBot + PIN_STUB + 3}) rotate(90)"><text x="0" y="0" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text></g>`;
-			} else if (s === 1) {
-				// left: bottom → top
+				// left: top -> bottom
 				const py = CY + sidePos;
 				const chipLeft = CX;
 				prect = `<rect x="${chipLeft - PIN_STUB}" y="${py - PIN_W / 2}" width="${PIN_STUB}" height="${PIN_W}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
 				pnum = `<text x="${chipLeft + 4}" y="${py + 4}" text-anchor="start" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
 				plbl = `<text x="${chipLeft - PIN_STUB - 6}" y="${py + 4}" text-anchor="end" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text>`;
+			} else if (s === 1) {
+				// bottom: left -> right
+				const px = CX + sidePos;
+				const chipBot = CY + CHIP_SIZE;
+				prect = `<rect x="${px - PIN_W / 2}" y="${chipBot}" width="${PIN_W}" height="${PIN_STUB}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+				pnum = `<text x="${px}" y="${chipBot - 2}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
+				plbl = `<g transform="translate(${px},${chipBot + PIN_STUB + 3}) rotate(90)"><text x="0" y="0" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text></g>`;
 			} else if (s === 2) {
-				// top: right → left
-				const px = CX + CHIP_SIZE - sidePos;
-				const chipTop = CY;
-				prect = `<rect x="${px - PIN_W / 2}" y="${chipTop - PIN_STUB}" width="${PIN_W}" height="${PIN_STUB}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
-				pnum = `<text x="${px}" y="${chipTop + 8}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
-				// rotated: translate to pin tip, rotate -90° → text reads upward away from chip
-				plbl = `<g transform="translate(${px},${chipTop - PIN_STUB - 3}) rotate(-90)"><text x="0" y="0" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text></g>`;
-			} else {
-				// right: top → bottom
+				// right: bottom -> top
 				const py = CY + CHIP_SIZE - sidePos;
 				const chipRight = CX + CHIP_SIZE;
 				prect = `<rect x="${chipRight}" y="${py - PIN_W / 2}" width="${PIN_STUB}" height="${PIN_W}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
 				pnum = `<text x="${chipRight - 4}" y="${py + 4}" text-anchor="end" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
 				plbl = `<text x="${chipRight + PIN_STUB + 6}" y="${py + 4}" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text>`;
+			} else {
+				// top: right -> left
+				const px = CX + CHIP_SIZE - sidePos;
+				const chipTop = CY;
+				prect = `<rect x="${px - PIN_W / 2}" y="${chipTop - PIN_STUB}" width="${PIN_W}" height="${PIN_STUB}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+				pnum = `<text x="${px}" y="${chipTop + 8}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7" font-family="Segoe UI,sans-serif">${globalPinNum}</text>`;
+				plbl = `<g transform="translate(${px},${chipTop - PIN_STUB - 3}) rotate(-90)"><text x="0" y="0" text-anchor="start" dominant-baseline="middle" fill="#D1D5DB" font-size="10" font-family="Segoe UI,sans-serif" pointer-events="none">${escapeHtml(item.pin)}</text></g>`;
 			}
 
 			elements += `<g class="lqfp-pin${editable ? '' : ' fixed'}" data-pin="${escapeHtml(item.pin)}" data-mode="${escapeHtml(item.mode)}" data-num="${globalPinNum}" data-editable="${editable ? '1' : '0'}" role="${editable ? 'button' : 'img'}" tabindex="${editable ? '0' : '-1'}" aria-label="${globalPinNum}: ${escapeHtml(item.pin)}: ${escapeHtml(item.mode)}">`
@@ -3370,7 +3605,7 @@ function comparePinNames(a: { pin: string }, b: { pin: string }): number {
 	return portCmp !== 0 ? portCmp : parseInt(ma[2], 10) - parseInt(mb[2], 10);
 }
 
-function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string; mode: string }>, iocPath: string | undefined, iocSettings: IocFullSettings = { pinAssignments: {}, pinGpioConfigs: {}, nvicSettings: {}, dmaLines: [], paramSettings: {}, userConstants: [], systemSettings: {} }): string {
+function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string; mode: string }>, iocPath: string | undefined, iocSettings: IocFullSettings = { pinAssignments: {}, pinGpioConfigs: {}, nvicSettings: {}, dmaLines: [], paramSettings: {}, userConstants: [], systemSettings: {} }, packageName?: string): string {
 	const csp = webview.cspSource;
 
 	const sorted = [...pins].sort(comparePinNames);
@@ -3421,7 +3656,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		`<span class="lg-item"><span class="lg-dot" style="background:${l.color};border-color:${l.border}"></span>${escapeHtml(l.label)}</span>`
 	).join('');
 
-	const chipSvg = buildLqfpSvg(pins);
+	const chipSvg = buildLqfpSvg(pins, packageName);
 
 	// ---- Build settings tab content from parsed ioc settings ----
 
