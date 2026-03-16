@@ -53,10 +53,10 @@ function initToken() {
 // ─── Logging ─────────────────────────────────────────────────────────────────
 function log(...args) {
   if (STDIO_MODE) {
-  if (VERBOSE) {
-    console.error(`[MCP ${new Date().toISOString()}]`, ...args);
-  }
-  return;
+    if (VERBOSE) {
+      console.error(`[MCP ${new Date().toISOString()}]`, ...args);
+    }
+    return;
   }
   console.log(`[MCP ${new Date().toISOString()}]`, ...args);
 }
@@ -72,7 +72,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        workspacePath: { type: 'string', description: 'Workspace root path (optional, defaults to server workspace)' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional, defaults to server workspace)' }
       }
     }
   },
@@ -82,8 +82,8 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        jobs: { type: 'number', description: 'Parallel make jobs (default: 8)' },
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+        jobs: { type: ['number', 'null'], description: 'Parallel make jobs (default: 8)' },
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
       }
     }
   },
@@ -93,9 +93,9 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        elfPath: { type: 'string', description: 'Path to ELF file (auto-detected if omitted)' },
-        frequencyKHz: { type: 'number', description: 'SWD frequency in kHz (default: 4000)' },
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+        elfPath: { type: ['string', 'null'], description: 'Path to ELF file (auto-detected if omitted)' },
+        frequencyKHz: { type: ['number', 'null'], description: 'SWD frequency in kHz (default: 4000)' },
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
       }
     }
   },
@@ -105,8 +105,8 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        iocPath: { type: 'string', description: 'Path to .ioc file (auto-detected if omitted)' },
-        cubemxPath: { type: 'string', description: 'Path to STM32CubeMX executable (optional)' }
+        iocPath: { type: ['string', 'null'], description: 'Path to .ioc file (auto-detected if omitted)' },
+        cubemxPath: { type: ['string', 'null'], description: 'Path to STM32CubeMX executable (optional)' }
       }
     }
   },
@@ -118,9 +118,9 @@ const TOOLS = [
       required: ['cfsr'],
       properties: {
         cfsr: { type: 'string', description: 'ConfigurableFaultStatus Register value (e.g. 0x00008200)' },
-        hfsr: { type: 'string', description: 'HardFault Status Register (optional)' },
-        mmfar: { type: 'string', description: 'MemManage Fault Address Register (optional)' },
-        bfar: { type: 'string', description: 'BusFault Address Register (optional)' }
+        hfsr: { type: ['string', 'null'], description: 'HardFault Status Register (optional)' },
+        mmfar: { type: ['string', 'null'], description: 'MemManage Fault Address Register (optional)' },
+        bfar: { type: ['string', 'null'], description: 'BusFault Address Register (optional)' }
       }
     }
   },
@@ -130,8 +130,8 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        elfPath: { type: 'string', description: 'Path to ELF file (auto-detected if omitted)' },
-        topN: { type: 'number', description: 'Number of largest symbols to return (default: 20)' }
+        elfPath: { type: ['string', 'null'], description: 'Path to ELF file (auto-detected if omitted)' },
+        topN: { type: ['number', 'null'], description: 'Number of largest symbols to return (default: 20)' }
       }
     }
   },
@@ -141,7 +141,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        programmerPath: { type: 'string', description: 'Path to STM32_Programmer_CLI (optional)' }
+        programmerPath: { type: ['string', 'null'], description: 'Path to STM32_Programmer_CLI (optional)' }
       }
     }
   },
@@ -153,7 +153,7 @@ const TOOLS = [
       required: ['address'],
       properties: {
         address: { type: 'string', description: 'Register address in hex (e.g. 0x40020010)' },
-        programmerPath: { type: 'string', description: 'Path to STM32_Programmer_CLI (optional)' }
+        programmerPath: { type: ['string', 'null'], description: 'Path to STM32_Programmer_CLI (optional)' }
       }
     }
   },
@@ -163,8 +163,8 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' },
-        extensions: { type: 'array', items: { type: 'string' }, description: 'File extensions to include (default: [".c",".h",".ioc",".s",".cmake","Makefile"])' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' },
+        extensions: { type: ['array', 'null'], items: { type: 'string' }, description: 'File extensions to include (default: [".c",".h",".ioc",".s",".cmake","Makefile"])' }
       }
     }
   },
@@ -176,7 +176,7 @@ const TOOLS = [
       required: ['filePath'],
       properties: {
         filePath: { type: 'string', description: 'Relative path from workspace root (e.g. Core/Src/main.c)' },
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
       }
     }
   },
@@ -189,7 +189,7 @@ const TOOLS = [
       properties: {
         filePath: { type: 'string', description: 'Relative path from workspace root (e.g. Core/Src/app.c)' },
         content: { type: 'string', description: 'Full file content to write' },
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
       }
     }
   },
@@ -213,7 +213,7 @@ const TOOLS = [
             }
           }
         },
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
       }
     }
   },
@@ -225,9 +225,9 @@ const TOOLS = [
       required: ['mcuName'],
       properties: {
         mcuName: { type: 'string', description: 'MCU name (e.g. STM32F446RETx, STM32H743ZITx)' },
-        projectName: { type: 'string', description: 'CubeMX project name (default: project)' },
+        projectName: { type: ['string', 'null'], description: 'CubeMX project name (default: project)' },
         pins: {
-          type: 'array',
+          type: ['array', 'null'],
           description: 'Pin assignments to write into the .ioc',
           items: {
             type: 'object',
@@ -238,7 +238,7 @@ const TOOLS = [
             }
           }
         },
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
       }
     }
   },
@@ -250,7 +250,7 @@ const TOOLS = [
       required: ['buildOutput'],
       properties: {
         buildOutput: { type: 'string', description: 'Raw stdout+stderr from make / arm-none-eabi-gcc build' },
-        topN: { type: 'number', description: 'Maximum number of diagnostics to return (default: 30)' }
+        topN: { type: ['number', 'null'], description: 'Maximum number of diagnostics to return (default: 30)' }
       }
     }
   },
@@ -262,9 +262,9 @@ const TOOLS = [
       required: ['mcuName', 'goal'],
       properties: {
         mcuName: { type: 'string', description: 'MCU name (e.g. STM32F446RETx)' },
-        projectName: { type: 'string', description: 'Project name (default: project)' },
+        projectName: { type: ['string', 'null'], description: 'Project name (default: project)' },
         pins: {
-          type: 'array',
+          type: ['array', 'null'],
           description: 'Pin assignments',
           items: {
             type: 'object',
@@ -276,7 +276,7 @@ const TOOLS = [
           }
         },
         userCodePatches: {
-          type: 'array',
+          type: ['array', 'null'],
           description: 'USER CODE section patches to apply to main.c after code generation (LLM-generated application logic)',
           items: {
             type: 'object',
@@ -288,8 +288,8 @@ const TOOLS = [
           }
         },
         goal: { type: 'string', description: 'Natural language description of what the firmware should do (for reference in the response)' },
-        workspacePath: { type: 'string', description: 'Workspace root path (optional)' },
-        skipRegenerate: { type: 'boolean', description: 'Skip CubeMX code generation step (use if CubeMX is not installed)' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' },
+        skipRegenerate: { type: ['boolean', 'null'], description: 'Skip CubeMX code generation step (use if CubeMX is not installed)' }
       }
     }
   }
@@ -569,8 +569,14 @@ function resolveWorkspacePath(params) {
 }
 
 function safeResolvePath(wsBase, relPath) {
-  const resolved = path.resolve(wsBase, relPath);
-  if (!resolved.startsWith(wsBase + path.sep) && resolved !== wsBase) {
+  const normalizedBase = path.resolve(wsBase);
+  const resolved = path.resolve(normalizedBase, relPath);
+
+  const baseCmp = process.platform === 'win32' ? normalizedBase.toLowerCase() : normalizedBase;
+  const resolvedCmp = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  const basePrefix = `${baseCmp}${path.sep}`;
+
+  if (!resolvedCmp.startsWith(basePrefix) && resolvedCmp !== baseCmp) {
     throw Object.assign(new Error(`Access denied: path escapes workspace root`), { code: -32600 });
   }
   return resolved;
@@ -692,7 +698,9 @@ function toolCreateIocFromPins(params) {
 }
 
 function toolParseBuildErrors(params) {
-  if (!params.buildOutput) throw Object.assign(new Error('buildOutput required'), { code: -32602 });
+  if (typeof params.buildOutput !== 'string') {
+    throw Object.assign(new Error('buildOutput required'), { code: -32602 });
+  }
   const topN = params.topN ?? 30;
   const diagnostics = [];
   // GCC error/warning format: file:line:col: severity: message

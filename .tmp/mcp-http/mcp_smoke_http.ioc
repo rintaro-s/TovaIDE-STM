@@ -1,0 +1,20 @@
+#MicroXplorer Configuration settings - do not modify
+File.Version=6
+LibraryCopySrc=1
+Mcu.CPN=STM32F446RETx
+Mcu.Family=STM32F4
+Mcu.Name=STM32F446RETx
+Mcu.Package=LQFP64
+Mcu.Pin0=OSC_IN
+Mcu.Pin1=OSC_OUT
+Mcu.PinsNb=2
+Mcu.UserName=STM32F446RETx
+MxCube.Version=6.10.0
+MxDb.Version=DB.6.0.110
+
+
+ProjectManager.ProjectBaudRate=115200
+ProjectManager.ProjectFileName=mcp_smoke_http.ioc
+ProjectManager.ProjectName=mcp_smoke_http
+ProjectManager.ToolChain=Makefile
+ProjectManager.LibraryCopySrc=1
