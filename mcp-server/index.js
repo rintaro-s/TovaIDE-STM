@@ -83,7 +83,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         jobs: { type: ['number', 'null'], description: 'Parallel make jobs (default: 8)' },
-        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' },
+        makePath: { type: ['string', 'null'], description: 'Path to make executable (optional, auto-detected when omitted)' }
       }
     }
   },
@@ -106,7 +107,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         iocPath: { type: ['string', 'null'], description: 'Path to .ioc file (auto-detected if omitted)' },
-        cubemxPath: { type: ['string', 'null'], description: 'Path to STM32CubeMX executable (optional)' }
+        cubemxPath: { type: ['string', 'null'], description: 'Path to STM32CubeMX executable (optional)' },
+        workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
       }
     }
   },
@@ -289,7 +291,9 @@ const TOOLS = [
         },
         goal: { type: 'string', description: 'Natural language description of what the firmware should do (for reference in the response)' },
         workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' },
-        skipRegenerate: { type: ['boolean', 'null'], description: 'Skip CubeMX code generation step (use if CubeMX is not installed)' }
+        skipRegenerate: { type: ['boolean', 'null'], description: 'Skip CubeMX code generation step (use if CubeMX is not installed)' },
+        cubemxPath: { type: ['string', 'null'], description: 'Path to STM32CubeMX executable (optional)' },
+        makePath: { type: ['string', 'null'], description: 'Path to make executable (optional)' }
       }
     }
   }
@@ -345,18 +349,23 @@ async function toolGetProjectInfo(params) {
 async function toolBuild(params) {
   const wsRoot = params.workspacePath ?? WORKSPACE;
   const jobs = params.jobs ?? 8;
+  const makeCmd = params.makePath ?? findMakeExecutable();
   try {
-    const { stdout, stderr } = await execFileAsync('make', [`-j${jobs}`, 'all', '-C', './Debug'], {
+    const { stdout, stderr } = await execFileAsync(makeCmd, [`-j${jobs}`, 'all', '-C', './Debug'], {
       cwd: wsRoot,
       timeout: 120000
     });
-    return { success: true, exitCode: 0, stdout, stderr };
+    return { success: true, exitCode: 0, makePath: makeCmd, stdout, stderr };
   } catch (err) {
+    const stderr = (typeof err.stderr === 'string' && err.stderr.length > 0)
+      ? err.stderr
+      : (err.message ?? 'build failed');
     return {
       success: false,
       exitCode: err.code ?? 1,
+      makePath: makeCmd,
       stdout: err.stdout ?? '',
-      stderr: err.stderr ?? err.message ?? ''
+      stderr
     };
   }
 }
@@ -388,10 +397,10 @@ async function toolFlash(params) {
 
 async function toolRegenerateCode(params) {
   const cubemxPath = params.cubemxPath ?? findExecutable('STM32CubeMX');
+  const wsRoot = params.workspacePath ?? WORKSPACE;
   let iocPath = params.iocPath;
 
   if (!iocPath) {
-    const wsRoot = WORKSPACE;
     const entries = fs.readdirSync(wsRoot);
     const iocFile = entries.find(e => e.toLowerCase().endsWith('.ioc'));
     if (iocFile) iocPath = path.join(wsRoot, iocFile);
@@ -401,15 +410,19 @@ async function toolRegenerateCode(params) {
     return { success: false, error: '.ioc file not found' };
   }
 
-  const scriptContent = `config load "${iocPath}"\ngenerate code\nexit\n`;
+  const normalizedWsRoot = wsRoot.replace(/\\/g, '/');
+  const scriptContent = `config load "${iocPath}"\ngenerate code "${normalizedWsRoot}"\nexit\n`;
   const scriptPath = path.join(require('os').tmpdir(), `cubemx-script-${Date.now()}.txt`);
   fs.writeFileSync(scriptPath, scriptContent, 'utf8');
 
   try {
-    const { stdout, stderr } = await execFileAsync(cubemxPath, ['-s', scriptPath], { timeout: 120000 });
+    const { stdout, stderr } = await execFileAsync(cubemxPath, ['-s', scriptPath], { cwd: wsRoot, timeout: 120000 });
     return { success: true, iocPath, stdout, stderr };
   } catch (err) {
-    return { success: false, iocPath, exitCode: err.code ?? 1, stdout: err.stdout ?? '', stderr: err.stderr ?? err.message };
+    const detail = err.code === 'ENOENT'
+      ? `STM32CubeMX executable not found: ${cubemxPath}`
+      : ((typeof err.stderr === 'string' && err.stderr.length > 0) ? err.stderr : (err.message ?? 'regenerate failed'));
+    return { success: false, iocPath, exitCode: err.code ?? 1, stdout: err.stdout ?? '', stderr: detail };
   } finally {
     fs.unlink(scriptPath, () => { });
   }
@@ -556,8 +569,89 @@ function findElfFile(wsRoot) {
 
 function findExecutable(name) {
   const isWin = process.platform === 'win32';
+  if (path.isAbsolute(name)) {
+    return name;
+  }
   const ext = isWin ? '.exe' : '';
+
+  if (name === 'STM32CubeMX') {
+    const envPath = process.env.STM32CUBEMX_PATH;
+    if (envPath && fs.existsSync(envPath)) {
+      const stat = fs.statSync(envPath);
+      if (stat.isFile()) {
+        return envPath;
+      }
+      const nestedExe = path.join(envPath, 'STM32CubeMX.exe');
+      if (fs.existsSync(nestedExe)) {
+        return nestedExe;
+      }
+    }
+    if (isWin) {
+      const localAppData = process.env.LOCALAPPDATA;
+      const candidates = [
+        localAppData ? `${localAppData.replace(/\\/g, '/')}/Programs/STM32CubeMX/STM32CubeMX.exe` : null,
+        'C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeMX/STM32CubeMX.exe',
+        'C:/ST/STM32CubeMX/STM32CubeMX.exe',
+        'C:/Users/s-rin/AppData/Local/Programs/STM32CubeMX/STM32CubeMX.exe'
+      ];
+      for (const candidate of candidates) {
+        if (candidate && fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    }
+  }
+
   return name + ext;
+}
+
+function findMakeExecutable() {
+  const envPath = process.env.STM32_MAKE_PATH || process.env.MAKE_PATH;
+  if (envPath && fs.existsSync(envPath)) {
+    const stat = fs.statSync(envPath);
+    if (stat.isFile()) {
+      return envPath;
+    }
+    const nestedMake = path.join(envPath, 'make.exe');
+    if (fs.existsSync(nestedMake)) {
+      return nestedMake;
+    }
+  }
+
+  if (process.platform !== 'win32') {
+    return 'make';
+  }
+
+  const roots = [
+    'C:/ST/STM32CubeCLT',
+    'C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeCLT',
+    'E:/installs/cubeCLT',
+  ];
+
+  for (const root of roots) {
+    if (!fs.existsSync(root)) {
+      continue;
+    }
+    try {
+      const directMake = path.join(root, 'GNU-tools-for-STM32', 'bin', 'make.exe');
+      if (fs.existsSync(directMake)) {
+        return directMake;
+      }
+
+      const entries = fs.readdirSync(root, { withFileTypes: true })
+        .filter(entry => entry.isDirectory())
+        .map(entry => path.join(root, entry.name, 'GNU-tools-for-STM32', 'bin', 'make.exe'));
+      for (const candidate of entries) {
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    } catch {
+      // ignore and continue
+    }
+  }
+
+  return 'make.exe';
 }
 
 // ─── New Tool Implementations ─────────────────────────────────────────────────
@@ -743,7 +837,10 @@ async function toolAutoWorkflow(params) {
   if (!params.skipRegenerate) {
     let regenResult;
     try {
-      regenResult = await toolRegenerateCode({ workspacePath: base });
+      regenResult = await toolRegenerateCode({
+        workspacePath: base,
+        cubemxPath: params.cubemxPath ?? null,
+      });
       steps.push({ step: 'regenerateCode', success: true, result: regenResult });
     } catch (e) {
       steps.push({ step: 'regenerateCode', success: false, error: e.message, note: 'Continue with patchUserCode anyway' });
@@ -769,8 +866,20 @@ async function toolAutoWorkflow(params) {
   // 4. build
   let buildResult;
   try {
-    buildResult = await toolBuild({ workspacePath: base });
-    steps.push({ step: 'build', success: true, result: { exitCode: buildResult.exitCode, stdout: buildResult.stdout?.slice(-2000) } });
+    buildResult = await toolBuild({
+      workspacePath: base,
+      makePath: params.makePath ?? null,
+    });
+    steps.push({
+      step: 'build',
+      success: true,
+      result: {
+        exitCode: buildResult.exitCode,
+        makePath: buildResult.makePath,
+        stdout: buildResult.stdout?.slice(-2000),
+        stderr: buildResult.stderr?.slice(-1000),
+      }
+    });
   } catch (e) {
     steps.push({ step: 'build', success: false, error: e.message });
     return { success: false, goal: params.goal, steps };
