@@ -14,6 +14,7 @@
   "command.configureGlobalWallpaper.title": "Configure Global IDE Wallpaper",
   "command.generateMcpConfigJson.title": "Generate STM32 MCP Config JSON",
   "command.composeMcpRequestJson.title": "Compose STM32 MCP Request JSON",
+  "command.openEnvironmentSettings.title": "Open STM32 Environment Settings",
   "configuration.title": "TovaIDE-STM UX",
   "configuration.autoOpenWelcome.description": "Automatically show STM32 onboarding panel when opening a workspace for the first time.",
   "configuration.mcp.autoStart.description": "Automatically start MCP server when MCP operations are executed.",

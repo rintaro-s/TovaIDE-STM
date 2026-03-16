@@ -27,7 +27,8 @@
     "onCommand:stm32ux.openPinVisualizer",
     "onCommand:stm32ux.configureGlobalWallpaper",
     "onCommand:stm32ux.generateMcpConfigJson",
-    "onCommand:stm32ux.composeMcpRequestJson"
+    "onCommand:stm32ux.composeMcpRequestJson",
+    "onCommand:stm32ux.openEnvironmentSettings"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -101,6 +102,11 @@
         "command": "stm32ux.composeMcpRequestJson",
         "title": "%command.composeMcpRequestJson.title%",
         "category": "STM32"
+      },
+      {
+        "command": "stm32ux.openEnvironmentSettings",
+        "title": "%command.openEnvironmentSettings.title%",
+        "category": "STM32"
       }
     ],
     "viewsContainers": {
@@ -162,6 +168,21 @@
           "minimum": 1000,
           "maximum": 180000,
           "markdownDescription": "%configuration.mcp.requestTimeoutMs.description%"
+        },
+        "stm32.makePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the make executable for STM32 builds. If not set, auto-detected from STM32CubeCLT or environment variable `STM32_MAKE_PATH`."
+        },
+        "stm32.cubemxPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the STM32CubeMX executable. If not set, auto-detected from known installation directories or environment variable `STM32_CUBEMX_PATH`."
+        },
+        "stm32.cubectlPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the STM32 Programmer CLI (STM32_Programmer_CLI.exe) for flashing. If not set, auto-detected from STM32CubeCLT or environment variable `STM32_CUBECLT_PATH`."
         }
       }
     }

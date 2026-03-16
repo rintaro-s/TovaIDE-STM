@@ -166,10 +166,92 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.configureGlobalWallpaper', () => configureGlobalWallpaper()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.generateMcpConfigJson', () => generateMcpConfigJson()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.composeMcpRequestJson', () => composeMcpRequestJson()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openEnvironmentSettings', () => openEnvironmentSettingsDialog()));
 
 	const shouldOpenWelcome = vscode.workspace.getConfiguration('stm32ux').get<boolean>('autoOpenWelcome', true);
 	if (shouldOpenWelcome) {
 		void openWelcomeWizard();
+	}
+}
+
+async function openEnvironmentSettingsDialog(): Promise<void> {
+	const config = vscode.workspace.getConfiguration('stm32');
+	
+	// Read current values from settings
+	const makePath = config.get<string>('makePath', '');
+	const cubemxPath = config.get<string>('cubemxPath', '');
+	const cubectlPath = config.get<string>('cubectlPath', '');
+
+	const selectAction = await vscode.window.showQuickPick([
+		{ label: 'Make コマンドのパスを設定', value: 'makePath' },
+		{ label: 'STM32CubeMX のパスを設定', value: 'cubemxPath' },
+		{ label: 'STM32 Programmer CLI のパスを設定', value: 'cubectlPath' },
+		{ label: 'すべてのパス設定をリセット', value: 'reset' },
+		{ label: '設定値を確認/デバッグ', value: 'debug' },
+	], { placeHolder: '設定する項目を選択ください。', title: 'STM32 環境パス設定' });
+
+	if (!selectAction) {
+		return;
+	}
+
+	const { value } = selectAction;
+
+	if (value === 'makePath') {
+		const newPath = await vscode.window.showInputBox({
+			prompt: 'make コマンドのパスを入力してください。',
+			value: makePath,
+			placeHolder: 'e.g. C:\\ST\\STM32CubeCLT\\GNU_tools_for_STM32\\bin\\make.exe',
+		});
+		if (newPath !== undefined) {
+			await config.update('makePath', newPath, vscode.ConfigurationTarget.Workspace);
+			vscode.window.showInformationMessage(newPath ? `✅ make パスを設定しました: ${newPath}` : '✅ make パスを削除しました。');
+		}
+	} else if (value === 'cubemxPath') {
+		const newPath = await vscode.window.showInputBox({
+			prompt: 'STM32CubeMX の実行ファイルパスを入力してください。',
+			value: cubemxPath,
+			placeHolder: 'e.g. C:\\ST\\STM32CubeMX\\STM32CubeMX.exe',
+		});
+		if (newPath !== undefined) {
+			await config.update('cubemxPath', newPath, vscode.ConfigurationTarget.Workspace);
+			vscode.window.showInformationMessage(newPath ? `✅ CubeMX パスを設定しました: ${newPath}` : '✅ CubeMX パスを削除しました。');
+		}
+	} else if (value === 'cubectlPath') {
+		const newPath = await vscode.window.showInputBox({
+			prompt: 'STM32 Programmer CLI のパスを入力してください。',
+			value: cubectlPath,
+			placeHolder: 'e.g. C:\\ST\\STM32CubeCLT\\STM32_Programmer_CLI.exe',
+		});
+		if (newPath !== undefined) {
+			await config.update('cubectlPath', newPath, vscode.ConfigurationTarget.Workspace);
+			vscode.window.showInformationMessage(newPath ? `✅ Programmer CLI パスを設定しました: ${newPath}` : '✅ Programmer CLI パスを削除しました。');
+		}
+	} else if (value === 'reset') {
+		const confirm = await vscode.window.showWarningMessage(
+			'すべての環境パス設定 (make, CubeMX, Programmer CLI) を削除してもよろしいですか？',
+			{ modal: true },
+			'削除'
+		);
+		if (confirm === '削除') {
+			await config.update('makePath', undefined, vscode.ConfigurationTarget.Workspace);
+			await config.update('cubemxPath', undefined, vscode.ConfigurationTarget.Workspace);
+			await config.update('cubectlPath', undefined, vscode.ConfigurationTarget.Workspace);
+			vscode.window.showInformationMessage('✅ すべての環境パス設定をリセットしました。');
+		}
+	} else if (value === 'debug') {
+		const debugInfo = [
+			'[STM32 環境パス設定 - デバッグ情報]',
+			'',
+			`Make パス (設定):`,
+			`  ${makePath || '(未設定)'}`,
+			``,
+			`CubeMX パス (設定):`,
+			`  ${cubemxPath || '(未設定)'}`,
+			``,
+			`Programmer CLI パス (設定):`,
+			`  ${cubectlPath || '(未設定)'}`,
+		].join('\n');
+		await vscode.window.showInformationMessage(debugInfo, { modal: true });
 	}
 }
 
@@ -419,6 +501,9 @@ async function openMcpOperationDesk(): Promise<void> {
 				}
 				await waitMs(400);
 				await publishStatus();
+				break;
+			case 'envSettings':
+				await openEnvironmentSettingsDialog();
 				break;
 			case 'exportConfig':
 				await generateMcpConfigJson();
@@ -927,6 +1012,9 @@ async function openWelcomeWizard(): Promise<void> {
 				break;
 			case 'env':
 				await runEnvironmentCheck();
+				break;
+			case 'envSettings':
+				await openEnvironmentSettingsDialog();
 				break;
 			case 'pin':
 				await openPinVisualizer();
@@ -3898,6 +3986,7 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 	<div class="grid">
 		<button id="startMcp"><div class="t">MCPサーバー起動</div><div class="d">stm32ai.startMcpServer</div></button>
 		<button id="stopMcp"><div class="t">MCPサーバー停止</div><div class="d">stm32ai.stopMcpServer</div></button>
+		<button id="envSettings"><div class="t">環境設定</div><div class="d">make / CubeMX パス設定</div></button>
 		<button id="exportConfig"><div class="t">MCP設定JSONを出力</div><div class="d">.vscode/stm32-mcp.config.json</div></button>
 		<button id="composeRpc"><div class="t">カスタムRPC JSON生成</div><div class="d">任意method/paramsで生成</div></button>
 		<button id="build"><div class="t">ビルド</div><div class="d">method: stm32.build</div></button>
@@ -3931,7 +4020,7 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 			}
 		});
 
-		for (const id of ['startMcp','stopMcp','exportConfig','composeRpc','build','flash','regen','board','collab','svd']) {
+		for (const id of ['startMcp','stopMcp','envSettings','exportConfig','composeRpc','build','flash','regen','board','collab','svd']) {
 			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 		}
 		vscode.postMessage({ type: 'checkMcpStatus' });
@@ -4083,6 +4172,7 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 <div class="links">
 	<button class="link-btn" id="env" aria-label="環境チェック">環境チェック</button>
 	<button class="link-btn" id="env2" aria-label="環境チェック 2">環境チェック (同機能)</button>
+	<button class="link-btn" id="envSettings" aria-label="環境設定">環境設定</button>
 	<button class="link-btn" id="pin" aria-label="ピンビジュアライザ">ピンビジュアライザ</button>
 	<button class="link-btn" id="error" aria-label="エラー解説">エラー自動解説</button>
 </div>
@@ -4097,6 +4187,7 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	document.getElementById('board').addEventListener('click', () => vscode.postMessage({ type: 'board' }));
 	document.getElementById('env').addEventListener('click', () => vscode.postMessage({ type: 'env' }));
 	document.getElementById('env2').addEventListener('click', () => vscode.postMessage({ type: 'env' }));
+	document.getElementById('envSettings').addEventListener('click', () => vscode.postMessage({ type: 'envSettings' }));
 	document.getElementById('pin').addEventListener('click', () => vscode.postMessage({ type: 'pin' }));
 	document.getElementById('error').addEventListener('click', () => vscode.postMessage({ type: 'error' }));
 </script>

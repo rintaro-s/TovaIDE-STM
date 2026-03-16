@@ -14,6 +14,7 @@
   "command.configureGlobalWallpaper.title": "IDE全体の壁紙を設定",
   "command.generateMcpConfigJson.title": "STM32 MCP設定JSONを出力",
   "command.composeMcpRequestJson.title": "STM32 MCPリクエストJSONを生成",
+  "command.openEnvironmentSettings.title": "STM32環境設定を開く",
   "configuration.title": "TovaIDE-STM UX",
   "configuration.autoOpenWelcome.description": "ワークスペース初回オープン時にSTM32オンボーディングを自動表示します。",
   "configuration.mcp.autoStart.description": "MCP操作実行時にMCPサーバーを自動起動します。",
