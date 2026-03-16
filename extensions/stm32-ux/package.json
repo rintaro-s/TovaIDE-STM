@@ -25,7 +25,9 @@
     "onCommand:stm32ux.runEnvironmentCheck",
     "onCommand:stm32ux.explainLatestError",
     "onCommand:stm32ux.openPinVisualizer",
-    "onCommand:stm32ux.configureGlobalWallpaper"
+    "onCommand:stm32ux.configureGlobalWallpaper",
+    "onCommand:stm32ux.generateMcpConfigJson",
+    "onCommand:stm32ux.composeMcpRequestJson"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -89,6 +91,16 @@
         "command": "stm32ux.configureGlobalWallpaper",
         "title": "%command.configureGlobalWallpaper.title%",
         "category": "STM32"
+      },
+      {
+        "command": "stm32ux.generateMcpConfigJson",
+        "title": "%command.generateMcpConfigJson.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.composeMcpRequestJson",
+        "title": "%command.composeMcpRequestJson.title%",
+        "category": "STM32"
       }
     ],
     "viewsContainers": {
@@ -117,6 +129,39 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "%configuration.autoOpenWelcome.description%"
+        },
+        "stm32ux.mcp.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.mcp.autoStart.description%"
+        },
+        "stm32ux.mcp.transport": {
+          "type": "string",
+          "default": "stdio",
+          "enum": [
+            "stdio",
+            "http"
+          ],
+          "markdownDescription": "%configuration.mcp.transport.description%"
+        },
+        "stm32ux.mcp.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "markdownDescription": "%configuration.mcp.host.description%"
+        },
+        "stm32ux.mcp.port": {
+          "type": "number",
+          "default": 61337,
+          "minimum": 1,
+          "maximum": 65535,
+          "markdownDescription": "%configuration.mcp.port.description%"
+        },
+        "stm32ux.mcp.requestTimeoutMs": {
+          "type": "number",
+          "default": 20000,
+          "minimum": 1000,
+          "maximum": 180000,
+          "markdownDescription": "%configuration.mcp.requestTimeoutMs.description%"
         }
       }
     }

@@ -11,6 +11,14 @@
   "command.runEnvironmentCheck.title": "STM32環境チェックを実行",
   "command.explainLatestError.title": "最新ビルドエラーを解説",
   "command.openPinVisualizer.title": "STM32ピンビジュアライザを開く",
+  "command.configureGlobalWallpaper.title": "IDE全体の壁紙を設定",
+  "command.generateMcpConfigJson.title": "STM32 MCP設定JSONを出力",
+  "command.composeMcpRequestJson.title": "STM32 MCPリクエストJSONを生成",
   "configuration.title": "TovaIDE-STM UX",
-  "configuration.autoOpenWelcome.description": "ワークスペース初回オープン時にSTM32オンボーディングを自動表示します。"
+  "configuration.autoOpenWelcome.description": "ワークスペース初回オープン時にSTM32オンボーディングを自動表示します。",
+  "configuration.mcp.autoStart.description": "MCP操作実行時にMCPサーバーを自動起動します。",
+  "configuration.mcp.transport.description": "MCP設定JSON出力時に使う推奨トランスポート種別。",
+  "configuration.mcp.host.description": "MCP設定JSON出力時に使う既定ホスト。",
+  "configuration.mcp.port.description": "MCP設定JSON出力時に使う既定ポート。",
+  "configuration.mcp.requestTimeoutMs.description": "MCP設定JSON出力時に使う既定タイムアウト(ミリ秒)。"
 }

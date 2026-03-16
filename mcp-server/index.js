@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * TovaIDE-STM — Standalone MCP Server
- * JSON-RPC 2.0 over HTTP, port 3737 (configurable)
+ * MCP-compatible JSON-RPC server over HTTP or stdio
  * Compatible with GitHub Copilot MCP and external AI clients.
  *
  * Endpoints:
@@ -26,6 +26,7 @@ const args = process.argv.slice(2);
 const PORT = parseInt(getArg(args, '--port') ?? '3737', 10);
 const HOST = getArg(args, '--host') ?? '127.0.0.1';
 const VERBOSE = args.includes('--verbose');
+const STDIO_MODE = args.includes('--stdio');
 const WORKSPACE = getArg(args, '--workspace') ?? process.cwd();
 
 function getArg(arr, flag) {
@@ -51,6 +52,12 @@ function initToken() {
 
 // ─── Logging ─────────────────────────────────────────────────────────────────
 function log(...args) {
+  if (STDIO_MODE) {
+  if (VERBOSE) {
+    console.error(`[MCP ${new Date().toISOString()}]`, ...args);
+  }
+  return;
+  }
   console.log(`[MCP ${new Date().toISOString()}]`, ...args);
 }
 function verbose(...args) {
@@ -558,7 +565,7 @@ function findExecutable(name) {
 function resolveWorkspacePath(params) {
   return params.workspacePath
     ? path.resolve(params.workspacePath)
-    : wsRoot;
+    : WORKSPACE;
 }
 
 function safeResolvePath(wsBase, relPath) {
@@ -776,8 +783,27 @@ async function toolAutoWorkflow(params) {
 async function dispatch(method, params) {
   params = params ?? {};
   switch (method) {
+    case 'initialize':
+      return {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'cubeforge-stm32-mcp', version: '1.0.0' }
+      };
+    case 'notifications/initialized':
+      return null;
+    case 'ping':
+      return { ok: true };
     case 'tools/list':
       return { tools: TOOLS };
+    case 'tools/call': {
+      const name = params?.name;
+      if (!name || typeof name !== 'string') {
+        throw Object.assign(new Error('tools/call requires params.name'), { code: -32602 });
+      }
+      const toolArgs = (params && typeof params.arguments === 'object' && params.arguments !== null) ? params.arguments : {};
+      const result = await dispatch(name, toolArgs);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+    }
     case 'stm32.getProjectInfo':
       return await toolGetProjectInfo(params);
     case 'stm32.build':
@@ -811,6 +837,282 @@ async function dispatch(method, params) {
     default:
       throw Object.assign(new Error(`Unknown method: ${method}`), { code: -32601 });
   }
+}
+
+async function handleRpcPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
+  }
+
+  const id = Object.prototype.hasOwnProperty.call(payload, 'id') ? payload.id : undefined;
+  const method = payload.method;
+  const params = payload.params;
+
+  if (typeof method !== 'string' || method.length === 0) {
+    return { jsonrpc: '2.0', id: id ?? null, error: { code: -32600, message: 'Invalid Request: method is required' } };
+  }
+
+  // Notifications do not require response
+  if (id === undefined && method === 'notifications/initialized') {
+    return undefined;
+  }
+
+  try {
+    const result = await dispatch(method, params);
+    return { jsonrpc: '2.0', id: id ?? null, result };
+  } catch (err) {
+    const code = typeof err?.code === 'number' ? err.code : -32000;
+    return { jsonrpc: '2.0', id: id ?? null, error: { code, message: err?.message ?? String(err) } };
+  }
+}
+
+async function handleRpcInput(payload) {
+  if (Array.isArray(payload)) {
+    if (payload.length === 0) {
+      return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
+    }
+
+    const responses = [];
+    for (const item of payload) {
+      const response = await handleRpcPayload(item);
+      if (response !== undefined) {
+        responses.push(response);
+      }
+    }
+    return responses.length > 0 ? responses : undefined;
+  }
+
+  return handleRpcPayload(payload);
+}
+
+function writeStdioMessage(data, mode = 'framed') {
+  const json = JSON.stringify(data);
+  if (mode === 'line') {
+    process.stdout.write(`${json}\n`);
+    return;
+  }
+  const bytes = Buffer.from(json, 'utf8');
+  process.stdout.write(`Content-Length: ${bytes.length}\r\n\r\n`);
+  process.stdout.write(bytes);
+}
+
+function findHeaderSeparator(buffer) {
+  let sep = buffer.indexOf('\r\n\r\n');
+  if (sep >= 0) {
+    return { index: sep, length: 4 };
+  }
+
+  sep = buffer.indexOf('\n\n');
+  if (sep >= 0) {
+    return { index: sep, length: 2 };
+  }
+
+  return null;
+}
+
+function readFramedMessage(buffer) {
+  const sep = findHeaderSeparator(buffer);
+  if (!sep) {
+    return null;
+  }
+
+  const headerText = buffer.slice(0, sep.index).toString('utf8');
+  if (!/^[A-Za-z-]+\s*:/m.test(headerText)) {
+    return { consumed: 0, payload: null, malformedHeader: false, hasFrameHeader: false };
+  }
+
+  const lengthMatch = headerText.match(/Content-Length:\s*(\d+)/i);
+  if (!lengthMatch) {
+    return { consumed: sep.index + sep.length, payload: null, malformedHeader: true, hasFrameHeader: true };
+  }
+
+  const contentLength = Number.parseInt(lengthMatch[1], 10);
+  if (!Number.isFinite(contentLength) || contentLength < 0) {
+    return { consumed: sep.index + sep.length, payload: null, malformedHeader: true };
+  }
+
+  const frameStart = sep.index + sep.length;
+  const frameEnd = frameStart + contentLength;
+  if (buffer.length < frameEnd) {
+    return null;
+  }
+
+  return {
+    consumed: frameEnd,
+    payload: buffer.slice(frameStart, frameEnd).toString('utf8'),
+    malformedHeader: false,
+    hasFrameHeader: true
+  };
+}
+
+function startsLikeJson(buffer) {
+  if (!buffer || buffer.length === 0) {
+    return false;
+  }
+  let i = 0;
+  while (i < buffer.length && (buffer[i] === 0x20 || buffer[i] === 0x09 || buffer[i] === 0x0d || buffer[i] === 0x0a)) {
+    i += 1;
+  }
+  if (i >= buffer.length) {
+    return false;
+  }
+  return buffer[i] === 0x7b || buffer[i] === 0x5b;
+}
+
+function extractNextJsonChunk(text) {
+  const trimmedLeft = text.replace(/^\s+/, '');
+  const skipped = text.length - trimmedLeft.length;
+  if (trimmedLeft.length === 0) {
+    return null;
+  }
+
+  const first = trimmedLeft[0];
+  const isObjectOrArray = first === '{' || first === '[';
+  if (!isObjectOrArray) {
+    const newlineIdx = trimmedLeft.indexOf('\n');
+    if (newlineIdx < 0) {
+      return null;
+    }
+    const candidate = trimmedLeft.slice(0, newlineIdx).trim();
+    if (candidate.length === 0) {
+      return { consumed: skipped + newlineIdx + 1, chunk: null };
+    }
+    return { consumed: skipped + newlineIdx + 1, chunk: candidate };
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < trimmedLeft.length; i += 1) {
+    const ch = trimmedLeft[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[') {
+      depth += 1;
+      continue;
+    }
+
+    if (ch === '}' || ch === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        const end = i + 1;
+        return {
+          consumed: skipped + end,
+          chunk: trimmedLeft.slice(0, end)
+        };
+      }
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function startStdioServer() {
+  verbose('Starting stdio MCP mode');
+  let binaryBuffer = Buffer.alloc(0);
+  let textBuffer = '';
+  let outputMode = 'framed';
+
+  const handleJsonText = (jsonText) => {
+    let payload;
+    try {
+      payload = JSON.parse(jsonText);
+    } catch {
+      writeStdioMessage({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, outputMode);
+      return;
+    }
+
+    void handleRpcInput(payload).then(response => {
+      if (response !== undefined) {
+        writeStdioMessage(response, outputMode);
+      }
+    });
+  };
+
+  const processTextBuffer = () => {
+    while (true) {
+      const extracted = extractNextJsonChunk(textBuffer);
+      if (!extracted) {
+        return;
+      }
+
+      textBuffer = textBuffer.slice(extracted.consumed);
+      if (extracted.chunk) {
+        outputMode = 'line';
+        handleJsonText(extracted.chunk);
+      }
+    }
+  };
+
+  const processBinaryBuffer = () => {
+    while (binaryBuffer.length > 0) {
+      const frame = readFramedMessage(binaryBuffer);
+      if (frame) {
+        if (!frame.hasFrameHeader) {
+          if (!startsLikeJson(binaryBuffer)) {
+            return;
+          }
+        } else {
+          if (frame.consumed === 0) {
+            return;
+          }
+          binaryBuffer = binaryBuffer.slice(frame.consumed);
+          outputMode = 'framed';
+          if (frame.malformedHeader) {
+            writeStdioMessage({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid header' } }, outputMode);
+            continue;
+          }
+          if (typeof frame.payload === 'string' && frame.payload.length > 0) {
+            handleJsonText(frame.payload);
+          }
+          continue;
+        }
+      }
+
+      textBuffer += binaryBuffer.toString('utf8');
+      binaryBuffer = Buffer.alloc(0);
+      processTextBuffer();
+      return;
+    }
+  };
+
+  process.stdin.on('data', chunk => {
+    const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    binaryBuffer = Buffer.concat([binaryBuffer, incoming]);
+    processBinaryBuffer();
+  });
+
+  process.stdin.on('end', () => {
+    if (binaryBuffer.length > 0) {
+      textBuffer += binaryBuffer.toString('utf8');
+      binaryBuffer = Buffer.alloc(0);
+    }
+
+    processTextBuffer();
+    const trailing = textBuffer.trim();
+    if (trailing.length > 0) {
+      outputMode = 'line';
+      handleJsonText(trailing);
+    }
+  });
+
+  process.stdin.resume();
 }
 
 // ─── HTTP Server ──────────────────────────────────────────────────────────────
@@ -878,14 +1180,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const id = payload.id ?? null;
-    try {
-      const result = await dispatch(payload.method, payload.params);
-      writeJson(res, 200, { jsonrpc: '2.0', id, result });
-    } catch (err) {
-      const code = typeof err.code === 'number' ? err.code : -32000;
-      writeJson(res, 500, { jsonrpc: '2.0', id, error: { code, message: err.message } });
+    const response = await handleRpcInput(payload);
+    if (response === undefined) {
+      res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
+      res.end();
+      return;
     }
+    writeJson(res, 200, response);
     return;
   }
 
@@ -902,10 +1203,14 @@ server.on('error', err => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-initToken();
-server.listen(PORT, HOST, () => {
-  log(`CubeForge MCP Server listening on http://${HOST}:${PORT}/mcp`);
-  log(`Workspace: ${WORKSPACE}`);
-  log(`Token file: ${TOKEN_FILE}`);
-  log(`Tools: ${TOOLS.map(t => t.name).join(', ')}`);
-});
+if (STDIO_MODE) {
+  startStdioServer();
+} else {
+  initToken();
+  server.listen(PORT, HOST, () => {
+    log(`CubeForge MCP Server listening on http://${HOST}:${PORT}/mcp`);
+    log(`Workspace: ${WORKSPACE}`);
+    log(`Token file: ${TOKEN_FILE}`);
+    log(`Tools: ${TOOLS.map(t => t.name).join(', ')}`);
+  });
+}

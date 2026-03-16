@@ -29,14 +29,10 @@
 			"cwd": "${workspaceFolder}",
 			"args": [
 				"mcp-server/index.js",
+				"--stdio",
 				"--workspace",
-				"${workspaceFolder}",
-				"--verbose"
+				"${workspaceFolder}"
 			]
-		},
-		"cubeforge-stm32-http": {
-			"type": "http",
-			"url": "http://127.0.0.1:3737/mcp"
 		}
 	},
 	"inputs": []

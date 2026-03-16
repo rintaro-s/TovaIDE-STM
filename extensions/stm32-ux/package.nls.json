@@ -12,6 +12,13 @@
   "command.explainLatestError.title": "Explain Latest Build Error",
   "command.openPinVisualizer.title": "Open STM32 Pin Visualizer",
   "command.configureGlobalWallpaper.title": "Configure Global IDE Wallpaper",
+  "command.generateMcpConfigJson.title": "Generate STM32 MCP Config JSON",
+  "command.composeMcpRequestJson.title": "Compose STM32 MCP Request JSON",
   "configuration.title": "TovaIDE-STM UX",
-  "configuration.autoOpenWelcome.description": "Automatically show STM32 onboarding panel when opening a workspace for the first time."
+  "configuration.autoOpenWelcome.description": "Automatically show STM32 onboarding panel when opening a workspace for the first time.",
+  "configuration.mcp.autoStart.description": "Automatically start MCP server when MCP operations are executed.",
+  "configuration.mcp.transport.description": "Preferred MCP transport type for generated MCP client config JSON.",
+  "configuration.mcp.host.description": "Default MCP host for generated MCP client config JSON.",
+  "configuration.mcp.port.description": "Default MCP port for generated MCP client config JSON.",
+  "configuration.mcp.requestTimeoutMs.description": "Default MCP request timeout (milliseconds) for generated MCP client config JSON."
 }
