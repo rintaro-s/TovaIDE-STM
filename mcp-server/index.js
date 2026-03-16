@@ -1136,16 +1136,8 @@ function normalizeMcuNameForCubeMx(rawMcuName) {
 	if (!/^STM32/i.test(normalized)) {
 		return normalized;
 	}
-
-	// CubeMX expects lower-case wildcard suffix like "Tx", not "TX".
-	normalized = normalized.replace(/X$/, 'x');
-
-	// If user passes part without temperature/wildcard (e.g. STM32F407VG),
-	// append a safe default suffix used by CubeMX naming style.
-	if (!/[x\d]$/i.test(normalized) && /[A-Z]{2}$/i.test(normalized)) {
-		normalized = `${normalized}Tx`;
-	}
-
+	// CubeMX wildcard suffix style uses lower-case x (e.g. Tx, Rx)
+	normalized = normalized.replace(/X$/i, 'x');
 	return normalized;
 }
 
@@ -1155,31 +1147,93 @@ function inferMcuFamilyFromName(mcuName) {
 	return m ? `STM32${m[1]}` : 'STM32F4';
 }
 
-function inferMcuPackageFromName(mcuName) {
-	const upper = (mcuName || '').toUpperCase();
-	let packageLetter = '';
-
-	let m = upper.match(/^STM32[A-Z0-9]+([A-Z])[A-Z][A-Z]X$/);
-	if (m) {
-		packageLetter = m[1];
+function cubeMxFileNameMatchesMcu(fileStem, mcuName) {
+	const pattern = fileStem.replace(/\(([A-Z0-9](?:-[A-Z0-9])+?)\)/gi, (_, chars) => `[${chars.replace(/-/g, '')}]`);
+	try {
+		return new RegExp(`^${pattern}$`, 'i').test(mcuName);
+	} catch {
+		return false;
 	}
-	if (!packageLetter) {
-		m = upper.match(/^STM32[A-Z0-9]+([A-Z])[A-Z]X$/);
-		if (m) {
-			packageLetter = m[1];
+}
+
+function listCubeMxMcuDbCandidates(workspacePath) {
+	const configuredDb = getConfigValue('cubemxDbPath', ['STM32_CUBEMX_DB_PATH'], workspacePath);
+	const configuredCubeMx = getConfigValue('cubemxPath', ['STM32_CUBEMX_PATH', 'STM32CUBEMX_PATH'], workspacePath);
+	const autoCubeMx = findExecutable('STM32CubeMX');
+	const dirs = [];
+
+	const pushDir = (value) => {
+		const p = sanitizePathValue(value);
+		if (!p) {
+			return;
+		}
+		if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+			dirs.push(path.join(p, 'db', 'mcu'));
+			dirs.push(path.join(p, 'mcu'));
+		}
+		if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+			const root = path.dirname(p);
+			dirs.push(path.join(root, 'db', 'mcu'));
+			dirs.push(path.join(root, 'mcu'));
+		}
+	};
+
+	if (configuredDb) {
+		dirs.push(sanitizePathValue(configuredDb));
+	}
+	pushDir(configuredCubeMx);
+	pushDir(autoCubeMx);
+
+	const unique = [];
+	const seen = new Set();
+	for (const d of dirs) {
+		const key = path.resolve(d).toLowerCase();
+		if (!seen.has(key)) {
+			seen.add(key);
+			unique.push(d);
+		}
+	}
+	return unique;
+}
+
+function resolveCanonicalMcuName(rawMcuName, workspacePath) {
+	const normalized = normalizeMcuNameForCubeMx(rawMcuName);
+	if (!normalized || !/^STM32/i.test(normalized)) {
+		return { canonical: normalized, source: 'input' };
+	}
+
+	const variants = [
+		normalized,
+		normalized.replace(/X$/i, 'x'),
+		normalized.replace(/X$/i, 'x').replace(/([A-Z]{2})$/i, '$1Tx'),
+		normalized.replace(/([A-Z]{2})$/i, '$1Tx')
+	].filter(Boolean);
+
+	for (const dbDir of listCubeMxMcuDbCandidates(workspacePath)) {
+		if (!isExistingDirectory(dbDir)) {
+			continue;
+		}
+		let entries = [];
+		try {
+			entries = fs.readdirSync(dbDir, { withFileTypes: true });
+		} catch {
+			continue;
+		}
+		const stems = entries
+			.filter(e => e.isFile() && e.name.toLowerCase().endsWith('.xml'))
+			.map(e => e.name.slice(0, -4));
+
+		for (const candidate of variants) {
+			if (stems.some(stem => stem.toUpperCase() === candidate.toUpperCase())) {
+				return { canonical: candidate, source: `db:${dbDir}` };
+			}
+			if (stems.some(stem => cubeMxFileNameMatchesMcu(stem, candidate))) {
+				return { canonical: candidate, source: `db-pattern:${dbDir}` };
+			}
 		}
 	}
 
-	const map = {
-		'C': 'LQFP48',
-		'R': 'LQFP64',
-		'V': 'LQFP100',
-		'Z': 'LQFP144',
-		'B': 'LQFP208',
-		'I': 'UFBGA176',
-	};
-
-	return map[packageLetter] || undefined;
+	return { canonical: normalized, source: 'input-fallback' };
 }
 
 function toolWriteFile(params) {
@@ -1225,14 +1279,14 @@ function toolPatchUserCode(params) {
 function toolCreateIocFromPins(params) {
 	if (!params.mcuName) throw Object.assign(new Error('mcuName required'), { code: -32602 });
 	const base = resolveWorkspacePath(params);
-	const mcuName = normalizeMcuNameForCubeMx(params.mcuName);
+	const canonical = resolveCanonicalMcuName(params.mcuName, base);
+	const mcuName = canonical.canonical;
 	if (!mcuName || !/^STM32/i.test(mcuName)) {
 		throw Object.assign(new Error(`Invalid mcuName for CubeMX: ${params.mcuName}`), { code: -32602 });
 	}
 	const projectName = params.projectName ?? 'project';
 	const pins = params.pins ?? [];
 	const mcuFamily = inferMcuFamilyFromName(mcuName);
-	const mcuPackage = inferMcuPackageFromName(mcuName);
 
 	const pinLines = pins.map(p => `${p.pin}.Signal=${p.mode}`).join('\n');
 	const pinGpioLines = pins
@@ -1247,11 +1301,8 @@ function toolCreateIocFromPins(params) {
 		`Mcu.CPN=${mcuName}`,
 		`Mcu.Family=${mcuFamily}`,
 		`Mcu.Name=${mcuName}`,
-		mcuPackage ? `Mcu.Package=${mcuPackage}` : undefined,
-		`Mcu.Pin0=OSC_IN`,
-		`Mcu.Pin1=OSC_OUT`,
-		...pins.map((p, i) => `Mcu.Pin${i + 2}=${p.pin}`),
-		`Mcu.PinsNb=${pins.length + 2}`,
+		...pins.map((p, i) => `Mcu.Pin${i}=${p.pin}`),
+		`Mcu.PinsNb=${pins.length}`,
 		`Mcu.UserName=${mcuName}`,
 		`MxCube.Version=6.10.0`,
 		`MxDb.Version=DB.6.0.110`,
@@ -1267,7 +1318,14 @@ function toolCreateIocFromPins(params) {
 
 	const iocPath = path.join(base, `${projectName}.ioc`);
 	fs.writeFileSync(iocPath, iocContent, 'utf8');
-	return { iocPath: path.relative(base, iocPath).replace(/\\/g, '/'), mcuName, projectName, pinCount: pins.length, success: true };
+	return {
+		iocPath: path.relative(base, iocPath).replace(/\\/g, '/'),
+		mcuName,
+		mcuSource: canonical.source,
+		projectName,
+		pinCount: pins.length,
+		success: true
+	};
 }
 
 function toolParseBuildErrors(params) {

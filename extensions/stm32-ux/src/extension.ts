@@ -176,7 +176,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 async function openEnvironmentSettingsDialog(): Promise<void> {
 	const config = vscode.workspace.getConfiguration('stm32');
-	
+
 	// Read current values from settings
 	const makePath = config.get<string>('makePath', '');
 	const cubemxPath = config.get<string>('cubemxPath', '');
