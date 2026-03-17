@@ -143,7 +143,7 @@
         },
         "stm32ux.mcp.transport": {
           "type": "string",
-          "default": "stdio",
+          "default": "http",
           "enum": [
             "stdio",
             "http"
@@ -157,7 +157,7 @@
         },
         "stm32ux.mcp.port": {
           "type": "number",
-          "default": 61337,
+          "default": 3737,
           "minimum": 1,
           "maximum": 65535,
           "markdownDescription": "%configuration.mcp.port.description%"

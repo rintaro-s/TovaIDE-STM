@@ -6,10 +6,11 @@
 import * as vscode from 'vscode';
 
 declare const require: (moduleName: string) => unknown;
-declare const process: { platform: string };
+declare const process: { platform: string; env: Record<string, string | undefined> };
 
 const childProcess = require('child_process') as {
 	execFile: (command: string, args: string[], options: { cwd?: string; shell?: boolean }, callback: (error: Error | null, stdout: string, stderr: string) => void) => void;
+	spawn: (command: string, args: string[], options: { cwd?: string; detached?: boolean; stdio?: unknown; shell?: boolean; env?: Record<string, string | undefined> }) => { pid?: number; unref: () => void; on: (event: string, listener: (...args: unknown[]) => void) => void };
 };
 const pathModule = require('path') as {
 	dirname: (path: string) => string;
@@ -32,6 +33,11 @@ interface ExecFileResult {
 interface McpHealthStatus {
 	running: boolean;
 	endpoint?: string;
+	detail: string;
+}
+
+interface ManagedMcpStartResult {
+	ok: boolean;
 	detail: string;
 }
 
@@ -145,6 +151,7 @@ const COMMON_PIN_ALIASES: Record<string, string[]> = {
 
 let outputChannel: vscode.OutputChannel;
 let extensionUri: vscode.Uri;
+let managedMcpPid: number | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
 	outputChannel = vscode.window.createOutputChannel('STM32 UX');
@@ -499,6 +506,7 @@ async function openMcpOperationDesk(): Promise<void> {
 				} catch {
 					// ignore and continue status check
 				}
+				await tryStopManagedMcpProcess();
 				await waitMs(400);
 				await publishStatus();
 				break;
@@ -542,7 +550,7 @@ async function openMcpOperationDesk(): Promise<void> {
 function getMcpProbeTargets(): Array<{ host: string; port: number }> {
 	const config = vscode.workspace.getConfiguration('stm32ux');
 	const host = config.get<string>('mcp.host', '127.0.0.1');
-	const configuredPort = config.get<number>('mcp.port', 61337);
+	const configuredPort = config.get<number>('mcp.port', 3737);
 	const ports = Array.from(new Set([configuredPort, 3737]));
 	return ports.map(port => ({ host, port }));
 }
@@ -593,16 +601,115 @@ async function tryStartMcpTask(): Promise<void> {
 	}
 }
 
+function getPrimaryWorkspacePath(): string | undefined {
+	return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+async function tryStartManagedMcpProcess(): Promise<ManagedMcpStartResult> {
+	const workspacePath = getPrimaryWorkspacePath();
+	if (!workspacePath) {
+		return { ok: false, detail: 'ワークスペース未検出のため managed 起動をスキップ' };
+	}
+	const config = vscode.workspace.getConfiguration('stm32ux');
+	const host = config.get<string>('mcp.host', '127.0.0.1');
+	const port = config.get<number>('mcp.port', 3737);
+	const serverEntryPath = pathModule.join(workspacePath, 'mcp-server', 'index.js');
+	if (!(await fileExists(serverEntryPath))) {
+		return { ok: false, detail: `managed 起動対象が見つかりません: ${serverEntryPath}` };
+	}
+
+	return await new Promise<ManagedMcpStartResult>(resolve => {
+		let settled = false;
+		const finish = (result: ManagedMcpStartResult): void => {
+			if (!settled) {
+				settled = true;
+				resolve(result);
+			}
+		};
+
+		try {
+			const child = childProcess.spawn('node', [serverEntryPath, '--host', host, '--port', String(port), '--workspace', workspacePath, '--no-auth'], {
+				cwd: workspacePath,
+				detached: true,
+				stdio: 'ignore',
+				shell: false,
+				env: {
+					...process.env,
+					MCP_NO_AUTH: '1',
+				},
+			});
+
+			if (!child.pid) {
+				finish({ ok: false, detail: 'managed 起動失敗: node プロセス PID を取得できませんでした' });
+				return;
+			}
+
+			managedMcpPid = child.pid;
+			child.on('error', error => {
+				const message = error instanceof Error ? error.message : String(error);
+				finish({ ok: false, detail: `managed 起動エラー: ${message}` });
+			});
+			child.on('exit', (code: unknown) => {
+				if (typeof code === 'number' && code !== 0) {
+					finish({ ok: false, detail: `managed 起動直後に終了しました (exit=${code})` });
+				}
+			});
+
+			child.unref();
+			setTimeout(() => {
+				finish({ ok: true, detail: `managed 起動実行: node PID ${String(managedMcpPid ?? '')}` });
+			}, 300);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			finish({ ok: false, detail: `managed 起動例外: ${message}` });
+		}
+	});
+}
+
+async function tryStopManagedMcpProcess(): Promise<void> {
+	const workspacePath = getPrimaryWorkspacePath();
+	if (!workspacePath) {
+		return;
+	}
+
+	if (managedMcpPid) {
+		try {
+			if (process.platform === 'win32') {
+				await execFileAsync('taskkill', ['/PID', String(managedMcpPid), '/T', '/F'], workspacePath);
+			} else {
+				await execFileAsync('kill', ['-9', String(managedMcpPid)], workspacePath);
+			}
+		} catch {
+			// ignore and continue with command-line based cleanup
+		}
+		managedMcpPid = undefined;
+	}
+
+	if (process.platform === 'win32') {
+		const apostrophe = String.fromCharCode(39);
+		const escapedWorkspace = workspacePath.split(apostrophe).join(apostrophe + apostrophe);
+		const script = `$procs = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*mcp-server\\index.js*' -and $_.CommandLine -like '*--workspace*${escapedWorkspace}*' }; foreach ($p in $procs) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }`;
+		try {
+			await execFileAsync('powershell', ['-NoProfile', '-Command', script], workspacePath);
+		} catch {
+			// ignore
+		}
+	}
+}
+
 async function ensureMcpServerReady(): Promise<McpHealthStatus> {
+	const attempts: string[] = [];
 	let status = await checkMcpHealth();
 	if (status.running) {
 		return status;
 	}
+	attempts.push('初回 /health: NG');
 
 	try {
 		await vscode.commands.executeCommand('stm32ai.startMcpServer');
+		attempts.push('stm32ai.startMcpServer 実行');
 	} catch {
-		// continue to polling/fallback
+		attempts.push('stm32ai.startMcpServer 失敗');
 	}
 
 	for (let i = 0; i < 8; i++) {
@@ -612,11 +719,28 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 			return status;
 		}
 	}
+	attempts.push('コマンド実行後 /health: NG');
 
 	try {
 		await tryStartMcpTask();
+		attempts.push('タスク起動実行');
 	} catch {
-		// ignore fallback errors and return final status
+		attempts.push('タスク起動失敗');
+	}
+
+	for (let i = 0; i < 8; i++) {
+		await waitMs(500);
+		status = await checkMcpHealth();
+		if (status.running) {
+			return status;
+		}
+	}
+	attempts.push('タスク実行後 /health: NG');
+
+	const managed = await tryStartManagedMcpProcess();
+	attempts.push(managed.detail);
+	if (!managed.ok) {
+		return { running: false, detail: attempts.join(' | ') };
 	}
 
 	for (let i = 0; i < 8; i++) {
@@ -627,7 +751,8 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 		}
 	}
 
-	return { running: false, detail: '起動コマンド/タスク実行後もMCP /healthに接続できませんでした' };
+	attempts.push('managed 起動後 /health: NG');
+	return { running: false, detail: attempts.join(' | ') };
 }
 
 function getMcpMethodCatalog(): Array<{ method: string; description: string; command?: string }> {
@@ -720,7 +845,7 @@ async function generateMcpConfigJson(): Promise<void> {
 
 	const config = vscode.workspace.getConfiguration('stm32ux');
 	const autoStart = config.get<boolean>('mcp.autoStart', true);
-	const transport = (config.get<string>('mcp.transport', 'stdio') || 'stdio').toLowerCase();
+	const transport = (config.get<string>('mcp.transport', 'http') || 'http').toLowerCase();
 	const host = config.get<string>('mcp.host', '127.0.0.1');
 	const port = config.get<number>('mcp.port', 3737);
 	const timeoutMs = config.get<number>('mcp.requestTimeoutMs', 20000);
@@ -741,14 +866,17 @@ async function generateMcpConfigJson(): Promise<void> {
 			// Token file may not exist yet. Keep placeholder so user can fill it.
 		}
 	}
+	const hasBearerToken = bearerToken !== '<MCP_TOKEN>';
 	// VS Code mcp.json format uses "servers" key with type:stdio
 	const vscodeServerEntry = isHttp
 		? {
 			type: 'http' as const,
 			url: remoteUrl,
-			headers: {
-				'Authorization': `Bearer ${bearerToken}`,
-			},
+			...(hasBearerToken ? {
+				headers: {
+					'Authorization': `Bearer ${bearerToken}`,
+				},
+			} : {}),
 		}
 		: {
 			type: 'stdio' as const,
@@ -763,46 +891,36 @@ async function generateMcpConfigJson(): Promise<void> {
 			},
 		};
 
-	// Claude Desktop / Cursor / LM Studio use node command in stdio mode.
-	const stdioServerEntry = isHttp
-		? {
-			url: remoteUrl,
+	// Qwen Desktop: template-compatible outputs for SSE / StreamableHTTP / stdio command.
+	const qwenSseServerEntry = {
+		url: `http://${host}:${port}/sse`,
+		...(hasBearerToken ? {
 			headers: {
 				'Authorization': `Bearer ${bearerToken}`,
 			},
-		}
-		: {
-			command: 'node',
-			args: [serverEntryPath, '--stdio', '--workspace', workspacePath],
-			env: {
-				MCP_REQUEST_TIMEOUT_MS: String(timeoutMs),
-				MCP_AUTO_START: autoStart ? '1' : '0',
-				NODE_NO_WARNINGS: '1',
-				FORCE_COLOR: '0',
-				NO_COLOR: '1',
-			},
-		};
-
-	// Qwen Desktop accepts stdio command as npx/uvx only.
-	const qwenServerEntry = isHttp
-		? {
-			url: remoteUrl,
+		} : {}),
+	};
+	const qwenStreamableHttpServerEntry = {
+		type: 'streamable-http',
+		url: remoteUrl,
+		...(hasBearerToken ? {
 			headers: {
 				'Authorization': `Bearer ${bearerToken}`,
 			},
-		}
-		: {
-			command: 'npx',
-			args: ['--yes', 'tsx', serverEntryPath, '--stdio', '--workspace', workspacePath],
-			env: {
-				MCP_REQUEST_TIMEOUT_MS: String(timeoutMs),
-				MCP_AUTO_START: autoStart ? '1' : '0',
-				NODE_NO_WARNINGS: '1',
-				FORCE_COLOR: '0',
-				NO_COLOR: '1',
-				TSX_DISABLE_CACHE: '1',
-			},
-		};
+		} : {}),
+	};
+	const qwenStdioServerEntry = {
+		command: 'npx',
+		args: ['-y', 'tsx', serverEntryPath, '--stdio', '--workspace', workspacePath],
+		env: {
+			MCP_REQUEST_TIMEOUT_MS: String(timeoutMs),
+			MCP_AUTO_START: autoStart ? '1' : '0',
+			NODE_NO_WARNINGS: '1',
+			FORCE_COLOR: '0',
+			NO_COLOR: '1',
+			TSX_DISABLE_CACHE: '1',
+		},
+	};
 
 	const editorPayload = {
 		servers: {
@@ -812,32 +930,32 @@ async function generateMcpConfigJson(): Promise<void> {
 
 	const qwenPayload = {
 		mcpServers: {
-			'tova-stm32': qwenServerEntry,
+			'tova-stm32-sse': qwenSseServerEntry,
+			'tova-stm32-http': qwenStreamableHttpServerEntry,
+			'tova-stm32-stdio': qwenStdioServerEntry,
 		},
 	};
 
 	const lmStudioPayload = {
 		mcpServers: {
-			'tova-stm32': isHttp
-				? stdioServerEntry
-				: {
-					command: 'python',
-					args: [
-						pathModule.join(pathModule.dirname(serverEntryPath), 'stdio_python_host.py'),
-						'--server',
-						serverEntryPath,
-						'--workspace',
-						workspacePath,
-					],
-					env: {
-						MCP_REQUEST_TIMEOUT_MS: String(timeoutMs),
-						MCP_AUTO_START: autoStart ? '1' : '0',
-						PYTHONUNBUFFERED: '1',
-						NODE_NO_WARNINGS: '1',
-						FORCE_COLOR: '0',
-						NO_COLOR: '1',
-					},
+			'tova-stm32': {
+				command: 'python',
+				args: [
+					pathModule.join(pathModule.dirname(serverEntryPath), 'stdio_python_host.py'),
+					'--server',
+					serverEntryPath,
+					'--workspace',
+					workspacePath,
+				],
+				env: {
+					MCP_REQUEST_TIMEOUT_MS: String(timeoutMs),
+					MCP_AUTO_START: autoStart ? '1' : '0',
+					PYTHONUNBUFFERED: '1',
+					NODE_NO_WARNINGS: '1',
+					FORCE_COLOR: '0',
+					NO_COLOR: '1',
 				},
+			},
 		},
 	};
 
@@ -879,15 +997,87 @@ async function generateMcpConfigJson(): Promise<void> {
 	await writeTextFile(targetUri, editorContent);
 	await writeTextFile(qwenTargetUri, qwenContent);
 	await writeTextFile(lmStudioTargetUri, lmStudioContent);
+	await writeQwenUserConfig(qwenPayload.mcpServers as Record<string, unknown>);
 	const doc = await vscode.workspace.openTextDocument(targetUri);
 	await vscode.window.showTextDocument(doc, { preview: false });
 
-	const selfCheck = await runMcpStdioSelfCheck(serverEntryPath, targetWorkspacePath);
+	const selfCheck = isHttp
+		? await runMcpHttpSelfCheck(host, port, timeoutMs)
+		: await runMcpStdioSelfCheck(serverEntryPath, targetWorkspacePath);
 	if (selfCheck.ok) {
-		vscode.window.showInformationMessage(vscode.l10n.t('MCP設定JSONを3種類出力し、STDIO自己診断に成功しました: {0} / {1} / {2}', targetUri.fsPath, qwenTargetUri.fsPath, lmStudioTargetUri.fsPath));
+		vscode.window.showInformationMessage(vscode.l10n.t('MCP設定JSONを3種類出力し、自己診断に成功しました: {0} / {1} / {2}', targetUri.fsPath, qwenTargetUri.fsPath, lmStudioTargetUri.fsPath));
 	} else {
-		vscode.window.showErrorMessage(vscode.l10n.t('MCP設定JSONを出力しましたが、STDIO自己診断に失敗しました: {0}', selfCheck.detail));
+		vscode.window.showErrorMessage(vscode.l10n.t('MCP設定JSONを出力しましたが、自己診断に失敗しました: {0}', selfCheck.detail));
 	}
+}
+
+async function writeQwenUserConfig(serverEntries: Record<string, unknown>): Promise<void> {
+	const userProfile = process.env.USERPROFILE;
+	if (!userProfile) {
+		return;
+	}
+	const qwenDir = vscode.Uri.file(pathModule.join(userProfile, '.qwen'));
+	const settingsUri = vscode.Uri.joinPath(qwenDir, 'settings.json');
+	const mcpUri = vscode.Uri.joinPath(qwenDir, 'mcp.json');
+	try {
+		await vscode.workspace.fs.createDirectory(qwenDir);
+	} catch {
+		return;
+	}
+
+	await upsertQwenServerEntries(settingsUri, serverEntries, true);
+	await upsertQwenServerEntries(mcpUri, serverEntries, false);
+}
+
+async function upsertQwenServerEntries(uri: vscode.Uri, serverEntries: Record<string, unknown>, preserveSettingsRoot: boolean): Promise<void> {
+	let root: Record<string, unknown> = {};
+	try {
+		const text = await readTextFile(uri);
+		const parsed = JSON.parse(text);
+		if (isRecord(parsed)) {
+			root = parsed as Record<string, unknown>;
+		}
+	} catch {
+		root = {};
+	}
+
+	if (!isRecord(root.mcpServers)) {
+		root.mcpServers = {};
+	}
+	const servers = root.mcpServers as Record<string, unknown>;
+	for (const name of Object.keys(servers)) {
+		if (name === 'tova-stm32' || name.startsWith('tova-stm32-')) {
+			delete servers[name];
+		}
+	}
+	for (const [name, entry] of Object.entries(serverEntries)) {
+		servers[name] = entry;
+	}
+
+	if (!preserveSettingsRoot) {
+		root = { mcpServers: root.mcpServers };
+	}
+
+	await writeTextFile(uri, `${JSON.stringify(root, null, 2)}\n`);
+}
+
+async function runMcpHttpSelfCheck(host: string, port: number, timeoutMs: number): Promise<{ ok: boolean; detail: string }> {
+	return new Promise(resolve => {
+		const request = httpModule.get({ host, port, path: '/health', timeout: Math.max(1000, timeoutMs) }, response => {
+			const status = response.statusCode ?? 0;
+			response.resume();
+			if (status >= 200 && status < 300) {
+				resolve({ ok: true, detail: `HTTP /health ${status}` });
+			} else {
+				resolve({ ok: false, detail: `HTTP /health ${status}` });
+			}
+		});
+		request.on('error', error => resolve({ ok: false, detail: error.message }));
+		request.on('timeout', () => {
+			request.destroy();
+			resolve({ ok: false, detail: 'HTTP /health timeout' });
+		});
+	});
 }
 
 async function uriExists(uri: vscode.Uri): Promise<boolean> {

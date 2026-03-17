@@ -27,6 +27,7 @@ const PORT = parseInt(getArg(args, '--port') ?? '3737', 10);
 const HOST = getArg(args, '--host') ?? '127.0.0.1';
 const VERBOSE = args.includes('--verbose');
 const STDIO_MODE = args.includes('--stdio');
+const NO_AUTH = args.includes('--no-auth') || process.env.MCP_NO_AUTH === '1';
 const WORKSPACE = getArg(args, '--workspace') ?? process.cwd();
 
 function getArg(arr, flag) {
@@ -1828,8 +1829,41 @@ function writeJson(res, status, data) {
 	res.end(json);
 }
 
+const sseSessions = new Map();
+
+function parseRequestUrl(reqUrl) {
+	try {
+		return new URL(reqUrl ?? '/', `http://${HOST}:${PORT}`);
+	} catch {
+		return null;
+	}
+}
+
+function sendSseEvent(res, event, data) {
+	res.write(`event: ${event}\n`);
+	res.write(`data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`);
+}
+
+function isLoopbackRequest(req) {
+	const remote = req?.socket?.remoteAddress ?? '';
+	return remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+}
+
+function checkHttpAuth(req, res) {
+	if (isLoopbackRequest(req)) {
+		return true;
+	}
+	const auth = req.headers['authorization'] ?? '';
+	if (!NO_AUTH && SERVER_TOKEN && auth !== `Bearer ${SERVER_TOKEN}`) {
+		writeJson(res, 401, { jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unauthorized' } });
+		return false;
+	}
+	return true;
+}
+
 const server = http.createServer(async (req, res) => {
 	verbose(`${req.method} ${req.url}`);
+	const parsedUrl = parseRequestUrl(req.url);
 
 	// CORS preflight
 	if (req.method === 'OPTIONS') {
@@ -1854,12 +1888,63 @@ const server = http.createServer(async (req, res) => {
 		return;
 	}
 
+	// Legacy SSE endpoint compatibility for clients using EventSource transport
+	if (req.method === 'GET' && parsedUrl && (parsedUrl.pathname === '/sse' || parsedUrl.pathname === '/mcp/sse')) {
+		if (!checkHttpAuth(req, res)) {
+			return;
+		}
+		const sessionId = crypto.randomBytes(12).toString('hex');
+		res.writeHead(200, {
+			'Content-Type': 'text/event-stream; charset=utf-8',
+			'Cache-Control': 'no-cache, no-transform',
+			'Connection': 'keep-alive',
+			'Access-Control-Allow-Origin': '*'
+		});
+		sseSessions.set(sessionId, { res, createdAt: Date.now() });
+		sendSseEvent(res, 'endpoint', `/messages?sessionId=${sessionId}`);
+		sendSseEvent(res, 'ready', { sessionId });
+		req.on('close', () => {
+			sseSessions.delete(sessionId);
+			try { res.end(); } catch (_) { }
+		});
+		return;
+	}
+
+	if (req.method === 'POST' && parsedUrl && (parsedUrl.pathname === '/messages' || parsedUrl.pathname === '/mcp/messages')) {
+		if (!checkHttpAuth(req, res)) {
+			return;
+		}
+		const sessionId = parsedUrl.searchParams.get('sessionId') ?? '';
+		const session = sseSessions.get(sessionId);
+		if (!session) {
+			writeJson(res, 404, { jsonrpc: '2.0', id: null, error: { code: -32004, message: 'Unknown SSE session' } });
+			return;
+		}
+
+		let payload;
+		try {
+			const body = await readBody(req);
+			payload = JSON.parse(body);
+		} catch {
+			writeJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+			return;
+		}
+
+		const response = await handleRpcInput(payload);
+		if (response !== undefined) {
+			try {
+				sendSseEvent(session.res, 'message', response);
+			} catch {
+				// ignore session write failure
+			}
+		}
+		writeJson(res, 202, { ok: true });
+		return;
+	}
+
 	// Main MCP endpoint
 	if (req.method === 'POST' && req.url === '/mcp') {
-		// Auth check
-		const auth = req.headers['authorization'] ?? '';
-		if (SERVER_TOKEN && auth !== `Bearer ${SERVER_TOKEN}`) {
-			writeJson(res, 401, { jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unauthorized' } });
+		if (!checkHttpAuth(req, res)) {
 			return;
 		}
 
@@ -1898,11 +1983,18 @@ server.on('error', err => {
 if (STDIO_MODE) {
 	startStdioServer();
 } else {
-	initToken();
+	if (!NO_AUTH) {
+		initToken();
+	} else {
+		SERVER_TOKEN = '';
+		log('HTTP auth disabled by --no-auth / MCP_NO_AUTH=1');
+	}
 	server.listen(PORT, HOST, () => {
 		log(`CubeForge MCP Server listening on http://${HOST}:${PORT}/mcp`);
 		log(`Workspace: ${WORKSPACE}`);
-		log(`Token file: ${TOKEN_FILE}`);
+		if (!NO_AUTH) {
+			log(`Token file: ${TOKEN_FILE}`);
+		}
 		log(`Tools: ${TOOLS.map(t => t.name).join(', ')}`);
 	});
 }

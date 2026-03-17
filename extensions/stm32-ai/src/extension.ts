@@ -34,6 +34,8 @@ interface IncomingMessageLike {
 
 interface ServerResponseLike {
 	writeHead: (statusCode: number, headers?: Record<string, string>) => void;
+	write?: (chunk: string) => void;
+	on?: (event: 'close', listener: () => void) => void;
 	end: (body?: string) => void;
 }
 
@@ -60,6 +62,10 @@ let mcpServerHost = '127.0.0.1';
 let mcpServerPort = 3737;
 let activeAssistantView: vscode.WebviewView | undefined;
 let mcpPollTimer: ReturnType<typeof setInterval> | undefined;
+const sseSessions = new Map<string, ServerResponseLike>();
+let mcpServerRunning = false;
+let mcpServerStarting = false;
+let mcpRequireAuth = false;
 
 const MCP_TOKEN_SECRET_KEY = 'stm32ai.mcp.token';
 
@@ -157,14 +163,29 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 					await analyzeHardFaultWithAi();
 					break;
 				case 'startMcp':
-					if (extensionContextRef) {
+					try {
+						if (!extensionContextRef) {
+							throw new Error('extension context unavailable');
+						}
 						await startMcpServer(extensionContextRef);
 						webviewView.webview.postMessage({ type: 'status', message: `MCPサーバー起動中: http://${mcpServerHost}:${mcpServerPort}/mcp` });
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						assistantOutput.appendLine(`[STM32-AI] MCP start failed: ${message}`);
+						webviewView.webview.postMessage({ type: 'status', message: `MCPサーバー起動失敗: ${message}` });
+						vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー起動に失敗しました: {0}', message));
 					}
 					break;
 				case 'stopMcp':
-					stopMcpServer();
-					webviewView.webview.postMessage({ type: 'status', message: 'MCPサーバーを停止しました。' });
+					try {
+						stopMcpServer();
+						webviewView.webview.postMessage({ type: 'status', message: 'MCPサーバーを停止しました。' });
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						assistantOutput.appendLine(`[STM32-AI] MCP stop failed: ${message}`);
+						webviewView.webview.postMessage({ type: 'status', message: `MCPサーバー停止失敗: ${message}` });
+						vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー停止に失敗しました: {0}', message));
+					}
 					break;
 			}
 		});
@@ -462,24 +483,47 @@ async function ensureMcpServerToken(context: vscode.ExtensionContext): Promise<s
 }
 
 async function startMcpServer(context: vscode.ExtensionContext): Promise<void> {
-	if (mcpServer) {
+	if (mcpServerRunning || mcpServerStarting) {
 		return;
 	}
+	if (mcpServer) {
+		try {
+			mcpServer.close();
+		} catch {
+			// ignore stale close errors
+		}
+		mcpServer = undefined;
+	}
+	mcpServerStarting = true;
 
 	mcpServerHost = vscode.workspace.getConfiguration('stm32ai').get<string>('mcp.host', '127.0.0.1');
 	mcpServerPort = vscode.workspace.getConfiguration('stm32ai').get<number>('mcp.port', 3737);
+	mcpRequireAuth = vscode.workspace.getConfiguration('stm32ai').get<boolean>('mcp.requireAuth', false);
 	const token = await ensureMcpServerToken(context);
 
-	mcpServer = httpModule.createServer((req, res) => {
+	const server = httpModule.createServer((req, res) => {
 		void handleMcpHttpRequest(req, res, token);
 	});
+	mcpServer = server;
 
-	mcpServer.on('error', error => {
-		assistantOutput.appendLine(`[STM32-AI] MCP server error: ${error.message}`);
+	server.on('error', error => {
+		mcpServerStarting = false;
+		mcpServerRunning = false;
+		if (mcpServer === server) {
+			mcpServer = undefined;
+		}
+		const anyError = error as Error & { code?: string };
+		assistantOutput.appendLine(`[STM32-AI] MCP server error: ${anyError.message}`);
+		if (anyError.code === 'EADDRINUSE') {
+			vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー起動失敗: {0}:{1} は既に使用中です。既存MCPを停止して再実行してください。', mcpServerHost, String(mcpServerPort)));
+			return;
+		}
 		vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバーでエラーが発生しました。出力を確認してください。'));
 	});
 
-	mcpServer.listen(mcpServerPort, mcpServerHost, () => {
+	server.listen(mcpServerPort, mcpServerHost, () => {
+		mcpServerStarting = false;
+		mcpServerRunning = true;
 		const url = `http://${mcpServerHost}:${mcpServerPort}/mcp`;
 		assistantOutput.appendLine(`[STM32-AI] MCP server started at ${url}`);
 		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `MCPサーバー起動: ${url}` });
@@ -487,24 +531,90 @@ async function startMcpServer(context: vscode.ExtensionContext): Promise<void> {
 }
 
 function stopMcpServer(): void {
-	if (!mcpServer) {
+	if (!mcpServer && !mcpServerStarting && !mcpServerRunning) {
 		return;
 	}
 
-	mcpServer.close();
-	mcpServer = undefined;
+	for (const session of sseSessions.values()) {
+		session.end();
+	}
+	sseSessions.clear();
+
+	if (mcpServer) {
+		mcpServer.close();
+		mcpServer = undefined;
+	}
+	mcpServerStarting = false;
+	mcpServerRunning = false;
 	assistantOutput.appendLine('[STM32-AI] MCP server stopped.');
 	activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: false, url: '', message: 'MCPサーバーを停止しました。' });
 }
 
 async function handleMcpHttpRequest(req: IncomingMessageLike, res: ServerResponseLike, token: string): Promise<void> {
-	if (req.method !== 'POST' || req.url !== '/mcp') {
+	const parsedUrl = new URL(req.url ?? '/', `http://${mcpServerHost}:${mcpServerPort}`);
+
+	if (req.method === 'GET' && parsedUrl.pathname === '/health') {
+		writeJson(res, 200, { status: 'ok' });
+		return;
+	}
+
+	if (req.method === 'GET' && (parsedUrl.pathname === '/sse' || parsedUrl.pathname === '/mcp/sse')) {
+		res.writeHead(200, {
+			'Content-Type': 'text/event-stream; charset=utf-8',
+			'Cache-Control': 'no-cache, no-transform',
+			Connection: 'keep-alive',
+		});
+
+		const sessionId = cryptoModule.randomBytes(16).toString('hex');
+		sseSessions.set(sessionId, res);
+		sendSseEvent(res, 'endpoint', `/messages?sessionId=${sessionId}`);
+		sendSseEvent(res, 'ready', { sessionId });
+
+		res.on?.('close', () => {
+			sseSessions.delete(sessionId);
+		});
+		return;
+	}
+
+	if (req.method === 'POST' && (parsedUrl.pathname === '/messages' || parsedUrl.pathname === '/mcp/messages')) {
+		const sessionId = parsedUrl.searchParams.get('sessionId') ?? '';
+		const session = sseSessions.get(sessionId);
+		if (!session) {
+			writeJson(res, 404, { jsonrpc: '2.0', id: null, error: { code: -32004, message: 'Unknown SSE session' } });
+			return;
+		}
+
+		const body = await readRequestBody(req);
+		let payload: JsonRpcRequest;
+		try {
+			payload = JSON.parse(body) as JsonRpcRequest;
+		} catch {
+			writeJson(res, 400, { error: { code: -32700, message: 'Invalid JSON' } });
+			return;
+		}
+
+		const id = payload.id ?? null;
+		try {
+			const result = await executeMcpMethod(payload.method, payload.params);
+			sendSseEvent(session, 'message', { jsonrpc: '2.0', id, result });
+			res.writeHead(202, { 'Content-Type': 'application/json; charset=utf-8' });
+			res.end(JSON.stringify({ ok: true }));
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			sendSseEvent(session, 'message', { jsonrpc: '2.0', id, error: { code: -32000, message } });
+			res.writeHead(202, { 'Content-Type': 'application/json; charset=utf-8' });
+			res.end(JSON.stringify({ ok: true }));
+		}
+		return;
+	}
+
+	if (req.method !== 'POST' || parsedUrl.pathname !== '/mcp') {
 		writeJson(res, 404, { error: { code: -32004, message: 'Not found' } });
 		return;
 	}
 
 	const authorizationHeader = readHeader(req.headers, 'authorization');
-	if (authorizationHeader !== `Bearer ${token}`) {
+	if (mcpRequireAuth && authorizationHeader !== `Bearer ${token}`) {
 		writeJson(res, 401, { error: { code: -32001, message: 'Unauthorized' } });
 		return;
 	}
@@ -528,14 +638,38 @@ async function handleMcpHttpRequest(req: IncomingMessageLike, res: ServerRespons
 	}
 }
 
+function sendSseEvent(res: ServerResponseLike, event: string, data: unknown): void {
+	if (!res.write) {
+		return;
+	}
+	const payload = typeof data === 'string' ? data : JSON.stringify(data);
+	res.write(`event: ${event}\n`);
+	res.write(`data: ${payload}\n\n`);
+}
+
 async function executeMcpMethod(method: string, params: Record<string, unknown> | undefined): Promise<unknown> {
+	if (method === 'initialize') {
+		return {
+			protocolVersion: '2024-11-05',
+			capabilities: { tools: {} },
+			serverInfo: { name: 'stm32-ai-mcp', version: '1.0.0' },
+		};
+	}
+	if (method === 'notifications/initialized') {
+		return null;
+	}
+	if (method === 'ping') {
+		return { ok: true };
+	}
+
 	if (method === 'tools/call') {
 		const name = typeof params?.name === 'string' ? params.name : '';
 		const argumentsValue = isRecord(params?.arguments) ? params.arguments : undefined;
 		if (!name) {
 			throw new Error('tools/call requires params.name');
 		}
-		return executeMcpMethod(name, argumentsValue);
+		const result = await executeMcpMethod(name, argumentsValue);
+		return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
 	}
 
 	switch (method) {
