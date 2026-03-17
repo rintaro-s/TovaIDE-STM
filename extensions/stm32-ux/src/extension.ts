@@ -179,6 +179,17 @@ export function activate(context: vscode.ExtensionContext): void {
 	if (shouldOpenWelcome) {
 		void openWelcomeWizard();
 	}
+
+	const shouldAutoStartMcp = vscode.workspace.getConfiguration('stm32ux').get<boolean>('mcp.autoStart', true);
+	if (shouldAutoStartMcp) {
+		setTimeout(() => {
+			void ensureMcpServerReady().then(status => {
+				if (!status.running) {
+					outputChannel.appendLine(`[STM32 UX] MCP auto-start failed: ${status.detail}`);
+				}
+			});
+		}, 800);
+	}
 }
 
 async function openEnvironmentSettingsDialog(): Promise<void> {

@@ -48,3 +48,5 @@ dist
 .agents/skills/.local/
 .claude/skills/.local/
 .github/skills/.local/
+
+tmp/
