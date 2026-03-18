@@ -504,18 +504,18 @@ async function openPeripheralWorkbench(): Promise<void> {
 			case 'openMcp':
 				await openMcpOperationDesk();
 				break;
-				case 'openCommandCenter':
-					await vscode.commands.executeCommand('stm32.openCommandCenter');
-					break;
-				case 'runBuild':
-					await vscode.commands.executeCommand('stm32.buildDebug');
-					break;
-				case 'runFlash':
-					await vscode.commands.executeCommand('stm32.flash');
-					break;
-				case 'runDebug':
-					await vscode.commands.executeCommand('stm32.startDebug');
-					break;
+			case 'openCommandCenter':
+				await vscode.commands.executeCommand('stm32.openCommandCenter');
+				break;
+			case 'runBuild':
+				await vscode.commands.executeCommand('stm32.buildDebug');
+				break;
+			case 'runFlash':
+				await vscode.commands.executeCommand('stm32.flash');
+				break;
+			case 'runDebug':
+				await vscode.commands.executeCommand('stm32.startDebug');
+				break;
 		}
 	});
 }
@@ -572,24 +572,24 @@ async function openMcpOperationDesk(): Promise<void> {
 					await publishStatus();
 				}
 				break;
-				case 'startSseMcp':
-					{
-						const status = await ensureMcpServerReady();
-						if (!status.running) {
-							vscode.window.showErrorMessage(vscode.l10n.t('SSE MCP起動に失敗しました: {0}', status.detail));
-							await publishStatus();
-							break;
-						}
-
-						const sseEndpoint = status.endpoint ? status.endpoint.replace(/\/mcp$/u, '/sse') : '';
-						const message = sseEndpoint
-							? vscode.l10n.t('SSE MCPサーバー起動完了: {0}', sseEndpoint)
-							: vscode.l10n.t('SSE MCPサーバーを起動しました。');
-						vscode.window.showInformationMessage(message);
-						await panel.webview.postMessage({ type: 'status', message });
+			case 'startSseMcp':
+				{
+					const status = await ensureMcpServerReady();
+					if (!status.running) {
+						vscode.window.showErrorMessage(vscode.l10n.t('SSE MCP起動に失敗しました: {0}', status.detail));
 						await publishStatus();
+						break;
 					}
-					break;
+
+					const sseEndpoint = status.endpoint ? status.endpoint.replace(/\/mcp$/u, '/sse') : '';
+					const message = sseEndpoint
+						? vscode.l10n.t('SSE MCPサーバー起動完了: {0}', sseEndpoint)
+						: vscode.l10n.t('SSE MCPサーバーを起動しました。');
+					vscode.window.showInformationMessage(message);
+					await panel.webview.postMessage({ type: 'status', message });
+					await publishStatus();
+				}
+				break;
 			case 'stopMcp':
 				try {
 					await vscode.commands.executeCommand('stm32ai.stopMcpServer');

@@ -113,7 +113,9 @@ const TOOLS = [
 			properties: {
 				elfPath: { type: ['string', 'null'], description: 'Path to ELF file (auto-detected if omitted)' },
 				frequencyKHz: { type: ['number', 'null'], description: 'SWD frequency in kHz (default: 4000)' },
-				workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' }
+				workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' },
+				programmerPath: { type: ['string', 'null'], description: 'Path to STM32_Programmer_CLI (optional)' },
+				force: { type: ['boolean', 'null'], description: 'Allow flashing even when ELF appears stale (default: false)' }
 			}
 		}
 	},
@@ -458,12 +460,21 @@ async function toolBuild(params) {
 			env: childEnv,
 			timeout: 120000
 		});
+		const elfPath = findElfFile(wsRoot);
+		if (elfPath) {
+			try {
+				writeLastBuildStamp(wsRoot, { elfPath, builtAt: new Date().toISOString(), buildDir, makePath: makeCmd });
+			} catch {
+				// best-effort only
+			}
+		}
 		return {
 			success: true,
 			exitCode: 0,
 			makePath: makeCmd,
 			debugDir,
 			buildDir,
+			elfPath: elfPath ?? null,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
 			gccResolutionTried: gccResolution.tried,
@@ -491,25 +502,71 @@ async function toolBuild(params) {
 async function toolFlash(params) {
 	const wsRoot = resolveWorkspacePath(params);
 	const freq = params.frequencyKHz ?? 4000;
+	const forceFlash = params.force === true;
+	const programmer = params.programmerPath ?? findExecutable('STM32_Programmer_CLI');
+
+	const stlink = await detectStLink(programmer);
+	if (!stlink.connected) {
+		return {
+			success: false,
+			workspacePath: wsRoot,
+			error: 'ST-LINK not detected. Check cable/power/driver and target voltage.',
+			detection: stlink
+		};
+	}
+
 	let elfPath = params.elfPath;
 
 	if (!elfPath) {
-		elfPath = findElfFile(wsRoot);
+		const stamp = readLastBuildStamp(wsRoot);
+		if (stamp?.elfPath && isExistingFile(stamp.elfPath)) {
+			elfPath = stamp.elfPath;
+		}
+		if (!elfPath) {
+			elfPath = findElfFile(wsRoot);
+		}
 		if (!elfPath) {
 			return { success: false, error: 'ELF file not found. Build the project first.' };
 		}
+		if (!forceFlash && isStaleBuildArtifact(wsRoot, elfPath)) {
+			return {
+				success: false,
+				workspacePath: wsRoot,
+				elfPath,
+				error: 'ELF looks stale compared to source/.ioc changes. Rebuild first or set force=true to override.'
+			};
+		}
 	}
 
-	const programmer = findExecutable('STM32_Programmer_CLI');
 	try {
 		const { stdout, stderr } = await execFileAsync(
 			programmer,
 			['-c', 'port=SWD', `freq=${freq}`, '-w', elfPath, '0x08000000', '-v'],
 			{ cwd: wsRoot, timeout: 60000 }
 		);
-		return { success: true, elfPath, stdout, stderr };
+		const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
+		const verified = /Download verified successfully|File download complete/i.test(combined);
+		if (!verified) {
+			return {
+				success: false,
+				workspacePath: wsRoot,
+				elfPath,
+				stdout,
+				stderr,
+				error: 'Flash command finished without verification signature in output.'
+			};
+		}
+		return { success: true, workspacePath: wsRoot, elfPath, stdout, stderr, detection: stlink };
 	} catch (err) {
-		return { success: false, elfPath, exitCode: err.code ?? 1, stdout: err.stdout ?? '', stderr: err.stderr ?? err.message };
+		return {
+			success: false,
+			workspacePath: wsRoot,
+			elfPath,
+			exitCode: err.code ?? 1,
+			stdout: err.stdout ?? '',
+			stderr: err.stderr ?? err.message,
+			detection: stlink
+		};
 	}
 }
 
@@ -950,13 +1007,25 @@ async function toolListElfSymbols(params) {
 
 async function toolCheckStLink(params) {
 	const programmer = params.programmerPath ?? findExecutable('STM32_Programmer_CLI');
-	try {
-		const { stdout, stderr } = await execFileAsync(programmer, ['-l', 'usb'], { timeout: 15000 });
-		const connected = /ST-?LINK/i.test(stdout + stderr);
-		return { success: true, connected, stdout, stderr };
-	} catch (err) {
-		return { success: false, connected: false, error: err.message };
+	const result = await detectStLink(programmer);
+	if (!result.connected) {
+		return {
+			success: false,
+			connected: false,
+			stdout: result.stdout,
+			stderr: result.stderr,
+			error: result.error ?? 'ST-LINK not detected'
+		};
 	}
+	return {
+		success: true,
+		connected: true,
+		stdout: result.stdout,
+		stderr: result.stderr,
+		interface: result.interface,
+		board: result.board,
+		sn: result.sn
+	};
 }
 
 async function toolReadRegister(params) {
@@ -978,15 +1047,109 @@ async function toolReadRegister(params) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function findElfFile(wsRoot) {
+	const candidates = [];
 	for (const sub of ['Debug', 'Release']) {
 		const dir = path.join(wsRoot, sub);
 		try {
 			const files = fs.readdirSync(dir);
-			const elf = files.find(f => f.toLowerCase().endsWith('.elf'));
-			if (elf) return path.join(dir, elf);
+			for (const file of files) {
+				if (!file.toLowerCase().endsWith('.elf')) continue;
+				const full = path.join(dir, file);
+				let mtimeMs = 0;
+				try { mtimeMs = fs.statSync(full).mtimeMs; } catch { mtimeMs = 0; }
+				candidates.push({ full, mtimeMs });
+			}
 		} catch (_) { }
 	}
-	return null;
+	if (candidates.length === 0) return null;
+	candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+	return candidates[0].full;
+}
+
+async function detectStLink(programmer) {
+	const attempts = [
+		{ args: ['-l', 'st-link'], iface: 'st-link' },
+		{ args: ['-l', 'stlink'], iface: 'stlink' },
+		{ args: ['-l', 'usb'], iface: 'usb' },
+	];
+
+	let lastOut = '';
+	let lastErr = '';
+	for (const attempt of attempts) {
+		try {
+			const { stdout, stderr } = await execFileAsync(programmer, attempt.args, { timeout: 15000 });
+			const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
+			lastOut = stdout ?? '';
+			lastErr = stderr ?? '';
+			const connected = /ST-?LINK SN|Board\s*:|ST-?LINK FW/i.test(combined);
+			if (connected) {
+				const board = combined.match(/(?:Board\s*Name|Board)\s*:\s*(.+)/i)?.[1]?.trim() ?? null;
+				const sn = combined.match(/ST-?LINK SN\s*:\s*([A-Za-z0-9]+)/i)?.[1]?.trim() ?? null;
+				return { connected: true, interface: attempt.iface, board, sn, stdout, stderr };
+			}
+		} catch (err) {
+			lastOut = err.stdout ?? '';
+			lastErr = err.stderr ?? err.message ?? '';
+		}
+	}
+
+	return {
+		connected: false,
+		stdout: lastOut,
+		stderr: lastErr,
+		error: 'No ST-LINK probe found via STM32_Programmer_CLI list commands.'
+	};
+}
+
+function getBuildStampPath(wsRoot) {
+	return path.join(wsRoot, '.mcp-last-build.json');
+}
+
+function writeLastBuildStamp(wsRoot, data) {
+	const stampPath = getBuildStampPath(wsRoot);
+	fs.writeFileSync(stampPath, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function readLastBuildStamp(wsRoot) {
+	const stampPath = getBuildStampPath(wsRoot);
+	if (!isExistingFile(stampPath)) return null;
+	try {
+		return JSON.parse(fs.readFileSync(stampPath, 'utf8'));
+	} catch {
+		return null;
+	}
+}
+
+function isStaleBuildArtifact(wsRoot, elfPath) {
+	try {
+		if (!isExistingFile(elfPath)) return true;
+		const elfMtime = fs.statSync(elfPath).mtimeMs;
+		let newestSource = 0;
+		for (const sub of ['Core', 'Src', 'Inc']) {
+			const dir = path.join(wsRoot, sub);
+			if (!isExistingDirectory(dir)) continue;
+			const stack = [dir];
+			while (stack.length > 0) {
+				const current = stack.pop();
+				let entries = [];
+				try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { entries = []; }
+				for (const e of entries) {
+					const full = path.join(current, e.name);
+					if (e.isDirectory()) {
+						stack.push(full);
+						continue;
+					}
+					if (!/\.(c|h|s|ld|ioc)$/i.test(e.name)) continue;
+					let mt = 0;
+					try { mt = fs.statSync(full).mtimeMs; } catch { mt = 0; }
+					if (mt > newestSource) newestSource = mt;
+				}
+			}
+		}
+		return newestSource > elfMtime;
+	} catch {
+		return true;
+	}
 }
 
 function findExecutable(name) {

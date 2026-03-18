@@ -280,6 +280,31 @@
           "default": "-q \"{ioc}\" -s",
           "markdownDescription": "%configuration.cubemxGenerateArgsTemplate.description%"
         },
+        "stm32.workspacePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%configuration.workspacePath.description%"
+        },
+        "stm32.build.directory": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%configuration.buildDirectory.description%"
+        },
+        "stm32.build.backend": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "make",
+            "mcp"
+          ],
+          "markdownDescription": "%configuration.buildBackend.description%"
+        },
+        "stm32.build.makeTarget": {
+          "type": "string",
+          "default": "all",
+          "markdownDescription": "%configuration.buildMakeTarget.description%"
+        },
         "stm32.build.jobs": {
           "type": "number",
           "default": 8,

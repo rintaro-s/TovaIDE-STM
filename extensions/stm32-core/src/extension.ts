@@ -27,12 +27,30 @@ const fsModule = require('fs') as {
 		access: (path: string, mode?: number) => Promise<void>;
 		readFile: (path: string, encoding: string) => Promise<string>;
 		unlink: (path: string) => Promise<void>;
+		stat: (path: string) => Promise<{ mtimeMs: number }>;
 		readdir: (path: string, options?: unknown) => Promise<Array<{ isFile: () => boolean; isDirectory: () => boolean; name: string }>>;
 	};
 };
 const osModule = require('os') as { tmpdir: () => string };
-const pathModule = require('path') as { basename: (path: string) => string; join: (...parts: string[]) => string };
+const pathModule = require('path') as {
+	basename: (path: string) => string;
+	join: (...parts: string[]) => string;
+	isAbsolute: (path: string) => boolean;
+};
 const utilModule = require('util') as { promisify: (fn: unknown) => (...args: unknown[]) => Promise<{ stdout: string; stderr: string }> };
+const httpModule = require('http') as {
+	request: (
+		options: { host: string; port: number; path: string; method: string; headers?: Record<string, string | number>; timeout?: number },
+		callback: (response: {
+			statusCode?: number;
+			on: (event: string, listener: (chunk?: unknown) => void) => void;
+		}) => void
+	) => {
+		write: (data: string) => void;
+		end: () => void;
+		on: (event: string, listener: (error: unknown) => void) => void;
+	};
+};
 
 const execFile = childProcess.execFile;
 const spawn = childProcess.spawn;
@@ -40,7 +58,9 @@ const fs = fsModule.promises;
 const tmpdir = osModule.tmpdir;
 const basename = pathModule.basename;
 const join = pathModule.join;
+const isAbsolutePath = pathModule.isAbsolute;
 const execFileAsync = utilModule.promisify(execFile);
+const httpRequest = httpModule.request;
 
 interface CubeMetadata {
 	make_path?: string;
@@ -175,7 +195,14 @@ async function showNewProjectGuide(): Promise<void> {
 }
 
 function getWorkspaceRoot(): string | undefined {
-	return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+	const configured = vscode.workspace.getConfiguration('stm32').get<string>('workspacePath', '').trim();
+	if (configured.length > 0) {
+		const configuredPath = isAbsolutePath(configured) ? configured : join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', configured);
+		return configuredPath;
+	}
+
+	const fromFolders = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+	return fromFolders;
 }
 
 function getConfiguredMetadataExecutable(): string {
@@ -194,6 +221,30 @@ function getProgrammerExecutable(metadata: CubeMetadata | undefined): string {
 	if (metadata?.programmer_path) {
 		return join(metadata.programmer_path, process.platform === 'win32' ? 'STM32_Programmer_CLI.exe' : 'STM32_Programmer_CLI');
 	}
+	return 'STM32_Programmer_CLI';
+}
+
+async function resolveMakeExecutable(metadata: CubeMetadata | undefined): Promise<string> {
+	const candidate = getMakeExecutable(metadata);
+	if (candidate === 'make') {
+		return candidate;
+	}
+	if (await probeFilePath(candidate)) {
+		return candidate;
+	}
+	outputChannel.appendLine(`[STM32] Configured make not found: ${candidate}. Falling back to PATH make.`);
+	return 'make';
+}
+
+async function resolveProgrammerExecutable(metadata: CubeMetadata | undefined): Promise<string> {
+	const candidate = getProgrammerExecutable(metadata);
+	if (candidate === 'STM32_Programmer_CLI') {
+		return candidate;
+	}
+	if (await probeFilePath(candidate)) {
+		return candidate;
+	}
+	outputChannel.appendLine(`[STM32] Configured programmer not found: ${candidate}. Falling back to PATH STM32_Programmer_CLI.`);
 	return 'STM32_Programmer_CLI';
 }
 
@@ -255,14 +306,59 @@ async function buildDebug(): Promise<boolean> {
 		return false;
 	}
 
-	const jobs = vscode.workspace.getConfiguration('stm32').get<number>('build.jobs', 8);
+	const stm32Config = vscode.workspace.getConfiguration('stm32');
+	const jobs = stm32Config.get<number>('build.jobs', 8);
+	const backend = (stm32Config.get<string>('build.backend', 'auto') || 'auto').trim().toLowerCase();
+	const makeTarget = (stm32Config.get<string>('build.makeTarget', 'all') || 'all').trim();
 	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
-	const makeExecutable = getMakeExecutable(metadata);
+	const makeExecutable = await resolveMakeExecutable(metadata);
+	const buildDir = await resolveBuildDirectory(workspaceRoot);
+	if (!buildDir) {
+		buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
+		buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+		vscode.window.showErrorMessage(vscode.l10n.t('ビルド先を解決できませんでした。`stm32.workspacePath` を確認してください。'));
+		return false;
+	}
 
 	buildStatusItem.text = '$(loading~spin) STM32: Debugビルド中';
 	buildStatusItem.backgroundColor = undefined;
+	outputChannel.appendLine(`[STM32] Build backend: ${backend}`);
+	outputChannel.appendLine(`[STM32] Using build directory: ${buildDir === workspaceRoot ? '.' : buildDir}`);
 
-	const result = await runCli(makeExecutable, [`-j${jobs}`, 'all', '-C', './Debug'], workspaceRoot, vscode.l10n.t('Debugビルド'));
+	const makefileInBuildDir = await directoryContainsMakefile(buildDir);
+	if (backend === 'mcp') {
+		return await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('MCP指定'));
+	}
+
+	if (backend === 'auto' && !makefileInBuildDir) {
+		outputChannel.appendLine('[STM32] Makefile not found in resolved build directory. Using MCP build backend.');
+		return await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('Makefile未検出'));
+	}
+
+	if (backend === 'make' && !makefileInBuildDir) {
+		buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
+		buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+		vscode.window.showErrorMessage(vscode.l10n.t('make backend が指定されていますが Makefile が見つかりません。`stm32.build.backend` を auto または mcp に変更してください。'));
+		return false;
+	}
+
+	const makeArgs = [`-j${jobs}`];
+	if (makeTarget.length > 0) {
+		makeArgs.push(makeTarget);
+	}
+	if (buildDir !== workspaceRoot) {
+		makeArgs.push('-C', buildDir);
+	}
+
+	let result = await runCli(makeExecutable, makeArgs, workspaceRoot, vscode.l10n.t('Debugビルド'));
+	if (result.exitCode !== 0 && makeTarget.length > 0 && shouldRetryMakeWithoutExplicitTarget(result.stdout + '\n' + result.stderr)) {
+		outputChannel.appendLine('[STM32] Retrying make without explicit target because requested target was not found.');
+		const retryArgs = [`-j${jobs}`];
+		if (buildDir !== workspaceRoot) {
+			retryArgs.push('-C', buildDir);
+		}
+		result = await runCli(makeExecutable, retryArgs, workspaceRoot, vscode.l10n.t('Debugビルド (targetなし再試行)'));
+	}
 	lastBuildOutput = `${result.stdout}\n${result.stderr}`;
 
 	if (result.exitCode === 0) {
@@ -270,6 +366,14 @@ async function buildDebug(): Promise<boolean> {
 		buildStatusItem.backgroundColor = undefined;
 		vscode.window.showInformationMessage(vscode.l10n.t('Debugビルドが成功しました。'));
 		return true;
+	}
+
+	if (backend === 'auto' && shouldTryMcpBuildFallback(lastBuildOutput)) {
+		outputChannel.appendLine('[STM32] make build failed. Trying MCP build fallback...');
+		const fallbackOk = await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('make失敗フォールバック'));
+		if (fallbackOk) {
+			return true;
+		}
 	}
 
 	buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
@@ -291,6 +395,13 @@ async function flashLatestBuild(): Promise<boolean> {
 		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
 		return false;
 	}
+	const stLinkConnected = await isStLinkConnected(workspaceRoot);
+	if (!stLinkConnected) {
+		stLinkStatusItem.text = '$(debug-disconnect) ST-LINK: 未接続';
+		stLinkStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+		vscode.window.showErrorMessage(vscode.l10n.t('ST-LINKが未接続です。接続状態を確認してください。'));
+		return false;
+	}
 
 	const elfPath = await findElfFile(workspaceRoot);
 	if (!elfPath) {
@@ -299,7 +410,7 @@ async function flashLatestBuild(): Promise<boolean> {
 	}
 
 	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
-	const programmerExecutable = getProgrammerExecutable(metadata);
+	const programmerExecutable = await resolveProgrammerExecutable(metadata);
 	const frequency = vscode.workspace.getConfiguration('stm32').get<number>('flash.frequencyKHz', 4000);
 
 	const result = await vscode.window.withProgress(
@@ -319,8 +430,14 @@ async function flashLatestBuild(): Promise<boolean> {
 	);
 
 	if (result.exitCode === 0) {
-		vscode.window.showInformationMessage(vscode.l10n.t('書込みが完了しました。'));
-		return true;
+		const combined = `${result.stdout}\n${result.stderr}`;
+		const hasSuccessSignature = /(Download verified successfully|Verification\s*\.\.\.\s*OK|File download complete|Download complete)/i.test(combined);
+		const hasFailureSignature = /(Error:|No ST-?LINK detected|STLink not found|Cannot connect|No STM32 target found|failed)/i.test(combined);
+		if (hasSuccessSignature && !hasFailureSignature) {
+			vscode.window.showInformationMessage(vscode.l10n.t('書込みが完了しました。'));
+			return true;
+		}
+		outputChannel.appendLine('[STM32] Flash command exited with code 0 but verification signature was not detected.');
 	}
 
 	vscode.window.showErrorMessage(vscode.l10n.t('書込みに失敗しました。出力を確認してください。'));
@@ -345,12 +462,8 @@ async function checkStLink(): Promise<void> {
 		return;
 	}
 
-	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
-	const programmerExecutable = getProgrammerExecutable(metadata);
-	const result = await runCli(programmerExecutable, ['-l', 'usb'], workspaceRoot, vscode.l10n.t('ST-LINK接続確認'));
-
-	const hasLink = /ST-?LINK/i.test(result.stdout + result.stderr);
-	if (result.exitCode === 0 && hasLink) {
+	const hasLink = await isStLinkConnected(workspaceRoot);
+	if (hasLink) {
 		stLinkStatusItem.text = '$(plug) ST-LINK: 接続中';
 		stLinkStatusItem.backgroundColor = undefined;
 		return;
@@ -490,17 +603,218 @@ async function findTopLevelIocFile(workspaceRoot: string): Promise<string | unde
 }
 
 async function findElfFile(workspaceRoot: string): Promise<string | undefined> {
-	const candidates = ['Debug', 'Release'];
-	for (const folder of candidates) {
-		const folderPath = join(workspaceRoot, folder);
+	const folderCandidates = await getBuildDirectoryCandidates(workspaceRoot);
+	const found: Array<{ path: string; mtimeMs: number }> = [];
+
+	for (const folderPath of folderCandidates) {
 		const entries = await fs.readdir(folderPath, { withFileTypes: true }).catch(() => [] as Array<{ isFile: () => boolean; name: string }>);
 		for (const entry of entries) {
-			if (entry.isFile() && entry.name.toLowerCase().endsWith('.elf')) {
-				return join(folderPath, entry.name);
+			if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.elf')) {
+				continue;
 			}
+			const elfPath = join(folderPath, entry.name);
+			const stat = await fs.stat(elfPath).catch(() => undefined);
+			if (!stat) {
+				continue;
+			}
+			found.push({ path: elfPath, mtimeMs: stat.mtimeMs });
 		}
 	}
-	return undefined;
+
+	found.sort((a, b) => b.mtimeMs - a.mtimeMs);
+	return found[0]?.path;
+}
+
+async function resolveBuildDirectory(workspaceRoot: string): Promise<string | undefined> {
+	const configuredBuildDir = vscode.workspace.getConfiguration('stm32').get<string>('build.directory', '').trim();
+	let configuredCandidate: string | undefined;
+	if (configuredBuildDir.length > 0) {
+		configuredCandidate = isAbsolutePath(configuredBuildDir) ? configuredBuildDir : join(workspaceRoot, configuredBuildDir);
+		if (await directoryContainsMakefile(configuredCandidate)) {
+			return configuredCandidate;
+		}
+	}
+
+	const candidates = await getBuildDirectoryCandidates(workspaceRoot);
+	for (const candidate of candidates) {
+		if (await directoryContainsMakefile(candidate)) {
+			return candidate;
+		}
+	}
+
+	if (await directoryContainsMakefile(workspaceRoot)) {
+		return workspaceRoot;
+	}
+
+	if (configuredCandidate && await isExistingDirectory(configuredCandidate)) {
+		// Some generated projects stage artifacts here but keep the top-level Makefile elsewhere.
+		return configuredCandidate;
+	}
+
+	return workspaceRoot;
+}
+
+async function getBuildDirectoryCandidates(workspaceRoot: string): Promise<string[]> {
+	const configuredBuildDir = vscode.workspace.getConfiguration('stm32').get<string>('build.directory', '').trim();
+	const candidates = new Set<string>();
+
+	if (configuredBuildDir.length > 0) {
+		candidates.add(isAbsolutePath(configuredBuildDir) ? configuredBuildDir : join(workspaceRoot, configuredBuildDir));
+	}
+
+	candidates.add(join(workspaceRoot, 'Debug'));
+	candidates.add(join(workspaceRoot, 'Release'));
+	candidates.add(join(workspaceRoot, 'build', 'Debug'));
+	candidates.add(join(workspaceRoot, 'build', 'Release'));
+	candidates.add(join(workspaceRoot, 'Build', 'Debug'));
+	candidates.add(join(workspaceRoot, 'Build', 'Release'));
+
+	const topLevel = await fs.readdir(workspaceRoot, { withFileTypes: true }).catch(() => [] as Array<{ isDirectory: () => boolean; name: string }>);
+	for (const entry of topLevel) {
+		if (!entry.isDirectory()) {
+			continue;
+		}
+		const name = entry.name.toLowerCase();
+		if (name.includes('debug') || name.includes('release')) {
+			candidates.add(join(workspaceRoot, entry.name));
+		}
+	}
+
+	return Array.from(candidates);
+}
+
+async function directoryContainsMakefile(dirPath: string): Promise<boolean> {
+	const entries = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => [] as Array<{ isFile: () => boolean; name: string }>);
+	return entries.some(entry => entry.isFile() && entry.name.toLowerCase() === 'makefile');
+}
+
+async function isExistingDirectory(dirPath: string): Promise<boolean> {
+	const entries = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => undefined);
+	return Array.isArray(entries);
+}
+
+async function isStLinkConnected(workspaceRoot: string): Promise<boolean> {
+	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
+	const programmerExecutable = await resolveProgrammerExecutable(metadata);
+	const commands: string[][] = [
+		['-l', 'st-link'],
+		['-l', 'stlink'],
+		['-l', 'usb']
+	];
+
+	for (const args of commands) {
+		const result = await runCli(programmerExecutable, args, workspaceRoot, vscode.l10n.t('ST-LINK接続確認'));
+		if (isSuccessfulStLinkOutput(result)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function isSuccessfulStLinkOutput(result: CliResult): boolean {
+	const text = `${result.stdout}\n${result.stderr}`;
+	const hasLink = /ST-?LINK|STLink|ST-LINK SN|ST-LINK\s*Probe/i.test(text);
+	const hasNegative = /No ST-?LINK|0\s*ST-?LINK|not found|cannot find|no debug probe/i.test(text);
+	return result.exitCode === 0 && hasLink && !hasNegative;
+}
+
+function shouldTryMcpBuildFallback(output: string): boolean {
+	return /No rule to make target|no makefile found|can't find .*Makefile|ターゲット .* ルールがありません|makefile も見つかりません/i.test(output);
+}
+
+function shouldRetryMakeWithoutExplicitTarget(output: string): boolean {
+	return /No rule to make target|ターゲット .* ルールがありません|don't know how to make/i.test(output);
+}
+
+async function runMcpBuildAndReport(workspaceRoot: string, reason: string): Promise<boolean> {
+	const fallback = await tryMcpBuildFallback(workspaceRoot);
+	if (fallback.success) {
+		buildStatusItem.text = '$(check) STM32: Debugビルド成功 (MCP)';
+		buildStatusItem.backgroundColor = undefined;
+		vscode.window.showInformationMessage(vscode.l10n.t('Debugビルドが成功しました。(MCP: {0})', reason));
+		return true;
+	}
+
+	buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
+	buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+	outputChannel.appendLine(`[STM32] MCP build failed (${reason}): ${fallback.message}`);
+	return false;
+}
+
+async function tryMcpBuildFallback(workspaceRoot: string): Promise<{ success: boolean; message: string }> {
+	const config = vscode.workspace.getConfiguration();
+	const host = config.get<string>('stm32ux.mcp.host', '127.0.0.1');
+	const configuredPort = config.get<number>('stm32ux.mcp.port', 8754);
+	const ports = Array.from(new Set([configuredPort, 8754, 3737]));
+
+	const payload = JSON.stringify({
+		jsonrpc: '2.0',
+		id: Date.now(),
+		method: 'stm32.build',
+		params: {
+			workspacePath: workspaceRoot
+		}
+	});
+
+	let lastError = 'MCP request was not attempted';
+	for (const port of ports) {
+		try {
+			outputChannel.appendLine(`[STM32] Trying MCP build on ${host}:${port}`);
+			const responseText = await postJson(host, port, '/mcp', payload);
+			const parsed = JSON.parse(responseText) as { result?: { success?: boolean; stdout?: string; stderr?: string; error?: string }; error?: { message?: string } };
+			if (parsed.result?.stdout) {
+				outputChannel.appendLine(parsed.result.stdout);
+			}
+			if (parsed.result?.stderr) {
+				outputChannel.appendLine(parsed.result.stderr);
+			}
+			if (parsed.result?.success) {
+				return { success: true, message: 'ok' };
+			}
+			lastError = parsed.result?.error ?? parsed.error?.message ?? `MCP responded with failure on port ${port}`;
+		} catch (error) {
+			lastError = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	return { success: false, message: lastError };
+}
+
+async function postJson(host: string, port: number, path: string, body: string): Promise<string> {
+	return await new Promise<string>((resolve, reject) => {
+		const request = httpRequest(
+			{
+				host,
+				port,
+				path,
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Length': Buffer.byteLength(body)
+				},
+				timeout: 20000
+			},
+			response => {
+				let raw = '';
+				response.on('data', chunk => {
+					raw += String(chunk);
+				});
+				response.on('end', () => {
+					if ((response.statusCode ?? 500) >= 400) {
+						reject(new Error(`HTTP ${response.statusCode ?? 500}: ${raw}`));
+						return;
+					}
+					resolve(raw);
+				});
+			}
+		);
+		request.on('error', error => {
+			reject(error instanceof Error ? error : new Error(String(error)));
+		});
+		request.write(body);
+		request.end();
+	});
 }
 
 function runDetached(command: string, args: string[], cwd: string): void {
