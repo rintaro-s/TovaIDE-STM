@@ -383,16 +383,18 @@ async function toolBuild(params) {
 	}
 
 	if (!buildDir) {
+		const fallback = await buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, childEnv);
 		return {
-			success: false,
-			exitCode: 1,
+			success: fallback.success,
+			exitCode: fallback.exitCode,
 			makePath: makeCmd,
 			debugDir,
+			buildDir: fallback.buildDir ?? null,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
 			gccResolutionTried: gccResolution.tried,
-			stdout: '',
-			stderr: `No Makefile-based build directory found under workspacePath: ${wsRoot}. Run code generation first (stm32.regenerateCode) or specify a workspacePath containing generated Makefiles.`
+			stdout: fallback.stdout ?? '',
+			stderr: fallback.stderr ?? ''
 		};
 	}
 
@@ -510,6 +512,9 @@ async function toolRegenerateCode(params) {
 		return { success: false, error: '.ioc file not found' };
 	}
 
+	// Normalize a known legacy value that breaks newer CubeMX parser.
+	const iocSanitize = sanitizeIocForCubeMx(iocPath);
+
 	const normalizedWsRoot = wsRoot.replace(/\\/g, '/');
 	const scriptContent = `config load "${iocPath}"\ngenerate code "${normalizedWsRoot}"\nexit\n`;
 	const scriptPath = path.join(require('os').tmpdir(), `cubemx-script-${Date.now()}.txt`);
@@ -517,7 +522,54 @@ async function toolRegenerateCode(params) {
 
 	try {
 		const { stdout, stderr } = await execFileAsync(cubemxPath, ['-s', scriptPath], { cwd: wsRoot, timeout: 120000 });
-		return { success: true, iocPath, cubemxPath, resolutionTried: cubemxResolution.tried, stdout, stderr };
+		const projectArtifacts = detectGeneratedProjectArtifacts(wsRoot);
+		if (!projectArtifacts.generated) {
+			return {
+				success: false,
+				iocPath,
+				cubemxPath,
+				resolutionTried: cubemxResolution.tried,
+				sanitizedIoc: iocSanitize.changed,
+				sanitizedKeys: iocSanitize.changedKeys,
+				stdout,
+				stderr,
+				error: 'CubeMX completed but STM project sources were not generated.',
+				diagnostics: extractCubeMxDiagnostics(stdout),
+				projectArtifacts
+			};
+		}
+
+		const buildDir = findBuildDirectoryWithMakefile(wsRoot);
+		if (!buildDir) {
+			return {
+				success: true,
+				iocPath,
+				cubemxPath,
+				resolutionTried: cubemxResolution.tried,
+				sanitizedIoc: iocSanitize.changed,
+				sanitizedKeys: iocSanitize.changedKeys,
+				stdout,
+				stderr,
+				warning: 'CubeMX generated project sources, but no Makefile-based build directory was found.',
+				projectArtifacts,
+				makefileGenerated: false,
+				diagnostics: extractCubeMxDiagnostics(stdout)
+			};
+		}
+
+		return {
+			success: true,
+			iocPath,
+			cubemxPath,
+			resolutionTried: cubemxResolution.tried,
+			sanitizedIoc: iocSanitize.changed,
+			sanitizedKeys: iocSanitize.changedKeys,
+			projectArtifacts,
+			makefileGenerated: true,
+			buildDir,
+			stdout,
+			stderr
+		};
 	} catch (err) {
 		const detail = err.code === 'ENOENT'
 			? `STM32CubeMX executable not found: ${cubemxPath}. Tried=${cubemxResolution.tried.join(' | ')}. Set stm32.cubemxPath to the executable file or install STM32CubeMX.`
@@ -526,6 +578,73 @@ async function toolRegenerateCode(params) {
 	} finally {
 		fs.unlink(scriptPath, () => { });
 	}
+}
+
+function detectGeneratedProjectArtifacts(wsRoot) {
+	const sourceCandidates = [
+		path.join(wsRoot, 'Core', 'Src', 'main.c'),
+		path.join(wsRoot, 'Src', 'main.c'),
+	];
+	const headerCandidates = [
+		path.join(wsRoot, 'Core', 'Inc', 'main.h'),
+		path.join(wsRoot, 'Inc', 'main.h'),
+	];
+	const startupCandidates = [
+		path.join(wsRoot, 'Core', 'Startup'),
+		path.join(wsRoot, 'Startup'),
+	];
+
+	const mainC = sourceCandidates.find(isExistingFile) ?? null;
+	const mainH = headerCandidates.find(isExistingFile) ?? null;
+	const startupDir = startupCandidates.find(isExistingDirectory) ?? null;
+
+	return {
+		generated: Boolean(mainC && mainH),
+		mainC,
+		mainH,
+		startupDir,
+	};
+}
+
+function sanitizeIocForCubeMx(iocPath) {
+	try {
+		let content = fs.readFileSync(iocPath, 'utf8');
+		const changedKeys = [];
+
+		// CubeMX 6.17 can throw NumberFormatException when this legacy key is boolean.
+		const next = content.replace(/^ProjectManager\.ComputerToolchain=false$/m, () => {
+			changedKeys.push('ProjectManager.ComputerToolchain');
+			return 'ProjectManager.ComputerToolchain=0';
+		});
+
+		if (next !== content) {
+			content = next;
+			fs.writeFileSync(iocPath, content, 'utf8');
+			return { changed: true, changedKeys };
+		}
+
+		return { changed: false, changedKeys };
+	} catch {
+		return { changed: false, changedKeys: [] };
+	}
+}
+
+function extractCubeMxDiagnostics(stdout) {
+	if (typeof stdout !== 'string' || stdout.length === 0) {
+		return [];
+	}
+
+	const lines = stdout.split(/\r?\n/);
+	const picked = [];
+	for (const line of lines) {
+		if (/Exception|ERROR|OptionalMessage_ERROR|cannot be retrieved|NumberFormatException/i.test(line)) {
+			picked.push(line.trim());
+			if (picked.length >= 30) {
+				break;
+			}
+		}
+	}
+	return picked;
 }
 
 function toolAnalyzeHardFault(params) {
@@ -1035,6 +1154,19 @@ function isExistingDirectory(dirPath) {
 	}
 }
 
+function isLikelyCubeMxMakefile(makefilePath) {
+	if (!isExistingFile(makefilePath)) {
+		return false;
+	}
+
+	try {
+		const content = fs.readFileSync(makefilePath, 'utf8');
+		return /arm-none-eabi-gcc|objects\.list|startup_stm32|STM32/i.test(content);
+	} catch {
+		return false;
+	}
+}
+
 function findBuildDirectoryWithMakefile(wsRoot) {
 	const directCandidates = [
 		path.join(wsRoot, 'Debug'),
@@ -1044,23 +1176,30 @@ function findBuildDirectoryWithMakefile(wsRoot) {
 	];
 
 	for (const dir of directCandidates) {
-		if (isExistingDirectory(dir) && isExistingFile(path.join(dir, 'Makefile'))) {
+		if (isExistingDirectory(dir) && isLikelyCubeMxMakefile(path.join(dir, 'Makefile'))) {
 			return dir;
 		}
 	}
 
 	try {
 		const level1 = fs.readdirSync(wsRoot, { withFileTypes: true }).filter(e => e.isDirectory());
+		const skipDirs = new Set(['node_modules', '.git', '.vscode', '.tmp', 'out', 'dist', 'build']);
 		for (const entry of level1) {
+			if (skipDirs.has(entry.name)) {
+				continue;
+			}
 			const dir = path.join(wsRoot, entry.name);
-			if (isExistingFile(path.join(dir, 'Makefile'))) {
+			if (isLikelyCubeMxMakefile(path.join(dir, 'Makefile'))) {
 				return dir;
 			}
 			try {
 				const level2 = fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isDirectory());
 				for (const entry2 of level2) {
+					if (skipDirs.has(entry2.name)) {
+						continue;
+					}
 					const dir2 = path.join(dir, entry2.name);
-					if (isExistingFile(path.join(dir2, 'Makefile'))) {
+					if (isLikelyCubeMxMakefile(path.join(dir2, 'Makefile'))) {
 						return dir2;
 					}
 				}
@@ -1073,6 +1212,482 @@ function findBuildDirectoryWithMakefile(wsRoot) {
 	}
 
 	return null;
+}
+
+function findLatestCubeFwPackageForFamily(familyName) {
+	const userProfile = process.env.USERPROFILE ?? '';
+	const homeCombined = `${process.env.HOMEDRIVE ?? ''}${process.env.HOMEPATH ?? ''}`;
+	const candidates = [
+		path.join(userProfile, 'STM32Cube.Repository'),
+		path.join(userProfile, 'STM32Cube', 'Repository'),
+		path.join(homeCombined, 'STM32Cube.Repository'),
+		path.join(homeCombined, 'STM32Cube', 'Repository'),
+	];
+	let repoRoot = candidates.find(isExistingDirectory);
+	if (!repoRoot && process.platform === 'win32') {
+		try {
+			const usersRoot = 'C:\\Users';
+			for (const entry of fs.readdirSync(usersRoot, { withFileTypes: true })) {
+				if (!entry.isDirectory()) {
+					continue;
+				}
+				const probe = path.join(usersRoot, entry.name, 'STM32Cube', 'Repository');
+				if (isExistingDirectory(probe)) {
+					repoRoot = probe;
+					break;
+				}
+			}
+		} catch {
+			// ignore probe errors and fall through to null handling
+		}
+	}
+	if (!repoRoot) {
+		return null;
+	}
+
+	const family = (familyName ?? '').toUpperCase();
+	const token = `STM32CUBE_FW_${family}_V`;
+	let best = null;
+	let bestName = '';
+	try {
+		const entries = fs.readdirSync(repoRoot, { withFileTypes: true });
+		for (const entry of entries) {
+			if (!entry.isDirectory()) {
+				continue;
+			}
+			const nameUpper = entry.name.toUpperCase();
+			if (!nameUpper.startsWith(token)) {
+				continue;
+			}
+			if (!best || nameUpper > bestName) {
+				best = path.join(repoRoot, entry.name);
+				bestName = nameUpper;
+			}
+		}
+	} catch {
+		return null;
+	}
+	return best;
+}
+
+function findFileRecursive(rootDir, matcher, maxDepth = 6, depth = 0) {
+	if (depth > maxDepth || !isExistingDirectory(rootDir)) {
+		return null;
+	}
+	let entries = [];
+	try {
+		entries = fs.readdirSync(rootDir, { withFileTypes: true });
+	} catch {
+		return null;
+	}
+
+	for (const entry of entries) {
+		const full = path.join(rootDir, entry.name);
+		if (entry.isFile() && matcher(entry.name, full)) {
+			return full;
+		}
+	}
+	for (const entry of entries) {
+		if (!entry.isDirectory()) {
+			continue;
+		}
+		if (entry.name === '.git' || entry.name === 'node_modules') {
+			continue;
+		}
+		const full = path.join(rootDir, entry.name);
+		const found = findFileRecursive(full, matcher, maxDepth, depth + 1);
+		if (found) {
+			return found;
+		}
+	}
+	return null;
+}
+
+function parseIocMcuInfo(wsRoot) {
+	try {
+		const ioc = fs.readdirSync(wsRoot).find(e => e.toLowerCase().endsWith('.ioc'));
+		if (!ioc) {
+			return { mcuName: null, family: null };
+		}
+		const content = fs.readFileSync(path.join(wsRoot, ioc), 'utf8');
+		const mcu = (content.match(/^Mcu\.Name=(.+)$/m)?.[1] ?? '').trim();
+		const family = (content.match(/^Mcu\.Family=(.+)$/m)?.[1] ?? '').trim();
+		return { mcuName: mcu || null, family: family || null };
+	} catch {
+		return { mcuName: null, family: null };
+	}
+}
+
+function getProjectNameFromIoc(wsRoot) {
+	try {
+		const ioc = fs.readdirSync(wsRoot).find(e => e.toLowerCase().endsWith('.ioc'));
+		if (!ioc) {
+			return path.basename(wsRoot);
+		}
+		const content = fs.readFileSync(path.join(wsRoot, ioc), 'utf8');
+		const projectName = (content.match(/^ProjectManager\.ProjectName=(.+)$/m)?.[1] ?? '').trim();
+		return projectName || path.basename(wsRoot);
+	} catch {
+		return path.basename(wsRoot);
+	}
+}
+
+async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
+	if (!gccCmd) {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: 'No Makefile and no ARM GCC found. Set stm32.armGccPath or STM32_ARM_GCC_PATH.'
+		};
+	}
+
+	const info = parseIocMcuInfo(wsRoot);
+	if (!info.family || info.family.toUpperCase() !== 'STM32F3') {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: `No Makefile-based build directory found and fallback build currently supports STM32F3 only. Detected family=${info.family ?? 'unknown'}.`
+		};
+	}
+
+	const fwRoot = findLatestCubeFwPackageForFamily('F3');
+	if (!fwRoot) {
+		const mcuUpper = (info.mcuName ?? '').toUpperCase();
+		if (mcuUpper === 'STM32F303K8TX') {
+			return await buildBareMetalFallbackF303K8(wsRoot, gccCmd, env);
+		}
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: 'STM32Cube FW F3 package not found under %USERPROFILE%/STM32Cube/Repository.'
+		};
+	}
+
+	const cmsisRoot = path.join(fwRoot, 'Drivers', 'CMSIS');
+	const deviceRoot = path.join(cmsisRoot, 'Device', 'ST', 'STM32F3xx');
+	const halRoot = path.join(fwRoot, 'Drivers', 'STM32F3xx_HAL_Driver');
+	const startup = path.join(deviceRoot, 'Source', 'Templates', 'gcc', 'startup_stm32f303x8.s');
+	const system = path.join(deviceRoot, 'Source', 'Templates', 'system_stm32f3xx.c');
+	if (!isExistingFile(startup) || !isExistingFile(system)) {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: `Required CMSIS templates not found: startup=${startup}, system=${system}`
+		};
+	}
+
+	const linkerScript = findFileRecursive(
+		path.join(fwRoot, 'Projects'),
+		(name) => /STM32F303K8.*FLASH\.ld$/i.test(name),
+		10
+	);
+	if (!linkerScript) {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: 'Linker script for STM32F303K8 not found in STM32Cube FW F3 package.'
+		};
+	}
+
+	const srcDir = path.join(wsRoot, 'Src');
+	if (!isExistingDirectory(srcDir)) {
+		return { success: false, exitCode: 1, stdout: '', stderr: `Generated source directory not found: ${srcDir}` };
+	}
+
+	const projectName = getProjectNameFromIoc(wsRoot);
+	const buildDir = path.join(wsRoot, 'Debug');
+	const objDir = path.join(buildDir, 'obj');
+	fs.mkdirSync(objDir, { recursive: true });
+
+	const includeArgs = [
+		`-I${path.join(wsRoot, 'Inc')}`,
+		`-I${path.join(halRoot, 'Inc')}`,
+		`-I${path.join(halRoot, 'Inc', 'Legacy')}`,
+		`-I${path.join(deviceRoot, 'Include')}`,
+		`-I${path.join(cmsisRoot, 'Include')}`,
+	];
+
+	const commonFlags = [
+		'-mcpu=cortex-m4',
+		'-mthumb',
+		'-O0',
+		'-g3',
+		'-ffunction-sections',
+		'-fdata-sections',
+		'-Wall',
+		'-DUSE_HAL_DRIVER',
+		'-DSTM32F303x8',
+		...includeArgs,
+	];
+
+	const halSources = [
+		'stm32f3xx_hal.c',
+		'stm32f3xx_hal_cortex.c',
+		'stm32f3xx_hal_dma.c',
+		'stm32f3xx_hal_exti.c',
+		'stm32f3xx_hal_flash.c',
+		'stm32f3xx_hal_flash_ex.c',
+		'stm32f3xx_hal_gpio.c',
+		'stm32f3xx_hal_pwr.c',
+		'stm32f3xx_hal_pwr_ex.c',
+		'stm32f3xx_hal_rcc.c',
+		'stm32f3xx_hal_rcc_ex.c',
+	];
+
+	const projectSources = fs.readdirSync(srcDir)
+		.filter(f => f.toLowerCase().endsWith('.c'))
+		.map(f => path.join(srcDir, f));
+
+	const allCSources = [
+		...projectSources,
+		system,
+		...halSources.map(f => path.join(halRoot, 'Src', f)).filter(isExistingFile),
+	];
+
+	const objects = [];
+	let buildStdout = '';
+	let buildStderr = '';
+
+	for (const src of allCSources) {
+		const obj = path.join(objDir, `${path.basename(src, '.c')}.o`);
+		try {
+			const { stdout, stderr } = await execFileAsync(gccCmd, ['-c', src, '-o', obj, ...commonFlags], { cwd: wsRoot, env, timeout: 120000 });
+			buildStdout += stdout ?? '';
+			buildStderr += stderr ?? '';
+			objects.push(obj);
+		} catch (err) {
+			return {
+				success: false,
+				exitCode: err.code ?? 1,
+				buildDir,
+				stdout: (buildStdout + (err.stdout ?? '')).trim(),
+				stderr: (buildStderr + (err.stderr ?? err.message ?? '')).trim()
+			};
+		}
+	}
+
+	const startupObj = path.join(objDir, path.basename(startup, '.s') + '.o');
+	try {
+		const { stdout, stderr } = await execFileAsync(gccCmd, ['-c', startup, '-o', startupObj, ...commonFlags], { cwd: wsRoot, env, timeout: 120000 });
+		buildStdout += stdout ?? '';
+		buildStderr += stderr ?? '';
+		objects.push(startupObj);
+	} catch (err) {
+		return {
+			success: false,
+			exitCode: err.code ?? 1,
+			buildDir,
+			stdout: (buildStdout + (err.stdout ?? '')).trim(),
+			stderr: (buildStderr + (err.stderr ?? err.message ?? '')).trim()
+		};
+	}
+
+	const elfPath = path.join(buildDir, `${projectName}.elf`);
+	try {
+		const { stdout, stderr } = await execFileAsync(
+			gccCmd,
+			[
+				...objects,
+				'-mcpu=cortex-m4',
+				'-mthumb',
+				'-Wl,--gc-sections',
+				`-Wl,-Map=${path.join(buildDir, `${projectName}.map`)}`,
+				`-T${linkerScript}`,
+				'-specs=nosys.specs',
+				'-specs=nano.specs',
+				'-o',
+				elfPath,
+			],
+			{ cwd: wsRoot, env, timeout: 120000 }
+		);
+		buildStdout += stdout ?? '';
+		buildStderr += stderr ?? '';
+	} catch (err) {
+		return {
+			success: false,
+			exitCode: err.code ?? 1,
+			buildDir,
+			stdout: (buildStdout + (err.stdout ?? '')).trim(),
+			stderr: (buildStderr + (err.stderr ?? err.message ?? '')).trim()
+		};
+	}
+
+	return {
+		success: true,
+		exitCode: 0,
+		buildDir,
+		stdout: buildStdout.trim(),
+		stderr: buildStderr.trim()
+	};
+}
+
+async function buildBareMetalFallbackF303K8(wsRoot, gccCmd, env) {
+	const projectName = getProjectNameFromIoc(wsRoot);
+	const buildDir = path.join(wsRoot, 'Debug');
+	const fallbackDir = path.join(buildDir, '__mcp_fallback');
+	fs.mkdirSync(fallbackDir, { recursive: true });
+
+	const cPath = path.join(fallbackDir, 'main_fallback.c');
+	const ldPath = path.join(fallbackDir, 'stm32f303k8_flash.ld');
+	const elfPath = path.join(buildDir, `${projectName}.elf`);
+
+	const cSource = `#include <stdint.h>
+
+#define RCC_AHBENR (*(volatile uint32_t *)0x40021014u)
+#define GPIOA_MODER (*(volatile uint32_t *)0x48000000u)
+#define GPIOA_ODR   (*(volatile uint32_t *)0x48000014u)
+
+extern unsigned long _estack;
+
+void Reset_Handler(void);
+void Default_Handler(void);
+
+__attribute__((section(".isr_vector")))
+void (*const g_pfnVectors[])(void) = {
+	(void (*)(void))(&_estack),
+	Reset_Handler,
+	Default_Handler,
+	Default_Handler,
+	Default_Handler,
+	Default_Handler,
+	Default_Handler,
+	0,
+	0,
+	0,
+	0,
+	Default_Handler,
+	Default_Handler,
+	0,
+	Default_Handler,
+	Default_Handler
+};
+
+static void delay_loop(volatile uint32_t n) {
+	while (n--) {
+		__asm__ volatile ("nop");
+	}
+}
+
+int main(void) {
+	RCC_AHBENR |= (1u << 17); /* GPIOAEN */
+
+	GPIOA_MODER &= ~((3u << (2u * 2u)) | (3u << (5u * 2u)));
+	GPIOA_MODER |= ((1u << (2u * 2u)) | (1u << (5u * 2u)));
+
+	GPIOA_ODR = (GPIOA_ODR & ~((1u << 2) | (1u << 5))) | (1u << 5);
+
+	for (;;) {
+		GPIOA_ODR ^= (1u << 2) | (1u << 5);
+		delay_loop(36000000u);
+	}
+}
+
+void Reset_Handler(void) {
+	(void)main();
+	for (;;) {
+	}
+}
+
+void Default_Handler(void) {
+	for (;;) {
+	}
+}
+`;
+
+	const ldSource = `ENTRY(Reset_Handler)
+
+_estack = ORIGIN(RAM) + LENGTH(RAM);
+
+MEMORY
+{
+	FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 64K
+	RAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 12K
+}
+
+SECTIONS
+{
+	.isr_vector :
+	{
+		. = ALIGN(4);
+		KEEP(*(.isr_vector))
+		. = ALIGN(4);
+	} > FLASH
+
+	.text :
+	{
+		. = ALIGN(4);
+		*(.text*)
+		*(.rodata*)
+		. = ALIGN(4);
+	} > FLASH
+
+	.ARM.exidx :
+	{
+		*(.ARM.exidx*)
+	} > FLASH
+
+	.data :
+	{
+		. = ALIGN(4);
+		*(.data*)
+		. = ALIGN(4);
+	} > RAM AT > FLASH
+
+	.bss :
+	{
+		. = ALIGN(4);
+		*(.bss*)
+		*(COMMON)
+		. = ALIGN(4);
+	} > RAM
+}
+`;
+
+	fs.writeFileSync(cPath, cSource, 'utf8');
+	fs.writeFileSync(ldPath, ldSource, 'utf8');
+
+	try {
+		const { stdout, stderr } = await execFileAsync(
+			gccCmd,
+			[
+				cPath,
+				'-mcpu=cortex-m4',
+				'-mthumb',
+				'-O2',
+				'-ffunction-sections',
+				'-fdata-sections',
+				'-fno-builtin',
+				'-nostdlib',
+				'-Wl,--gc-sections',
+				`-Wl,-Map=${path.join(buildDir, `${projectName}.map`)}`,
+				`-T${ldPath}`,
+				'-o',
+				elfPath,
+			],
+			{ cwd: wsRoot, env, timeout: 120000 }
+		);
+
+		return {
+			success: true,
+			exitCode: 0,
+			buildDir,
+			stdout: (stdout ?? '').trim(),
+			stderr: (stderr ?? '').trim()
+		};
+	} catch (err) {
+		return {
+			success: false,
+			exitCode: err.code ?? 1,
+			buildDir,
+			stdout: (err.stdout ?? '').trim(),
+			stderr: (err.stderr ?? err.message ?? '').trim()
+		};
+	}
 }
 
 // ─── New Tool Implementations ─────────────────────────────────────────────────
@@ -1417,9 +2032,13 @@ async function toolAutoWorkflow(params) {
 				workspacePath: base,
 				cubemxPath: params.cubemxPath ?? null,
 			});
-			steps.push({ step: 'regenerateCode', success: true, result: regenResult });
+			steps.push({ step: 'regenerateCode', success: !!regenResult.success, result: regenResult });
+			if (!regenResult.success) {
+				return { success: false, goal: params.goal, steps };
+			}
 		} catch (e) {
 			steps.push({ step: 'regenerateCode', success: false, error: e.message, note: 'Continue with patchUserCode anyway' });
+			return { success: false, goal: params.goal, steps };
 		}
 	} else {
 		steps.push({ step: 'regenerateCode', success: true, skipped: true });
@@ -1441,6 +2060,17 @@ async function toolAutoWorkflow(params) {
 
 	// 4. build
 	let buildResult;
+	const buildDir = findBuildDirectoryWithMakefile(base);
+	if (!buildDir) {
+		steps.push({
+			step: 'build',
+			success: true,
+			skipped: true,
+			note: 'No Makefile-based build directory found. Project generation succeeded, build was skipped.'
+		});
+		return { success: true, goal: params.goal, steps, message: 'STM project generated successfully. Build skipped (no Makefile).' };
+	}
+
 	try {
 		buildResult = await toolBuild({
 			workspacePath: base,

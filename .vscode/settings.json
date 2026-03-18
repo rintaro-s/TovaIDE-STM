@@ -12,7 +12,10 @@
 		"/^\\$init='\\{\"jsonrpc\":\"2\\.0\",\"id\":1,\"method\":\"initialize\",\"params\":\\{\\}\\}'; cmd /d /c \"curl -s -X POST http://127\\.0\\.0\\.1:3737/mcp -H \\\\\"Content-Type: application/json\\\\\" -d \\\\\"\\$init\\\\\"\"$/": {
 			"approve": true,
 			"matchCommandLine": true
-		}
+		},
+		"ForEach-Object": true,
+		"New-Item": true,
+		"Out-Null": true
 	},
 	"chat.tools.edits.autoApprove": {
 		".github/skills/azure-pipelines/azure-pipeline.ts": false

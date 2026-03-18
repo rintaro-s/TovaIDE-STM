@@ -1,0 +1,18 @@
+#MicroXplorer Configuration settings - do not modify
+File.Version=6
+LibraryCopySrc=1
+Mcu.CPN=STM32F446RETx
+Mcu.Family=STM32F4
+Mcu.Name=STM32F446RETx
+Mcu.Pin0=PA5
+Mcu.PinsNb=1
+Mcu.UserName=STM32F446RETx
+MxCube.Version=6.10.0
+MxDb.Version=DB.6.0.110
+PA5.Signal=GPIO_Output
+PA5.GPIO_Label=
+ProjectManager.ProjectBaudRate=115200
+ProjectManager.ProjectFileName=smoke_proj.ioc
+ProjectManager.ProjectName=smoke_proj
+ProjectManager.ToolChain=Makefile
+ProjectManager.LibraryCopySrc=1
