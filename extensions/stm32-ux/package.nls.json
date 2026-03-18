@@ -11,6 +11,8 @@
   "command.runEnvironmentCheck.title": "Run STM32 Environment Check",
   "command.explainLatestError.title": "Explain Latest Build Error",
   "command.openPinVisualizer.title": "Open STM32 Pin Visualizer",
+  "command.openPeripheralWorkbench.title": "Open STM32 Peripheral Workbench",
+  "command.openPwmWorkbench.title": "Open STM32 Timer/PWM Workbench",
   "command.configureGlobalWallpaper.title": "Configure Global IDE Wallpaper",
   "command.generateMcpConfigJson.title": "Generate STM32 MCP Config JSON",
   "command.composeMcpRequestJson.title": "Compose STM32 MCP Request JSON",

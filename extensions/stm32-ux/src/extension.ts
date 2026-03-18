@@ -170,6 +170,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.runEnvironmentCheck', () => runEnvironmentCheck()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.explainLatestError', () => explainLatestError()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPinVisualizer', () => openPinVisualizer()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPeripheralWorkbench', () => openPeripheralWorkbench()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPwmWorkbench', () => openPwmWorkbench()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.configureGlobalWallpaper', () => configureGlobalWallpaper()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.generateMcpConfigJson', () => generateMcpConfigJson()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.composeMcpRequestJson', () => composeMcpRequestJson()));
@@ -420,6 +422,12 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 				case 'pin':
 					await openPinVisualizer();
 					break;
+				case 'pwmLab':
+					await openPwmWorkbench();
+					break;
+				case 'periphLab':
+					await openPeripheralWorkbench();
+					break;
 				case 'error':
 					await explainLatestError();
 					break;
@@ -455,6 +463,59 @@ async function openWorkflowStudio(): Promise<void> {
 			case 'pins':
 				await openPinVisualizer();
 				break;
+			case 'pwmLab':
+				await openPwmWorkbench();
+				break;
+			case 'periphLab':
+				await openPeripheralWorkbench();
+				break;
+		}
+	});
+}
+
+async function openPwmWorkbench(): Promise<void> {
+	await openPeripheralWorkbench();
+}
+
+async function openPeripheralWorkbench(): Promise<void> {
+	const panel = vscode.window.createWebviewPanel('stm32ux.peripheralWorkbench', 'STM32 ペリフェラルワークベンチ', vscode.ViewColumn.Active, { enableScripts: true });
+	panel.webview.html = getPeripheralWorkbenchHtml(panel.webview);
+	panel.webview.onDidReceiveMessage(async message => {
+		if (!isRecord(message) || typeof message.type !== 'string') {
+			return;
+		}
+
+		switch (message.type) {
+			case 'copyText': {
+				const value = typeof message.value === 'string' ? message.value : '';
+				if (!value) {
+					return;
+				}
+				await vscode.env.clipboard.writeText(value);
+				vscode.window.showInformationMessage(vscode.l10n.t('コードをクリップボードへコピーしました。'));
+				break;
+			}
+			case 'openPins':
+				await openPinVisualizer();
+				break;
+			case 'openBoard':
+				await openBoardConfigurator();
+				break;
+			case 'openMcp':
+				await openMcpOperationDesk();
+				break;
+				case 'openCommandCenter':
+					await vscode.commands.executeCommand('stm32.openCommandCenter');
+					break;
+				case 'runBuild':
+					await vscode.commands.executeCommand('stm32.buildDebug');
+					break;
+				case 'runFlash':
+					await vscode.commands.executeCommand('stm32.flash');
+					break;
+				case 'runDebug':
+					await vscode.commands.executeCommand('stm32.startDebug');
+					break;
 		}
 	});
 }
@@ -1219,6 +1280,12 @@ async function openWelcomeWizard(): Promise<void> {
 				break;
 			case 'pin':
 				await openPinVisualizer();
+				break;
+			case 'pwmLab':
+				await openPwmWorkbench();
+				break;
+			case 'periphLab':
+				await openPeripheralWorkbench();
 				break;
 			case 'error':
 				await explainLatestError();
@@ -4139,6 +4206,7 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 		<button class="btn" id="board"><span class="badge">NEW</span><span class="label">ボード設定スタジオ</span><span class="meta">CubeMX不要の初期作成</span></button>
 		<button class="btn" id="syncCatalog"><span class="badge">MCU</span><span class="label">CubeMXカタログ同期</span><span class="meta">5000+ MCU取り込み</span></button>
 		<button class="btn" id="pin"><span class="badge">PIN</span><span class="label">ピンビジュアライザ</span><span class="meta">チップ図とピン編集</span></button>
+		<button class="btn" id="pwmLab"><span class="badge">LAB</span><span class="label">ペリフェラルワークベンチ</span><span class="meta">PWM/UART/I2C/サーボ</span></button>
 		<button class="btn" id="svd"><span class="badge">DBG</span><span class="label">SVDレジスタ表示を更新</span><span class="meta">フォールバック含め表示</span></button>
 		<button class="btn" id="build"><span class="badge">BUILD</span><span class="label">Debugビルド</span><span class="meta">エラー位置へ即移動</span></button>
 		<button class="btn" id="flash"><span class="badge">FLASH</span><span class="label">書込み</span><span class="meta">STM32_Programmer_CLI</span></button>
@@ -4148,7 +4216,7 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 	</div>
 <script>
 	const vscode = acquireVsCodeApi();
-	for (const id of ['studio','board','syncCatalog','pin','svd','build','flash','debug','collab','mcp']) {
+	for (const id of ['studio','board','syncCatalog','pin','pwmLab','svd','build','flash','debug','collab','mcp']) {
 		document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 	}
 </script>
@@ -4283,6 +4351,7 @@ function getWorkflowStudioHtml(webview: vscode.Webview): string {
 			<div class="actions">
 				<button class="primary" id="coding">STM32 コマンドセンター</button>
 				<button id="pins">ピンビジュアライザ</button>
+				<button id="pwmLab">ペリフェラルワークベンチ</button>
 			</div>
 		</div>
 		<div class="card">
@@ -4296,9 +4365,383 @@ function getWorkflowStudioHtml(webview: vscode.Webview): string {
 	<p class="tip">最初に迷ったら「新規作成」から開始すると、CubeMX相当の初期設定フローへ移動します。</p>
 	<script>
 		const vscode = acquireVsCodeApi();
-		for (const id of ['create', 'coding', 'settings', 'tutorial', 'pins', 'syncCatalog']) {
+		for (const id of ['create', 'coding', 'settings', 'tutorial', 'pins', 'pwmLab', 'syncCatalog']) {
 			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 		}
+	</script>
+</body>
+</html>`;
+}
+
+function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
+	const csp = webview.cspSource;
+	return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<style>
+		*{box-sizing:border-box;margin:0;padding:0}
+		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#7b8696);--ac:#0f766e;--ac2:rgba(15,118,110,.16);--ok:#16a34a}
+		body{font:13px/1.55 var(--vscode-font-family,'Segoe UI',sans-serif);background:radial-gradient(circle at 85% -10%, rgba(15,118,110,.22), transparent 38%),transparent;color:var(--tx);padding:18px}
+		h1{font-size:20px;margin-bottom:4px}
+		.sub{font-size:12px;color:var(--mt);margin-bottom:12px}
+		.preset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:14px}
+		.preset{background:linear-gradient(145deg,#101723,#162133);border:1px solid var(--bd);color:var(--tx);border-radius:10px;padding:10px;text-align:left;cursor:pointer}
+		.preset:hover{border-color:rgba(15,118,110,.65);background:linear-gradient(145deg,#142336,#1b3145)}
+		.preset .t{font-size:12px;font-weight:700}
+		.preset .d{font-size:10px;color:#9db2c9;margin-top:4px}
+		.layout{display:grid;grid-template-columns:minmax(260px,320px) minmax(460px,1fr);gap:12px}
+		@media (max-width:980px){.layout{grid-template-columns:1fr}}
+		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+		.ttl{font-size:13px;font-weight:700}
+		.muted{font-size:11px;color:var(--mt)}
+		.step-list{display:flex;flex-direction:column;gap:7px;max-height:440px;overflow:auto;padding-right:2px}
+		.step{display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:start;padding:8px;border:1px solid #243041;border-radius:8px;background:#0f141f}
+		.step.done{border-color:rgba(22,163,74,.55);background:rgba(22,163,74,.12)}
+		.step input{margin-top:2px}
+		.step .st{font-size:12px;font-weight:600}
+		.step .sd{font-size:10px;color:var(--mt)}
+		.step button{padding:5px 8px;border-radius:6px}
+		input,select,textarea{width:100%;background:#0d0e14;border:1px solid var(--bd);border-radius:8px;color:var(--tx);padding:8px 9px;font:12px var(--vscode-font-family,'Segoe UI',sans-serif)}
+		textarea{min-height:220px;line-height:1.5}
+		.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+		.actions{display:flex;gap:8px;flex-wrap:wrap}
+		button{background:transparent;border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:8px 10px;cursor:pointer;font:600 12px var(--vscode-font-family,'Segoe UI',sans-serif)}
+		button:hover{background:var(--ac2);border-color:rgba(15,118,110,.55)}
+		button.primary{background:var(--ac);border-color:var(--ac);color:#fff}
+		.kpi{font-size:12px;padding:8px 10px;border:1px solid rgba(15,118,110,.45);background:rgba(15,118,110,.12);border-radius:8px;color:#c4f0ec}
+		.hidden{display:none}
+		.badge{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid rgba(15,118,110,.45);background:var(--ac2);color:#99f6e4;width:max-content}
+	</style>
+</head>
+<body>
+	<h1>STM32 ペリフェラルワークベンチ</h1>
+	<p class="sub">説明書を読む前提をやめ、シナリオ選択 -> 実行ステップ -> コード生成までを1画面に統合しました。</p>
+
+	<div class="preset-grid">
+		<button class="preset" id="presetPwm"><div class="t">PWM: 可変Duty</div><div class="d">TIMで周波数調整しながらDutyスイープ</div></button>
+		<button class="preset" id="presetServo"><div class="t">Servo: 50Hz角度制御</div><div class="d">0-180度を1本の式で制御</div></button>
+		<button class="preset" id="presetUart"><div class="t">UART: 割込み受信</div><div class="d">受信コールバックと再受信の定型</div></button>
+		<button class="preset" id="presetI2c"><div class="t">I2C: MPU6050</div><div class="d">初期化・補正・周期取得の最短構成</div></button>
+	</div>
+
+	<div class="layout">
+		<div class="card">
+			<div class="ttl">実行ステップ</div>
+			<div class="muted" id="stepLead">現在のモードに必要な作業のみ表示します。</div>
+			<div class="badge" id="modeBadge">Mode: PWM</div>
+			<div class="step-list" id="stepList"></div>
+			<div class="actions">
+				<button id="openMcp">MCP操作デスク</button>
+				<button id="openCommandCenter">コマンドセンター</button>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="ttl">設計パラメータ</div>
+			<div class="row" id="timingRowA">
+				<div><label>タイマクロック fTIM (Hz)</label><input id="timClk" type="number" value="80000000" min="1" step="1" /></div>
+				<div><label>目標周波数 (Hz)</label><input id="targetPwm" type="number" value="30000" min="1" step="1" /></div>
+			</div>
+			<div class="row" id="timingRowB">
+				<div><label>Prescaler</label><input id="psc" type="number" value="0" min="0" step="1" /></div>
+				<div><label>Counter Period (ARR)</label><input id="arr" type="number" value="255" min="1" step="1" /></div>
+			</div>
+			<div class="row" id="timingRowC">
+				<div><label>チャネル</label><select id="channel"><option>TIM_CHANNEL_1</option><option>TIM_CHANNEL_2</option><option>TIM_CHANNEL_3</option><option>TIM_CHANNEL_4</option></select></div>
+				<div><label>タイマハンドル名</label><input id="timerHandle" value="htim15" /></div>
+			</div>
+
+			<div class="row hidden" id="uartRow">
+				<div><label>UART ハンドル</label><input id="uartHandle" value="huart1" /></div>
+				<div><label>Baudrate</label><input id="baudRate" type="number" value="115200" min="1" step="1" /></div>
+			</div>
+
+			<div class="row hidden" id="i2cRow">
+				<div><label>I2C ハンドル</label><input id="i2cHandle" value="hi2c1" /></div>
+				<div><label>スレーブアドレス(hex)</label><input id="slaveAddr" value="0x68" /></div>
+			</div>
+
+			<div class="actions" id="timerActions">
+				<button class="primary" id="calcArr">ARR再計算</button>
+				<button id="calcFreq">実周波数を計算</button>
+			</div>
+			<div class="kpi" id="result">計算待ち</div>
+			<div class="muted" id="formulaNote">式: fPWM = fTIM / ((PSC + 1) * (ARR + 1))</div>
+
+			<div class="ttl" style="margin-top:8px">コード生成</div>
+			<div class="row" id="dutyRow">
+				<div><label>デューティ最小 (%)</label><input id="dutyMin" type="number" value="0" min="0" max="100" step="1" /></div>
+				<div><label>デューティ最大 (%)</label><input id="dutyMax" type="number" value="100" min="0" max="100" step="1" /></div>
+			</div>
+			<div class="row" id="sweepRow">
+				<div><label>ステップ (%)</label><input id="dutyStep" type="number" value="1" min="1" max="100" step="1" /></div>
+				<div><label>遅延 (ms)</label><input id="delayMs" type="number" value="10" min="0" step="1" /></div>
+			</div>
+			<div class="actions">
+				<button class="primary" id="genCode">コード生成</button>
+				<button id="copyCode">コピー</button>
+				<button id="openPins">ピンビュー</button>
+				<button id="openBoard">ボード設定</button>
+			</div>
+			<textarea id="codeOut" readonly></textarea>
+		</div>
+	</div>
+
+	<script>
+		const vscode = acquireVsCodeApi();
+		const el = id => document.getElementById(id);
+		let mode = 'PWM';
+
+		const stepsByMode = {
+			PWM: [
+				{ title: 'ボードを選んでプロジェクト作成', desc: '最初に .ioc を作成', action: 'openBoard', actionLabel: '開く' },
+				{ title: 'タイマCHをPWMに設定', desc: 'CHxNではなくCHxを優先' },
+				{ title: 'ARR/PSCを入力して周波数確認', desc: '実周波数をUIで即計算' },
+				{ title: 'USER CODEへ貼り付け', desc: 'START と SET_COMPARE の最小コード', action: 'copyCode', actionLabel: 'コピー' },
+				{ title: 'ビルドして書込み', desc: 'そのまま実機へ反映', action: 'runBuild', actionLabel: 'ビルド' },
+				{ title: 'デバッグ開始', desc: '波形/状態確認', action: 'runDebug', actionLabel: 'デバッグ' }
+			],
+			Servo: [
+				{ title: 'ボード作成', desc: '50Hz前提のタイマを使う', action: 'openBoard', actionLabel: '開く' },
+				{ title: 'PWM周波数を50Hzに固定', desc: 'ARR=999推奨で角度換算が簡単' },
+				{ title: '角度式コードを生成', desc: '0-180度をcompareへ変換', action: 'copyCode', actionLabel: 'コピー' },
+				{ title: '実機書込み', desc: 'サーボ挙動を確認', action: 'runFlash', actionLabel: '書込み' }
+			],
+			UART: [
+				{ title: 'USARTをAsynchronousに設定', desc: 'RX/TXピンを割当', action: 'openPins', actionLabel: '開く' },
+				{ title: '受信割込みを有効化', desc: 'NVICでUSART IRQ ON' },
+				{ title: '受信コールバックを生成', desc: '再受信を必ず再開', action: 'copyCode', actionLabel: 'コピー' },
+				{ title: 'ビルドして確認', desc: 'シリアル通信テスト', action: 'runBuild', actionLabel: 'ビルド' }
+			],
+			I2C: [
+				{ title: 'I2Cを有効化', desc: 'SCL/SDA ピン割当', action: 'openPins', actionLabel: '開く' },
+				{ title: 'MPU6050ファイルを配置', desc: 'Core/Inc と Core/Src へ追加' },
+				{ title: '初期化/補正コードを生成', desc: 'BEGIN 2 と WHILE に配置', action: 'copyCode', actionLabel: 'コピー' },
+				{ title: '書込みして値確認', desc: '角度ログを確認', action: 'runFlash', actionLabel: '書込み' }
+			]
+		};
+
+		const presets = {
+			PWM: { timClk: 80000000, targetPwm: 30000, psc: 0, arr: 255, timerHandle: 'htim15' },
+			Servo: { timClk: 80000000, targetPwm: 50, psc: 1599, arr: 999, timerHandle: 'htim2' },
+			UART: { baudRate: 115200, uartHandle: 'huart1' },
+			I2C: { i2cHandle: 'hi2c1', slaveAddr: '0x68' }
+		};
+
+		function toInt(v, fallback) {
+			const n = Number(v);
+			return Number.isFinite(n) ? Math.trunc(n) : fallback;
+		}
+
+		function clamp(n, min, max) {
+			return Math.min(max, Math.max(min, n));
+		}
+
+		function currentParams() {
+			return {
+				timClk: Math.max(1, toInt(el('timClk').value, 80000000)),
+				targetPwm: Math.max(1, toInt(el('targetPwm').value, 30000)),
+				psc: Math.max(0, toInt(el('psc').value, 0)),
+				arr: Math.max(1, toInt(el('arr').value, 255)),
+				channel: el('channel').value,
+				timerHandle: (el('timerHandle').value || 'htim15').trim() || 'htim15',
+				uartHandle: (el('uartHandle').value || 'huart1').trim() || 'huart1',
+				baudRate: Math.max(1, toInt(el('baudRate').value, 115200)),
+				i2cHandle: (el('i2cHandle').value || 'hi2c1').trim() || 'hi2c1',
+				slaveAddr: (el('slaveAddr').value || '0x68').trim() || '0x68'
+			};
+		}
+
+		function calcFreq() {
+			if (mode === 'UART' || mode === 'I2C') {
+				el('result').textContent = mode + ' モードではタイマ計算は不要です。';
+				return;
+			}
+			const p = currentParams();
+			const freq = p.timClk / ((p.psc + 1) * (p.arr + 1));
+			el('result').textContent = '実PWM周波数: ' + freq.toFixed(2) + ' Hz / 周期: ' + (1000 / freq).toFixed(3) + ' ms';
+		}
+
+		function calcArr() {
+			const p = currentParams();
+			const raw = (p.timClk / ((p.psc + 1) * p.targetPwm)) - 1;
+			el('arr').value = String(Math.max(1, Math.round(raw)));
+			calcFreq();
+		}
+
+		function mapDutyToCompare(arr, dutyPercent) {
+			return Math.round(((arr + 1) * dutyPercent) / 100);
+		}
+
+		function renderSteps() {
+			const container = el('stepList');
+			container.innerHTML = '';
+			for (const item of stepsByMode[mode]) {
+				const row = document.createElement('div');
+				row.className = 'step';
+				const checkbox = document.createElement('input');
+				checkbox.type = 'checkbox';
+				checkbox.addEventListener('change', () => row.classList.toggle('done', checkbox.checked));
+				const body = document.createElement('div');
+				body.innerHTML = '<div class="st">' + item.title + '</div><div class="sd">' + item.desc + '</div>';
+				row.appendChild(checkbox);
+				row.appendChild(body);
+				if (item.action) {
+					const btn = document.createElement('button');
+					btn.textContent = item.actionLabel || '実行';
+					btn.addEventListener('click', () => {
+						if (item.action === 'copyCode') {
+							vscode.postMessage({ type: 'copyText', value: el('codeOut').value });
+							return;
+						}
+						vscode.postMessage({ type: item.action });
+					});
+					row.appendChild(btn);
+				}
+				container.appendChild(row);
+			}
+		}
+
+		function genCode() {
+			const p = currentParams();
+			const minDuty = clamp(toInt(el('dutyMin').value, 0), 0, 100);
+			const maxDuty = clamp(toInt(el('dutyMax').value, 100), 0, 100);
+			const step = clamp(toInt(el('dutyStep').value, 1), 1, 100);
+			const delayMs = Math.max(0, toInt(el('delayMs').value, 10));
+			const lo = Math.min(minDuty, maxDuty);
+			const hi = Math.max(minDuty, maxDuty);
+			let code = [
+				'/* USER CODE BEGIN 2 */',
+				'HAL_TIM_PWM_Start(&' + p.timerHandle + ', ' + p.channel + ');',
+				'/* USER CODE END 2 */',
+				'',
+				'/* USER CODE BEGIN WHILE */',
+				'for (int duty = ' + lo + '; duty <= ' + hi + '; duty += ' + step + ') {',
+				'  uint32_t compare = (uint32_t)(((' + p.arr + ' + 1U) * duty) / 100U);',
+				'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', compare);',
+				'  HAL_Delay(' + delayMs + ');',
+				'}',
+				'for (int duty = ' + hi + '; duty >= ' + lo + '; duty -= ' + step + ') {',
+				'  uint32_t compare = (uint32_t)(((' + p.arr + ' + 1U) * duty) / 100U);',
+				'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', compare);',
+				'  HAL_Delay(' + delayMs + ');',
+				'}',
+				'/* USER CODE END WHILE */'
+			].join('\\n');
+
+			if (mode === 'Servo') {
+				const minCmp = mapDutyToCompare(p.arr, 2.5);
+				const maxCmp = mapDutyToCompare(p.arr, 12.5);
+				code = [
+					'/* USER CODE BEGIN 2 */',
+					'HAL_TIM_PWM_Start(&' + p.timerHandle + ', ' + p.channel + ');',
+					'/* USER CODE END 2 */',
+					'',
+					'int angle = 90; // 0..180',
+					'uint32_t compare = (uint32_t)(' + minCmp + ' + (((' + maxCmp + ' - ' + minCmp + ') * angle) / 180));',
+					'__HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', compare);'
+				].join('\\n');
+			}
+
+			if (mode === 'UART') {
+				code = [
+					'/* USER CODE BEGIN Includes */',
+					'#include <stdio.h>',
+					'/* USER CODE END Includes */',
+					'',
+					'/* USER CODE BEGIN PV */',
+					'uint8_t rxBuf[6] = {0};',
+					'/* USER CODE END PV */',
+					'',
+					'/* USER CODE BEGIN 2 */',
+					'HAL_UART_Receive_IT(&' + p.uartHandle + ', rxBuf, sizeof(rxBuf));',
+					'/* USER CODE END 2 */',
+					'',
+					'void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {',
+					'  if (huart == &' + p.uartHandle + ') {',
+					'    if (rxBuf[0] == 255U) {',
+					'      // rxBuf[1..5] を用途別に処理',
+					'    }',
+					'    HAL_UART_Receive_IT(&' + p.uartHandle + ', rxBuf, sizeof(rxBuf));',
+					'  }',
+					'}'
+				].join('\\n');
+			}
+
+			if (mode === 'I2C') {
+				code = [
+					'/* USER CODE BEGIN Includes */',
+					'#include "mpu6050.h"',
+					'#include <stdio.h>',
+					'/* USER CODE END Includes */',
+					'',
+					'/* USER CODE BEGIN PV */',
+					'MPU6050_t MPU6050;',
+					'/* USER CODE END PV */',
+					'',
+					'/* USER CODE BEGIN 2 */',
+					'MPU6050_Init(&' + p.i2cHandle + ');',
+					'MPU6050_Calibration(&' + p.i2cHandle + ', &MPU6050, 3000);',
+					'/* USER CODE END 2 */',
+					'',
+					'/* USER CODE BEGIN WHILE */',
+					'MPU6050_Read_All(&' + p.i2cHandle + ', &MPU6050);',
+					'printf("ADDR ' + p.slaveAddr + ' X:%0.2f Y:%0.2f Z:%0.2f\\r\\n", MPU6050.KalmanAngleX, MPU6050.KalmanAngleY, MPU6050.angleZ);',
+					'/* USER CODE END WHILE */'
+				].join('\\n');
+			}
+
+			el('codeOut').value = code;
+		}
+
+		function applyPreset(nextMode) {
+			mode = nextMode;
+			const preset = presets[nextMode] || {};
+			for (const [k, v] of Object.entries(preset)) {
+				if (el(k)) {
+					el(k).value = String(v);
+				}
+			}
+			el('modeBadge').textContent = 'Mode: ' + mode;
+			const timerVisible = mode === 'PWM' || mode === 'Servo';
+			for (const id of ['timingRowA','timingRowB','timingRowC','timerActions','dutyRow','sweepRow']) {
+				el(id).classList.toggle('hidden', !timerVisible);
+			}
+			el('uartRow').classList.toggle('hidden', mode !== 'UART');
+			el('i2cRow').classList.toggle('hidden', mode !== 'I2C');
+			el('formulaNote').textContent = timerVisible ? '式: fPWM = fTIM / ((PSC + 1) * (ARR + 1))' : 'このモードではタイマ周波数式は不要です。';
+			renderSteps();
+			calcFreq();
+			genCode();
+		}
+
+		el('calcArr').addEventListener('click', calcArr);
+		el('calcFreq').addEventListener('click', calcFreq);
+		el('genCode').addEventListener('click', genCode);
+		el('copyCode').addEventListener('click', () => vscode.postMessage({ type: 'copyText', value: el('codeOut').value }));
+		el('openPins').addEventListener('click', () => vscode.postMessage({ type: 'openPins' }));
+		el('openBoard').addEventListener('click', () => vscode.postMessage({ type: 'openBoard' }));
+		el('openMcp').addEventListener('click', () => vscode.postMessage({ type: 'openMcp' }));
+		el('openCommandCenter').addEventListener('click', () => vscode.postMessage({ type: 'openCommandCenter' }));
+
+		el('presetPwm').addEventListener('click', () => applyPreset('PWM'));
+		el('presetServo').addEventListener('click', () => applyPreset('Servo'));
+		el('presetUart').addEventListener('click', () => applyPreset('UART'));
+		el('presetI2c').addEventListener('click', () => applyPreset('I2C'));
+
+		for (const id of ['timClk','targetPwm','psc','arr','channel','timerHandle','uartHandle','baudRate','i2cHandle','slaveAddr','dutyMin','dutyMax','dutyStep','delayMs']) {
+			if (el(id)) {
+				el(id).addEventListener('input', () => {
+					calcFreq();
+					genCode();
+				});
+			}
+		}
+
+		applyPreset('PWM');
 	</script>
 </body>
 </html>`;
@@ -4368,13 +4811,18 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 			<button class="action-btn" id="syncCatalog" aria-label="CubeMXカタログ同期">カタログ同期</button>
 		</div>
 	</li>
+	<li class="action-item">
+		<div class="action-name">ペリフェラル実装</div>
+		<div class="action-desc">PWM/UART/I2C/サーボの設定ガイドとコード雛形を生成します。</div>
+		<button class="action-btn" id="periphLab" aria-label="ペリフェラルワークベンチ">開く</button>
+	</li>
 </ul>
 
 <div class="links">
 	<button class="link-btn" id="env" aria-label="環境チェック">環境チェック</button>
-	<button class="link-btn" id="env2" aria-label="環境チェック 2">環境チェック (同機能)</button>
 	<button class="link-btn" id="envSettings" aria-label="環境設定">環境設定</button>
 	<button class="link-btn" id="pin" aria-label="ピンビジュアライザ">ピンビジュアライザ</button>
+	<button class="link-btn" id="pwmLab" aria-label="ペリフェラルワークベンチ">ペリフェラルワークベンチ</button>
 	<button class="link-btn" id="error" aria-label="エラー解説">エラー自動解説</button>
 </div>
 
@@ -4386,10 +4834,11 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	document.getElementById('import').addEventListener('click', () => vscode.postMessage({ type: 'import' }));
 	document.getElementById('templates').addEventListener('click', () => vscode.postMessage({ type: 'templates' }));
 	document.getElementById('board').addEventListener('click', () => vscode.postMessage({ type: 'board' }));
+	document.getElementById('periphLab').addEventListener('click', () => vscode.postMessage({ type: 'periphLab' }));
 	document.getElementById('env').addEventListener('click', () => vscode.postMessage({ type: 'env' }));
-	document.getElementById('env2').addEventListener('click', () => vscode.postMessage({ type: 'env' }));
 	document.getElementById('envSettings').addEventListener('click', () => vscode.postMessage({ type: 'envSettings' }));
 	document.getElementById('pin').addEventListener('click', () => vscode.postMessage({ type: 'pin' }));
+	document.getElementById('pwmLab').addEventListener('click', () => vscode.postMessage({ type: 'pwmLab' }));
 	document.getElementById('error').addEventListener('click', () => vscode.postMessage({ type: 'error' }));
 </script>
 </body>

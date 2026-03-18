@@ -25,6 +25,8 @@
     "onCommand:stm32ux.runEnvironmentCheck",
     "onCommand:stm32ux.explainLatestError",
     "onCommand:stm32ux.openPinVisualizer",
+    "onCommand:stm32ux.openPeripheralWorkbench",
+    "onCommand:stm32ux.openPwmWorkbench",
     "onCommand:stm32ux.configureGlobalWallpaper",
     "onCommand:stm32ux.generateMcpConfigJson",
     "onCommand:stm32ux.composeMcpRequestJson",
@@ -86,6 +88,16 @@
       {
         "command": "stm32ux.openPinVisualizer",
         "title": "%command.openPinVisualizer.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.openPeripheralWorkbench",
+        "title": "%command.openPeripheralWorkbench.title%",
+        "category": "STM32"
+      },
+      {
+        "command": "stm32ux.openPwmWorkbench",
+        "title": "%command.openPwmWorkbench.title%",
         "category": "STM32"
       },
       {

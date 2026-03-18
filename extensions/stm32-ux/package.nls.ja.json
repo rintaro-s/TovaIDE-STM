@@ -11,6 +11,8 @@
   "command.runEnvironmentCheck.title": "STM32環境チェックを実行",
   "command.explainLatestError.title": "最新ビルドエラーを解説",
   "command.openPinVisualizer.title": "STM32ピンビジュアライザを開く",
+  "command.openPeripheralWorkbench.title": "STM32ペリフェラルワークベンチを開く",
+  "command.openPwmWorkbench.title": "STM32 Timer/PWMワークベンチを開く",
   "command.configureGlobalWallpaper.title": "IDE全体の壁紙を設定",
   "command.generateMcpConfigJson.title": "STM32 MCP設定JSONを出力",
   "command.composeMcpRequestJson.title": "STM32 MCPリクエストJSONを生成",
