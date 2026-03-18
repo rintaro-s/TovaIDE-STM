@@ -28,7 +28,11 @@ const HOST = getArg(args, '--host') ?? '127.0.0.1';
 const VERBOSE = args.includes('--verbose');
 const STDIO_MODE = args.includes('--stdio');
 const NO_AUTH = args.includes('--no-auth') || process.env.MCP_NO_AUTH === '1';
-const WORKSPACE = getArg(args, '--workspace') ?? process.cwd();
+const ATTACH_EXISTING_ON_PORT_CONFLICT = !args.includes('--no-attach-existing');
+const WORKSPACE = path.resolve(getArg(args, '--workspace') ?? process.cwd());
+let ACTIVE_WORKSPACE = WORKSPACE;
+const SERVER_STARTED_AT = new Date().toISOString();
+const SERVER_INSTANCE_ID = crypto.randomBytes(6).toString('hex');
 
 function getArg(arr, flag) {
 	const i = arr.indexOf(flag);
@@ -67,6 +71,18 @@ function verbose(...args) {
 
 // ─── Tool Definitions ────────────────────────────────────────────────────────
 const TOOLS = [
+	{
+		name: 'stm32.operationDesk',
+		description: 'STM32 MCP オペレーションデスク: 現在の実行ワークスペース、起動情報、稼働状態を確認し、必要ならワークスペースを切り替えます。',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				action: { type: ['string', 'null'], description: 'status (default) | setWorkspace' },
+				workspacePath: { type: ['string', 'null'], description: 'Workspace root path (for status target or setWorkspace target)' },
+				includeIocList: { type: ['boolean', 'null'], description: 'Include top-level .ioc list (default: true)' }
+			}
+		}
+	},
 	{
 		name: 'stm32.getProjectInfo',
 		description: 'Read and parse the .ioc file in the workspace root. Returns MCU name, board, peripherals, and clock hints.',
@@ -303,13 +319,15 @@ const TOOLS = [
 // ─── Tool Implementations ────────────────────────────────────────────────────
 
 async function toolGetProjectInfo(params) {
-	const wsRoot = params.workspacePath ?? WORKSPACE;
-	const entries = fs.readdirSync(wsRoot);
-	const iocFile = entries.find(e => e.toLowerCase().endsWith('.ioc'));
+	const wsRoot = resolveWorkspacePath(params);
+	if (!isExistingDirectory(wsRoot)) {
+		return { found: false, message: `workspacePath not found: ${wsRoot}`, workspacePath: wsRoot };
+	}
+	const iocPath = selectPreferredIocPath(wsRoot);
+	const iocFile = iocPath ? path.basename(iocPath) : null;
 	if (!iocFile) {
 		return { found: false, message: '.ioc file not found in workspace root' };
 	}
-	const iocPath = path.join(wsRoot, iocFile);
 	const content = fs.readFileSync(iocPath, 'utf8');
 	const lines = content.split('\n');
 
@@ -348,7 +366,7 @@ async function toolGetProjectInfo(params) {
 }
 
 async function toolBuild(params) {
-	const wsRoot = params.workspacePath ?? WORKSPACE;
+	const wsRoot = resolveWorkspacePath(params);
 	const jobs = params.jobs ?? 8;
 
 	// Priority: 1. params.makePath, 2. settings, 3. env var, 4. auto-detect
@@ -471,7 +489,7 @@ async function toolBuild(params) {
 	}
 }
 async function toolFlash(params) {
-	const wsRoot = params.workspacePath ?? WORKSPACE;
+	const wsRoot = resolveWorkspacePath(params);
 	const freq = params.frequencyKHz ?? 4000;
 	let elfPath = params.elfPath;
 
@@ -496,45 +514,108 @@ async function toolFlash(params) {
 }
 
 async function toolRegenerateCode(params) {
-	const wsRoot = params.workspacePath ?? WORKSPACE;
+	let wsRoot = resolveWorkspacePath(params);
 	const cubemxResolution = resolveCubeMxCommand(params.cubemxPath, wsRoot);
 	const cubemxPath = cubemxResolution.cubemxCmd;
 
 	let iocPath = params.iocPath;
-
-	if (!iocPath) {
-		const entries = fs.readdirSync(wsRoot);
-		const iocFile = entries.find(e => e.toLowerCase().endsWith('.ioc'));
-		if (iocFile) iocPath = path.join(wsRoot, iocFile);
+	if (typeof iocPath === 'string' && iocPath.trim().length > 0) {
+		iocPath = iocPath.trim();
+		if (!path.isAbsolute(iocPath)) {
+			iocPath = safeResolvePath(wsRoot, iocPath);
+		} else if (isExistingFile(iocPath)) {
+			// If caller supplied absolute iocPath, use its directory as execution workspace unless explicitly pinned.
+			if (!params.workspacePath) {
+				wsRoot = path.dirname(iocPath);
+			}
+		}
 	}
 
 	if (!iocPath) {
-		return { success: false, error: '.ioc file not found' };
+		iocPath = selectPreferredIocPath(wsRoot);
 	}
 
-	// Normalize a known legacy value that breaks newer CubeMX parser.
-	const iocSanitize = sanitizeIocForCubeMx(iocPath);
+	if (!iocPath) {
+		return { success: false, error: '.ioc file not found', workspacePath: wsRoot };
+	}
+
+	if (!isExistingFile(iocPath) || path.extname(iocPath).toLowerCase() !== '.ioc') {
+		return { success: false, error: `Invalid iocPath: ${iocPath}`, workspacePath: wsRoot };
+	}
+
+	const rawIoc = fs.readFileSync(iocPath, 'utf8');
+	if (!/^(Mcu\.|ProjectManager\.|File\.Version=)/m.test(rawIoc)) {
+		return {
+			success: false,
+			error: `Not a valid ioc file: ${iocPath}`,
+			workspacePath: wsRoot,
+			diagnostics: ['Expected keys like Mcu.* / ProjectManager.* were not found in the .ioc content.']
+		};
+	}
+
+	// Repair .ioc before first run (normal mode)
+	const iocSanitize = sanitizeIocForCubeMx(iocPath, wsRoot, { aggressive: false });
 
 	const normalizedWsRoot = wsRoot.replace(/\\/g, '/');
-	const scriptContent = `config load "${iocPath}"\ngenerate code "${normalizedWsRoot}"\nexit\n`;
+	const normalizedIocPath = iocPath.replace(/\\/g, '/');
+	const scriptContent = `config load "${normalizedIocPath}"\ngenerate code "${normalizedWsRoot}"\nexit\n`;
 	const scriptPath = path.join(require('os').tmpdir(), `cubemx-script-${Date.now()}.txt`);
 	fs.writeFileSync(scriptPath, scriptContent, 'utf8');
 
 	try {
-		const { stdout, stderr } = await execFileAsync(cubemxPath, ['-s', scriptPath], { cwd: wsRoot, timeout: 120000 });
+		const runCubeMx = async () => {
+			const { stdout, stderr } = await execFileAsync(cubemxPath, ['-s', scriptPath], { cwd: wsRoot, timeout: 120000 });
+			const combinedOutput = `${stdout ?? ''}\n${stderr ?? ''}`;
+			const fatalDiagnostics = extractCubeMxFatalDiagnostics(combinedOutput);
+			return { stdout, stderr, combinedOutput, fatalDiagnostics };
+		};
+
+		let firstRun = await runCubeMx();
+		let retriedAfterRepair = false;
+		let retryRepair = { changed: false, changedKeys: [], aggressiveApplied: false };
+
+		if (firstRun.fatalDiagnostics.length > 0) {
+			retryRepair = sanitizeIocForCubeMx(iocPath, wsRoot, { aggressive: true });
+			if (retryRepair.changed) {
+				retriedAfterRepair = true;
+				firstRun = await runCubeMx();
+			}
+		}
+
+		const { stdout, stderr, combinedOutput, fatalDiagnostics } = firstRun;
+		if (fatalDiagnostics.length > 0) {
+			return {
+				success: false,
+				iocPath,
+				workspacePath: wsRoot,
+				cubemxPath,
+				resolutionTried: cubemxResolution.tried,
+				sanitizedIoc: iocSanitize.changed || retryRepair.changed,
+				sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
+				retriedAfterRepair,
+				stdout,
+				stderr,
+				error: 'CubeMX reported fatal errors during regenerate.',
+				fatalDiagnostics,
+				diagnostics: [...extractCubeMxDiagnostics(combinedOutput), ...fatalDiagnostics].slice(0, 50)
+			};
+		}
+
 		const projectArtifacts = detectGeneratedProjectArtifacts(wsRoot);
 		if (!projectArtifacts.generated) {
 			return {
 				success: false,
 				iocPath,
+				workspacePath: wsRoot,
 				cubemxPath,
 				resolutionTried: cubemxResolution.tried,
-				sanitizedIoc: iocSanitize.changed,
-				sanitizedKeys: iocSanitize.changedKeys,
+				sanitizedIoc: iocSanitize.changed || retryRepair.changed,
+				sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
+				retriedAfterRepair,
 				stdout,
 				stderr,
 				error: 'CubeMX completed but STM project sources were not generated.',
-				diagnostics: extractCubeMxDiagnostics(stdout),
+				diagnostics: extractCubeMxDiagnostics(combinedOutput),
 				projectArtifacts
 			};
 		}
@@ -544,26 +625,30 @@ async function toolRegenerateCode(params) {
 			return {
 				success: true,
 				iocPath,
+				workspacePath: wsRoot,
 				cubemxPath,
 				resolutionTried: cubemxResolution.tried,
-				sanitizedIoc: iocSanitize.changed,
-				sanitizedKeys: iocSanitize.changedKeys,
+				sanitizedIoc: iocSanitize.changed || retryRepair.changed,
+				sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
+				retriedAfterRepair,
 				stdout,
 				stderr,
 				warning: 'CubeMX generated project sources, but no Makefile-based build directory was found.',
 				projectArtifacts,
 				makefileGenerated: false,
-				diagnostics: extractCubeMxDiagnostics(stdout)
+				diagnostics: extractCubeMxDiagnostics(combinedOutput)
 			};
 		}
 
 		return {
 			success: true,
 			iocPath,
+			workspacePath: wsRoot,
 			cubemxPath,
 			resolutionTried: cubemxResolution.tried,
-			sanitizedIoc: iocSanitize.changed,
-			sanitizedKeys: iocSanitize.changedKeys,
+			sanitizedIoc: iocSanitize.changed || retryRepair.changed,
+			sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
+			retriedAfterRepair,
 			projectArtifacts,
 			makefileGenerated: true,
 			buildDir,
@@ -574,7 +659,17 @@ async function toolRegenerateCode(params) {
 		const detail = err.code === 'ENOENT'
 			? `STM32CubeMX executable not found: ${cubemxPath}. Tried=${cubemxResolution.tried.join(' | ')}. Set stm32.cubemxPath to the executable file or install STM32CubeMX.`
 			: ((typeof err.stderr === 'string' && err.stderr.length > 0) ? err.stderr : (err.message ?? 'regenerate failed'));
-		return { success: false, iocPath, cubemxPath, resolutionTried: cubemxResolution.tried, exitCode: err.code ?? 1, stdout: err.stdout ?? '', stderr: detail };
+		return {
+			success: false,
+			iocPath,
+			workspacePath: wsRoot,
+			cubemxPath,
+			resolutionTried: cubemxResolution.tried,
+			exitCode: err.code ?? 1,
+			stdout: err.stdout ?? '',
+			stderr: detail,
+			diagnostics: extractCubeMxDiagnostics((err.stdout ?? '') + '\n' + (err.stderr ?? ''))
+		};
 	} finally {
 		fs.unlink(scriptPath, () => { });
 	}
@@ -606,26 +701,100 @@ function detectGeneratedProjectArtifacts(wsRoot) {
 	};
 }
 
-function sanitizeIocForCubeMx(iocPath) {
+function sanitizeIocForCubeMx(iocPath, wsRoot, options = {}) {
 	try {
+		const aggressive = options.aggressive === true;
 		let content = fs.readFileSync(iocPath, 'utf8');
-		const changedKeys = [];
+		const lines = content.split(/\r?\n/);
+		const changedKeys = new Set();
 
-		// CubeMX 6.17 can throw NumberFormatException when this legacy key is boolean.
-		const next = content.replace(/^ProjectManager\.ComputerToolchain=false$/m, () => {
-			changedKeys.push('ProjectManager.ComputerToolchain');
-			return 'ProjectManager.ComputerToolchain=0';
-		});
-
-		if (next !== content) {
-			content = next;
-			fs.writeFileSync(iocPath, content, 'utf8');
-			return { changed: true, changedKeys };
+		const keyIndex = new Map();
+		for (let i = 0; i < lines.length; i++) {
+			const m = lines[i].match(/^([^#;][^=]*)=(.*)$/);
+			if (m) {
+				keyIndex.set(m[1].trim(), i);
+			}
 		}
 
-		return { changed: false, changedKeys };
+		function getValue(key) {
+			const idx = keyIndex.get(key);
+			if (idx === undefined) return undefined;
+			const m = lines[idx].match(/^[^=]*=(.*)$/);
+			return (m?.[1] ?? '').trim();
+		}
+
+		function setValue(key, value) {
+			const idx = keyIndex.get(key);
+			const line = `${key}=${value}`;
+			if (idx === undefined) {
+				lines.push(line);
+				keyIndex.set(key, lines.length - 1);
+			} else if (lines[idx] !== line) {
+				lines[idx] = line;
+			}
+			changedKeys.add(key);
+		}
+
+		const iocBaseName = path.basename(iocPath, '.ioc');
+		const currentMcuName = getValue('Mcu.Name') || getValue('Mcu.CPN') || getValue('Mcu.UserName') || '';
+		const canonicalMcu = currentMcuName ? resolveCanonicalMcuName(currentMcuName, wsRoot || path.dirname(iocPath)).canonical : '';
+
+		if (getValue('ProjectManager.ComputerToolchain') === 'false') {
+			setValue('ProjectManager.ComputerToolchain', '0');
+		}
+		if (getValue('ProjectManager.ComputerToolchain') === 'true') {
+			setValue('ProjectManager.ComputerToolchain', '1');
+		}
+
+		if (!getValue('File.Version')) setValue('File.Version', '6');
+		if (!getValue('ProjectManager.ProjectName')) setValue('ProjectManager.ProjectName', iocBaseName);
+		if (!getValue('ProjectManager.ProjectFileName')) setValue('ProjectManager.ProjectFileName', `${iocBaseName}.ioc`);
+
+		if (!getValue('Mcu.Name') && canonicalMcu) setValue('Mcu.Name', canonicalMcu);
+		if (!getValue('Mcu.CPN') && canonicalMcu) setValue('Mcu.CPN', canonicalMcu);
+		if (!getValue('Mcu.UserName') && canonicalMcu) setValue('Mcu.UserName', canonicalMcu);
+
+		if (!getValue('Mcu.Family') && canonicalMcu) {
+			const inferred = inferMcuFamilyFromName(canonicalMcu);
+			if (inferred) setValue('Mcu.Family', inferred);
+		}
+
+		if (!getValue('Mcu.IPNb')) setValue('Mcu.IPNb', '0');
+		if (!getValue('Mcu.ThirdPartyNb')) setValue('Mcu.ThirdPartyNb', '0');
+
+		const pinCount = lines.filter(l => /^Mcu\.Pin\d+=.+$/.test(l.trim())).length;
+		const existingPinsNb = getValue('Mcu.PinsNb');
+		if (!existingPinsNb || !/^\d+$/.test(existingPinsNb)) {
+			setValue('Mcu.PinsNb', String(pinCount));
+		}
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			const m = line.match(/^([^#;][^=]*)=(.*)$/);
+			if (!m) continue;
+			const key = m[1].trim();
+			const val = (m[2] ?? '').trim();
+
+			if (val === '' && /(?:Nb|Count|Number|Index)$/i.test(key)) {
+				lines[i] = `${key}=0`;
+				changedKeys.add(key);
+			}
+
+			if (aggressive && val === '' && /^Mcu\.(?:IP|Pin)\d+$/i.test(key)) {
+				lines[i] = `${key}=`;
+				changedKeys.add(key);
+			}
+		}
+
+		const repaired = lines.join('\n');
+		if (repaired !== content) {
+			fs.writeFileSync(iocPath, repaired, 'utf8');
+			return { changed: true, changedKeys: Array.from(changedKeys), aggressiveApplied: aggressive };
+		}
+
+		return { changed: false, changedKeys: Array.from(changedKeys), aggressiveApplied: aggressive };
 	} catch {
-		return { changed: false, changedKeys: [] };
+		return { changed: false, changedKeys: [], aggressiveApplied: options.aggressive === true };
 	}
 }
 
@@ -640,6 +809,40 @@ function extractCubeMxDiagnostics(stdout) {
 		if (/Exception|ERROR|OptionalMessage_ERROR|cannot be retrieved|NumberFormatException/i.test(line)) {
 			picked.push(line.trim());
 			if (picked.length >= 30) {
+				break;
+			}
+		}
+	}
+	return picked;
+}
+
+function extractCubeMxFatalDiagnostics(output) {
+	if (typeof output !== 'string' || output.length === 0) {
+		return [];
+	}
+
+	const fatalPatterns = [
+		/Not a valid ioc file/i,
+		/OptionalMessage_ERROR.*Not a valid ioc file/i,
+		/Exception in thread/i,
+		/java\.lang\.(?:IllegalArgumentException|NullPointerException|NumberFormatException|RuntimeException)/i,
+		/Failed to load .*ioc/i,
+		/cannot open .*\.ioc/i,
+		/no such file or directory.*\.ioc/i,
+	];
+
+	const lines = output.split(/\r?\n/);
+	const picked = [];
+	for (const line of lines) {
+		if (!line || !line.trim()) {
+			continue;
+		}
+		if (fatalPatterns.some(re => re.test(line))) {
+			const normalized = line.trim();
+			if (!picked.includes(normalized)) {
+				picked.push(normalized);
+			}
+			if (picked.length >= 20) {
 				break;
 			}
 		}
@@ -1303,15 +1506,56 @@ function findFileRecursive(rootDir, matcher, maxDepth = 6, depth = 0) {
 	return null;
 }
 
+function selectPreferredIocPath(wsRoot) {
+	if (!isExistingDirectory(wsRoot)) {
+		return null;
+	}
+	const iocFiles = fs.readdirSync(wsRoot).filter(e => e.toLowerCase().endsWith('.ioc'));
+	if (iocFiles.length === 0) {
+		return null;
+	}
+	if (iocFiles.length === 1) {
+		return path.join(wsRoot, iocFiles[0]);
+	}
+
+	const dirBase = path.basename(path.resolve(wsRoot)).toLowerCase();
+	const exact = iocFiles.find(f => f.toLowerCase() === `${dirBase}.ioc`);
+	if (exact) {
+		return path.join(wsRoot, exact);
+	}
+
+	const sorted = iocFiles
+		.map(f => {
+			const full = path.join(wsRoot, f);
+			let mtimeMs = 0;
+			try { mtimeMs = fs.statSync(full).mtimeMs; } catch { mtimeMs = 0; }
+			return { full, mtimeMs };
+		})
+		.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+	return sorted[0]?.full ?? null;
+}
+
 function parseIocMcuInfo(wsRoot) {
 	try {
-		const ioc = fs.readdirSync(wsRoot).find(e => e.toLowerCase().endsWith('.ioc'));
-		if (!ioc) {
+		const iocPath = selectPreferredIocPath(wsRoot);
+		if (!iocPath) {
 			return { mcuName: null, family: null };
 		}
-		const content = fs.readFileSync(path.join(wsRoot, ioc), 'utf8');
-		const mcu = (content.match(/^Mcu\.Name=(.+)$/m)?.[1] ?? '').trim();
-		const family = (content.match(/^Mcu\.Family=(.+)$/m)?.[1] ?? '').trim();
+		const content = fs.readFileSync(iocPath, 'utf8');
+		let mcu = (content.match(/^Mcu\.Name=(.+)$/m)?.[1] ?? '').trim();
+		let family = (content.match(/^Mcu\.Family=(.+)$/m)?.[1] ?? '').trim();
+		if (!mcu) mcu = (content.match(/^Mcu\.CPN=(.+)$/m)?.[1] ?? '').trim();
+		if (mcu) {
+			mcu = mcu.replace(/[\[\(\)\{\}]/g, '').replace(/\s+/g, '');
+		}
+		if (!family && mcu) {
+			const upper = mcu.toUpperCase();
+			const m = upper.match(/^STM32([A-Z][0-9])/);
+			if (m) {
+				family = `STM32${m[1]}`;
+			}
+		}
 		return { mcuName: mcu || null, family: family || null };
 	} catch {
 		return { mcuName: null, family: null };
@@ -1320,11 +1564,11 @@ function parseIocMcuInfo(wsRoot) {
 
 function getProjectNameFromIoc(wsRoot) {
 	try {
-		const ioc = fs.readdirSync(wsRoot).find(e => e.toLowerCase().endsWith('.ioc'));
-		if (!ioc) {
+		const iocPath = selectPreferredIocPath(wsRoot);
+		if (!iocPath) {
 			return path.basename(wsRoot);
 		}
-		const content = fs.readFileSync(path.join(wsRoot, ioc), 'utf8');
+		const content = fs.readFileSync(iocPath, 'utf8');
 		const projectName = (content.match(/^ProjectManager\.ProjectName=(.+)$/m)?.[1] ?? '').trim();
 		return projectName || path.basename(wsRoot);
 	} catch {
@@ -1693,9 +1937,57 @@ SECTIONS
 // ─── New Tool Implementations ─────────────────────────────────────────────────
 
 function resolveWorkspacePath(params) {
-	return params.workspacePath
-		? path.resolve(params.workspacePath)
-		: WORKSPACE;
+	if (params && typeof params.workspacePath === 'string' && params.workspacePath.trim().length > 0) {
+		return path.resolve(params.workspacePath.trim());
+	}
+	if (params && typeof params.iocPath === 'string' && path.isAbsolute(params.iocPath)) {
+		const iocDir = path.dirname(params.iocPath);
+		if (isExistingDirectory(iocDir)) {
+			return iocDir;
+		}
+	}
+	return ACTIVE_WORKSPACE;
+}
+
+function toolOperationDesk(params) {
+	const action = (params.action ?? 'status').toString();
+	if (action === 'setWorkspace') {
+		const target = params.workspacePath ? path.resolve(params.workspacePath) : null;
+		if (!target || !isExistingDirectory(target)) {
+			throw Object.assign(new Error(`workspacePath not found: ${params.workspacePath ?? ''}`), { code: -32602 });
+		}
+		ACTIVE_WORKSPACE = target;
+	}
+
+	const wsForListing = resolveWorkspacePath(params);
+	let iocFiles = [];
+	if (params.includeIocList !== false && isExistingDirectory(wsForListing)) {
+		iocFiles = fs.readdirSync(wsForListing)
+			.filter(e => e.toLowerCase().endsWith('.ioc'))
+			.map(e => path.join(wsForListing, e));
+	}
+
+	return {
+		desk: 'STM32 MCP Operation Desk',
+		server: {
+			instanceId: SERVER_INSTANCE_ID,
+			pid: process.pid,
+			host: HOST,
+			port: PORT,
+			startedAt: SERVER_STARTED_AT,
+			uptimeSec: Math.floor(process.uptime()),
+			noAuth: NO_AUTH,
+			stdioMode: STDIO_MODE
+		},
+		workspace: {
+			startupWorkspace: WORKSPACE,
+			activeWorkspace: ACTIVE_WORKSPACE,
+			requestedWorkspace: params.workspacePath ?? null,
+			resolvedWorkspace: wsForListing,
+			tokenFile: TOKEN_FILE,
+			topLevelIocFiles: iocFiles
+		}
+	};
 }
 
 function safeResolvePath(wsBase, relPath) {
@@ -1917,6 +2209,8 @@ function toolCreateIocFromPins(params) {
 		`Mcu.CPN=${mcuName}`,
 		`Mcu.Family=${mcuFamily}`,
 		`Mcu.Name=${mcuName}`,
+		`Mcu.IPNb=0`,
+		`Mcu.ThirdPartyNb=0`,
 		...pins.map((p, i) => `Mcu.Pin${i}=${p.pin}`),
 		`Mcu.PinsNb=${pins.length}`,
 		`Mcu.UserName=${mcuName}`,
@@ -1928,6 +2222,7 @@ function toolCreateIocFromPins(params) {
 		`ProjectManager.ProjectFileName=${projectName}.ioc`,
 		`ProjectManager.ProjectName=${projectName}`,
 		`ProjectManager.ToolChain=Makefile`,
+		`ProjectManager.ComputerToolchain=0`,
 		`ProjectManager.LibraryCopySrc=1`,
 		``
 	].filter(l => l !== undefined).join('\n');
@@ -2129,6 +2424,8 @@ async function dispatch(method, params) {
 		}
 		case 'stm32.getProjectInfo':
 			return await toolGetProjectInfo(params);
+		case 'stm32.operationDesk':
+			return toolOperationDesk(params);
 		case 'stm32.build':
 			return await toolBuild(params);
 		case 'stm32.flash':
@@ -2469,6 +2766,80 @@ function parseRequestUrl(reqUrl) {
 	}
 }
 
+function httpJsonRequest({ host, port, pathname, method = 'GET', payload = null, timeoutMs = 2000 }) {
+	return new Promise((resolve, reject) => {
+		const body = payload ? JSON.stringify(payload) : null;
+		const req = http.request({
+			host,
+			port,
+			path: pathname,
+			method,
+			headers: body ? {
+				'Content-Type': 'application/json',
+				'Content-Length': Buffer.byteLength(body)
+			} : undefined,
+			timeout: timeoutMs,
+		}, (res) => {
+			let raw = '';
+			res.setEncoding('utf8');
+			res.on('data', (chunk) => { raw += chunk; });
+			res.on('end', () => {
+				let json = null;
+				try { json = raw ? JSON.parse(raw) : null; } catch { }
+				resolve({ statusCode: res.statusCode ?? 0, raw, json });
+			});
+		});
+		req.on('timeout', () => {
+			req.destroy(new Error('request timeout'));
+		});
+		req.on('error', reject);
+		if (body) {
+			req.write(body);
+		}
+		req.end();
+	});
+}
+
+async function tryAttachToExistingMcpOnSamePort() {
+	try {
+		const health = await httpJsonRequest({ host: HOST, port: PORT, pathname: '/health', method: 'GET', timeoutMs: 2000 });
+		if (health.statusCode !== 200 || !health.json || health.json.status !== 'ok') {
+			return { attached: false, reason: `Port ${PORT} is in use, but /health did not return MCP status=ok` };
+		}
+
+		const setWorkspacePayload = {
+			jsonrpc: '2.0',
+			id: `attach-${Date.now()}`,
+			method: 'stm32.operationDesk',
+			params: { action: 'setWorkspace', workspacePath: WORKSPACE }
+		};
+		const setWorkspace = await httpJsonRequest({
+			host: HOST,
+			port: PORT,
+			pathname: '/mcp',
+			method: 'POST',
+			payload: setWorkspacePayload,
+			timeoutMs: 3000,
+		});
+
+		const setResult = setWorkspace.json?.result;
+		const activeWorkspace = setResult?.workspace?.activeWorkspace ?? null;
+		if (setWorkspace.statusCode !== 200 || !setResult) {
+			return { attached: false, reason: 'Existing MCP found, but workspace switch request failed' };
+		}
+
+		return {
+			attached: true,
+			instanceId: health.json.instanceId ?? null,
+			pid: health.json.pid ?? null,
+			startupWorkspace: health.json.startupWorkspace ?? null,
+			activeWorkspace,
+		};
+	} catch (err) {
+		return { attached: false, reason: err?.message ?? 'attach failed' };
+	}
+}
+
 function sendSseEvent(res, event, data) {
 	res.write(`event: ${event}\n`);
 	res.write(`data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`);
@@ -2508,7 +2879,18 @@ const server = http.createServer(async (req, res) => {
 
 	// Health check
 	if (req.method === 'GET' && req.url === '/health') {
-		writeJson(res, 200, { status: 'ok', version: '1.0.0', workspace: WORKSPACE });
+		writeJson(res, 200, {
+			status: 'ok',
+			version: '1.0.0',
+			instanceId: SERVER_INSTANCE_ID,
+			pid: process.pid,
+			startedAt: SERVER_STARTED_AT,
+			uptimeSec: Math.floor(process.uptime()),
+			startupWorkspace: WORKSPACE,
+			activeWorkspace: ACTIVE_WORKSPACE,
+			host: HOST,
+			port: PORT
+		});
 		return;
 	}
 
@@ -2600,9 +2982,24 @@ const server = http.createServer(async (req, res) => {
 	writeJson(res, 404, { error: 'Not found' });
 });
 
-server.on('error', err => {
+server.on('error', async (err) => {
 	if (err.code === 'EADDRINUSE') {
-		console.error(`[MCP] Port ${PORT} already in use. Use --port <N> to change.`);
+		if (ATTACH_EXISTING_ON_PORT_CONFLICT) {
+			const attached = await tryAttachToExistingMcpOnSamePort();
+			if (attached.attached) {
+				console.log(
+					`[MCP] Port ${PORT} already in use by existing MCP` +
+					`${attached.instanceId ? ` (instance=${attached.instanceId}` : ''}` +
+					`${attached.pid ? `, pid=${attached.pid}` : ''}` +
+					`${attached.instanceId || attached.pid ? ')' : ''}. ` +
+					`Reused it and switched active workspace to: ${attached.activeWorkspace ?? WORKSPACE}`
+				);
+				process.exit(0);
+				return;
+			}
+			console.error(`[MCP] Port ${PORT} is in use. Auto-attach failed: ${attached.reason}`);
+		}
+		console.error(`[MCP] Port ${PORT} already in use. Existing MCPを停止するか、--port <N> を使用してください。`);
 	} else {
 		console.error('[MCP] Server error:', err.message);
 	}
