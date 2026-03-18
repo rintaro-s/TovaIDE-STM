@@ -18,7 +18,7 @@ const pathModule = require('path') as {
 	resolve: (...parts: string[]) => string;
 };
 const httpModule = require('http') as {
-	get: (options: { host: string; port: number; path: string; timeout?: number }, callback: (res: { statusCode?: number; on: (event: string, handler: () => void) => void; resume: () => void }) => void) => { on: (event: string, handler: (error: Error) => void) => void; destroy: () => void };
+	get: (options: { host: string; port: number; path: string; timeout?: number }, callback: (res: { statusCode?: number; on: (event: string, handler: (...args: unknown[]) => void) => void; resume: () => void }) => void) => { on: (event: string, handler: (...args: unknown[]) => void) => void; destroy: () => void };
 };
 
 const CUBEMX_MCU_CATALOG_KEY = 'stm32ux.cubemxMcuCatalog';
@@ -572,6 +572,24 @@ async function openMcpOperationDesk(): Promise<void> {
 					await publishStatus();
 				}
 				break;
+				case 'startSseMcp':
+					{
+						const status = await ensureMcpServerReady();
+						if (!status.running) {
+							vscode.window.showErrorMessage(vscode.l10n.t('SSE MCP起動に失敗しました: {0}', status.detail));
+							await publishStatus();
+							break;
+						}
+
+						const sseEndpoint = status.endpoint ? status.endpoint.replace(/\/mcp$/u, '/sse') : '';
+						const message = sseEndpoint
+							? vscode.l10n.t('SSE MCPサーバー起動完了: {0}', sseEndpoint)
+							: vscode.l10n.t('SSE MCPサーバーを起動しました。');
+						vscode.window.showInformationMessage(message);
+						await panel.webview.postMessage({ type: 'status', message });
+						await publishStatus();
+					}
+					break;
 			case 'stopMcp':
 				try {
 					await vscode.commands.executeCommand('stm32ai.stopMcpServer');
@@ -646,17 +664,73 @@ async function pingMcpHealth(host: string, port: number, timeoutMs = 1200): Prom
 	});
 }
 
+async function fetchJsonFromMcp(host: string, port: number, path: string, timeoutMs = 1500): Promise<unknown | undefined> {
+	return new Promise<unknown | undefined>(resolve => {
+		let settled = false;
+		const finish = (value: unknown | undefined): void => {
+			if (!settled) {
+				settled = true;
+				resolve(value);
+			}
+		};
+
+		const req = httpModule.get({ host, port, path, timeout: timeoutMs }, res => {
+			let body = '';
+			res.on('data', chunk => {
+				body += String(chunk);
+			});
+			res.on('end', () => {
+				try {
+					finish(JSON.parse(body));
+				} catch {
+					finish(undefined);
+				}
+			});
+		});
+
+		req.on('error', () => finish(undefined));
+		req.on('timeout', () => {
+			try { req.destroy(); } catch { /* ignore */ }
+			finish(undefined);
+		});
+		setTimeout(() => {
+			try { req.destroy(); } catch { /* ignore */ }
+			finish(undefined);
+		}, timeoutMs + 100);
+	});
+}
+
+function hasCubeForgeMcpTools(payload: unknown): boolean {
+	if (!isRecord(payload) || !Array.isArray(payload.tools)) {
+		return false;
+	}
+	return payload.tools.some(tool => isRecord(tool)
+		&& typeof tool.name === 'string'
+		&& (tool.name === 'stm32.listWorkspaceFiles' || tool.name === 'stm32.autoWorkflow'));
+}
+
 async function checkMcpHealth(): Promise<McpHealthStatus> {
+	const incompatibleEndpoints: string[] = [];
 	for (const target of getMcpProbeTargets()) {
 		const ok = await pingMcpHealth(target.host, target.port);
 		if (ok) {
-			return {
-				running: true,
-				endpoint: `http://${target.host}:${target.port}/mcp`,
-				detail: `接続OK (${target.host}:${target.port})`,
-			};
+			const toolsPayload = await fetchJsonFromMcp(target.host, target.port, '/tools');
+			if (hasCubeForgeMcpTools(toolsPayload)) {
+				return {
+					running: true,
+					endpoint: `http://${target.host}:${target.port}/mcp`,
+					detail: `接続OK (${target.host}:${target.port})`,
+				};
+			}
+
+			incompatibleEndpoints.push(`${target.host}:${target.port}`);
 		}
 	}
+
+	if (incompatibleEndpoints.length > 0) {
+		return { running: false, detail: `MCPは応答中ですが互換ツールが不足しています (${incompatibleEndpoints.join(', ')})` };
+	}
+
 	return { running: false, detail: 'MCPサーバー未起動または /health 応答なし' };
 }
 
@@ -775,23 +849,16 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 	if (status.running) {
 		return status;
 	}
-	attempts.push('初回 /health: NG');
+	attempts.push(`初回チェック: ${status.detail}`);
 
-	try {
-		await vscode.commands.executeCommand('stm32ai.startMcpServer');
-		attempts.push('stm32ai.startMcpServer 実行');
-	} catch {
-		attempts.push('stm32ai.startMcpServer 失敗');
-	}
-
-	for (let i = 0; i < 8; i++) {
-		await waitMs(500);
-		status = await checkMcpHealth();
-		if (status.running) {
-			return status;
+	if (status.detail.includes('互換ツールが不足')) {
+		try {
+			await vscode.commands.executeCommand('stm32ai.stopMcpServer');
+			attempts.push('非互換MCPを停止 (stm32ai.stopMcpServer)');
+		} catch {
+			attempts.push('非互換MCP停止に失敗');
 		}
 	}
-	attempts.push('コマンド実行後 /health: NG');
 
 	try {
 		await tryStartMcpTask();
@@ -1144,7 +1211,10 @@ async function runMcpHttpSelfCheck(host: string, port: number, timeoutMs: number
 				resolve({ ok: false, detail: `HTTP /health ${status}` });
 			}
 		});
-		request.on('error', error => resolve({ ok: false, detail: error.message }));
+		request.on('error', error => {
+			const message = error instanceof Error ? error.message : String(error);
+			resolve({ ok: false, detail: message });
+		});
 		request.on('timeout', () => {
 			request.destroy();
 			resolve({ ok: false, detail: 'HTTP /health timeout' });
@@ -4254,6 +4324,7 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 	<div id="mcpStatus" class="status off">MCP 状態確認中...</div>
 	<div class="grid">
 		<button id="startMcp"><div class="t">MCPサーバー起動</div><div class="d">stm32ai.startMcpServer</div></button>
+		<button id="startSseMcp"><div class="t">SSE MCPサーバー起動</div><div class="d">http://127.0.0.1:3737/sse</div></button>
 		<button id="stopMcp"><div class="t">MCPサーバー停止</div><div class="d">stm32ai.stopMcpServer</div></button>
 		<button id="envSettings"><div class="t">環境設定</div><div class="d">make / CubeMX パス設定</div></button>
 		<button id="exportConfig"><div class="t">MCP設定JSONを出力</div><div class="d">.vscode/stm32-mcp.config.json</div></button>
@@ -4289,7 +4360,7 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 			}
 		});
 
-		for (const id of ['startMcp','stopMcp','envSettings','exportConfig','composeRpc','build','flash','regen','board','collab','svd']) {
+		for (const id of ['startMcp','startSseMcp','stopMcp','envSettings','exportConfig','composeRpc','build','flash','regen','board','collab','svd']) {
 			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 		}
 		vscode.postMessage({ type: 'checkMcpStatus' });

@@ -20,6 +20,17 @@
 	"chat.viewSessions.enabled": true,
 	"chat.editing.explainChanges.enabled": true,
 	"stm32.cubemx.path": "C:\\Users\\s-rin\\AppData\\Local\\Programs\\STM32CubeMX",
+	"stm32.armGccPath": "C:\\install\\10 2021.10\\bin\\arm-none-eabi-gcc.exe",
+	"stm32ux.mcp.autoStart": false,
+	"stm32ai.mcp.autoStartServer": false,
+	"stm32ai.mcp.host": "127.0.0.1",
+	"stm32ai.mcp.port": 3737,
+	"stm32ux.mcp.host": "127.0.0.1",
+	"stm32ux.mcp.port": 3737,
+	"terminal.integrated.env.windows": {
+		"STM32_ARM_GCC_PATH": "C:\\install\\10 2021.10\\bin\\arm-none-eabi-gcc.exe",
+		"Path": "C:\\install\\10 2021.10\\bin;${env:Path}"
+	},
 	// --- Editor ---
 	"editor.insertSpaces": false,
 	"editor.experimental.asyncTokenization": true,

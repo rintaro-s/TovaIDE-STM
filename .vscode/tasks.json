@@ -378,7 +378,7 @@
 			"label": "CubeForge: Start MCP Server",
 			"type": "shell",
 			"command": "node",
-			"args": ["mcp-server/index.js", "--workspace", "${workspaceFolder}", "--verbose"],
+			"args": ["mcp-server/index.js", "--workspace", "${workspaceFolder}", "--verbose", "--no-auth"],
 			"isBackground": true,
 			"presentation": {
 				"reveal": "silent",
@@ -397,7 +397,7 @@
 		{
 			"label": "Launch MCP Server",
 			"type": "shell",
-			"command": "cd test/mcp && npm run compile && npm run start-http",
+			"command": "node mcp-server/index.js --workspace ${workspaceFolder} --verbose --no-auth",
 			"isBackground": true,
 			"problemMatcher": [
 				"$tsc"

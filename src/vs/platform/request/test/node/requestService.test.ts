@@ -7,15 +7,14 @@ import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/common/utils.js';
 import { NullLogService } from '../../../log/common/log.js';
 import { IRawRequestFunction, lookupKerberosAuthorization, nodeRequest } from '../../node/requestService.js';
-import { isWindows } from '../../../../base/common/platform.js';
 import { CancellationToken, CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { CancellationError } from '../../../../base/common/errors.js';
 
 suite('Request Service', () => {
 	const store = ensureNoDisposablesAreLeakedInTestSuite();
 
-	// Kerberos module fails to load on local macOS and Linux CI.
-	(isWindows ? test : test.skip)('Kerberos lookup', async () => {
+	// Kerberos behavior depends on machine/domain authentication state, so keep this test disabled.
+	test.skip('Kerberos lookup', async () => {
 		try {
 			const logService = store.add(new NullLogService());
 			const response = await lookupKerberosAuthorization('http://localhost:9999', undefined, logService, 'requestService.test.ts');
