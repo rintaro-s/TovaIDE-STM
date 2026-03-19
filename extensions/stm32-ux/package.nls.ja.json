@@ -23,5 +23,6 @@
   "configuration.mcp.transport.description": "MCP設定JSON出力時に使う推奨トランスポート種別。",
   "configuration.mcp.host.description": "MCP設定JSON出力時に使う既定ホスト。",
   "configuration.mcp.port.description": "MCP設定JSON出力時に使う既定ポート。",
+  "configuration.mcp.forceTakeoverPort.description": "有効時、MCPポートが使用中なら占有プロセスを強制停止し、STM32 MCPサーバーを自動的に起動/切替します。",
   "configuration.mcp.requestTimeoutMs.description": "MCP設定JSON出力時に使う既定タイムアウト(ミリ秒)。"
 }

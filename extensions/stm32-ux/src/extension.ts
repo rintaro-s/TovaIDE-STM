@@ -19,6 +19,7 @@ const pathModule = require('path') as {
 };
 const httpModule = require('http') as {
 	get: (options: { host: string; port: number; path: string; timeout?: number }, callback: (res: { statusCode?: number; on: (event: string, handler: (...args: unknown[]) => void) => void; resume: () => void }) => void) => { on: (event: string, handler: (...args: unknown[]) => void) => void; destroy: () => void };
+	request: (options: { host: string; port: number; path: string; method: string; timeout?: number; headers?: Record<string, string | number> }, callback: (res: { statusCode?: number; on: (event: string, handler: (...args: unknown[]) => void) => void; resume: () => void }) => void) => { on: (event: string, handler: (...args: unknown[]) => void) => void; write: (chunk: string) => void; end: () => void; destroy: () => void };
 };
 
 const CUBEMX_MCU_CATALOG_KEY = 'stm32ux.cubemxMcuCatalog';
@@ -664,6 +665,155 @@ async function pingMcpHealth(host: string, port: number, timeoutMs = 1200): Prom
 	});
 }
 
+async function postJsonToMcp(host: string, port: number, path: string, payload: unknown, timeoutMs = 1800): Promise<{ statusCode: number; raw: string; json?: unknown }> {
+	return await new Promise<{ statusCode: number; raw: string; json?: unknown }>((resolve, reject) => {
+		const body = JSON.stringify(payload);
+		let settled = false;
+		const finish = (value: { statusCode: number; raw: string; json?: unknown }, isError = false): void => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			if (isError) {
+				reject(new Error(value.raw));
+				return;
+			}
+			resolve(value);
+		};
+
+		const req = httpModule.request({
+			host,
+			port,
+			path,
+			method: 'POST',
+			timeout: timeoutMs,
+			headers: {
+				'Content-Type': 'application/json',
+				'Content-Length': Buffer.byteLength(body),
+			}
+		}, res => {
+			let raw = '';
+			res.on('data', chunk => {
+				raw += String(chunk);
+			});
+			res.on('end', () => {
+				let json: unknown;
+				try {
+					json = raw ? JSON.parse(raw) : undefined;
+				} catch {
+					json = undefined;
+				}
+				finish({ statusCode: res.statusCode ?? 0, raw, json });
+			});
+		});
+
+		req.on('error', error => finish({ statusCode: 0, raw: error instanceof Error ? error.message : String(error) }, true));
+		req.on('timeout', () => {
+			try { req.destroy(); } catch { /* ignore */ }
+			finish({ statusCode: 0, raw: 'request timeout' }, true);
+		});
+		setTimeout(() => {
+			try { req.destroy(); } catch { /* ignore */ }
+			finish({ statusCode: 0, raw: 'request timeout' }, true);
+		}, timeoutMs + 150);
+		req.write(body);
+		req.end();
+	});
+}
+
+function getConfiguredMcpEndpoint(): { host: string; port: number } {
+	const config = vscode.workspace.getConfiguration('stm32ux');
+	return {
+		host: config.get<string>('mcp.host', '127.0.0.1'),
+		port: config.get<number>('mcp.port', 3737),
+	};
+}
+
+async function trySwitchWorkspaceOnRunningMcp(workspacePath: string): Promise<boolean> {
+	for (const target of getMcpProbeTargets()) {
+		const reachable = await pingMcpHealth(target.host, target.port, 1000);
+		if (!reachable) {
+			continue;
+		}
+
+		const payload = {
+			jsonrpc: '2.0',
+			id: Date.now(),
+			method: 'stm32.operationDesk',
+			params: { action: 'setWorkspace', workspacePath }
+		};
+
+		try {
+			const response = await postJsonToMcp(target.host, target.port, '/mcp', payload, 2000);
+			if (response.statusCode !== 200 || !isRecord(response.json)) {
+				continue;
+			}
+			if (isRecord(response.json.result)) {
+				outputChannel.appendLine(`[STM32 UX] Existing MCP workspace switched on ${target.host}:${target.port}`);
+				return true;
+			}
+		} catch {
+			// Try next endpoint
+		}
+	}
+
+	return false;
+}
+
+async function getListeningPidsOnPort(port: number, cwd: string | undefined): Promise<number[]> {
+	if (process.platform === 'win32') {
+		try {
+			const result = await execFileAsync('netstat', ['-ano', '-p', 'tcp'], cwd);
+			const lines = result.stdout.split(/\r?\n/u);
+			const pids = new Set<number>();
+			for (const line of lines) {
+				if (!line.includes('LISTENING')) {
+					continue;
+				}
+				if (!line.includes(`:${String(port)}`)) {
+					continue;
+				}
+				const parts = line.trim().split(/\s+/u);
+				const maybePid = Number(parts[parts.length - 1]);
+				if (Number.isFinite(maybePid) && maybePid > 0) {
+					pids.add(maybePid);
+				}
+			}
+			return Array.from(pids);
+		} catch {
+			return [];
+		}
+	}
+
+	try {
+		const result = await execFileAsync('lsof', ['-nP', `-iTCP:${String(port)}`, '-sTCP:LISTEN', '-t'], cwd);
+		return result.stdout
+			.split(/\r?\n/u)
+			.map(line => Number(line.trim()))
+			.filter(pid => Number.isFinite(pid) && pid > 0);
+	} catch {
+		return [];
+	}
+}
+
+async function killPids(pids: number[], cwd: string | undefined): Promise<void> {
+	for (const pid of pids) {
+		if (managedMcpPid && pid === managedMcpPid) {
+			continue;
+		}
+		try {
+			if (process.platform === 'win32') {
+				await execFileAsync('taskkill', ['/PID', String(pid), '/T', '/F'], cwd);
+			} else {
+				await execFileAsync('kill', ['-9', String(pid)], cwd);
+			}
+			outputChannel.appendLine(`[STM32 UX] Killed process on MCP port: pid=${String(pid)}`);
+		} catch {
+			// Ignore and continue
+		}
+	}
+}
+
 async function fetchJsonFromMcp(host: string, port: number, path: string, timeoutMs = 1500): Promise<unknown | undefined> {
 	return new Promise<unknown | undefined>(resolve => {
 		let settled = false;
@@ -845,8 +995,13 @@ async function tryStopManagedMcpProcess(): Promise<void> {
 
 async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 	const attempts: string[] = [];
+	const forceTakeover = vscode.workspace.getConfiguration('stm32ux').get<boolean>('mcp.forceTakeoverPort', true);
 	let status = await checkMcpHealth();
 	if (status.running) {
+		const workspacePath = getPrimaryWorkspacePath();
+		if (workspacePath) {
+			await trySwitchWorkspaceOnRunningMcp(workspacePath);
+		}
 		return status;
 	}
 	attempts.push(`初回チェック: ${status.detail}`);
@@ -860,21 +1015,50 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 		}
 	}
 
-	try {
-		await tryStartMcpTask();
-		attempts.push('タスク起動実行');
-	} catch {
-		attempts.push('タスク起動失敗');
-	}
-
-	for (let i = 0; i < 8; i++) {
-		await waitMs(500);
-		status = await checkMcpHealth();
-		if (status.running) {
-			return status;
+	const workspacePath = getPrimaryWorkspacePath();
+	if (workspacePath) {
+		const switched = await trySwitchWorkspaceOnRunningMcp(workspacePath);
+		if (switched) {
+			status = await checkMcpHealth();
+			if (status.running) {
+				attempts.push('既存MCPへworkspace上書き接続');
+				return status;
+			}
 		}
 	}
-	attempts.push('タスク実行後 /health: NG');
+
+	if (!forceTakeover) {
+		try {
+			await tryStartMcpTask();
+			attempts.push('タスク起動実行');
+		} catch {
+			attempts.push('タスク起動失敗');
+		}
+
+		for (let i = 0; i < 6; i++) {
+			await waitMs(500);
+			status = await checkMcpHealth();
+			if (status.running) {
+				if (workspacePath) {
+					await trySwitchWorkspaceOnRunningMcp(workspacePath);
+				}
+				return status;
+			}
+		}
+		attempts.push('タスク実行後 /health: NG');
+	} else {
+		attempts.push('forceTakeoverPort=true のためタスク起動をスキップ');
+	}
+
+	if (forceTakeover) {
+		const endpoint = getConfiguredMcpEndpoint();
+		const listeningPids = await getListeningPidsOnPort(endpoint.port, workspacePath);
+		if (listeningPids.length > 0) {
+			await killPids(listeningPids, workspacePath);
+			attempts.push(`ポート ${String(endpoint.port)} 占有プロセスを停止: ${listeningPids.join(',')}`);
+			await waitMs(350);
+		}
+	}
 
 	const managed = await tryStartManagedMcpProcess();
 	attempts.push(managed.detail);
@@ -886,6 +1070,9 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 		await waitMs(500);
 		status = await checkMcpHealth();
 		if (status.running) {
+			if (workspacePath) {
+				await trySwitchWorkspaceOnRunningMcp(workspacePath);
+			}
 			return status;
 		}
 	}

@@ -101,7 +101,8 @@ const TOOLS = [
 			properties: {
 				jobs: { type: ['number', 'null'], description: 'Parallel make jobs (default: 8)' },
 				workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' },
-				makePath: { type: ['string', 'null'], description: 'Path to make executable (optional, auto-detected when omitted)' }
+				makePath: { type: ['string', 'null'], description: 'Path to make executable (optional, auto-detected when omitted)' },
+				forceRebuild: { type: ['boolean', 'null'], description: 'Force full rebuild and bypass stale object reuse (default: false)' }
 			}
 		}
 	},
@@ -404,6 +405,9 @@ async function toolBuild(params) {
 
 	if (!buildDir) {
 		const fallback = await buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, childEnv);
+		if (fallback.success) {
+			clearDirtyBuildState(wsRoot);
+		}
 		return {
 			success: fallback.success,
 			exitCode: fallback.exitCode,
@@ -415,6 +419,17 @@ async function toolBuild(params) {
 			gccResolutionTried: gccResolution.tried,
 			stdout: fallback.stdout ?? '',
 			stderr: fallback.stderr ?? ''
+		};
+	}
+
+	const preferredRoots = detectPreferredSourceRoots(wsRoot, buildDir);
+	const preBuildSync = synchronizeCriticalDuplicateFiles(wsRoot, preferredRoots);
+	let rebuildPlan = prepareBuildForRecentWrites(wsRoot, buildDir, params);
+	if (preBuildSync.changedCount > 0 && !rebuildPlan.forceRebuild) {
+		rebuildPlan = {
+			...rebuildPlan,
+			forceRebuild: true,
+			reason: `pre-build duplicate sync (${preBuildSync.changedCount} files)`
 		};
 	}
 
@@ -455,7 +470,12 @@ async function toolBuild(params) {
 	}
 
 	try {
-		const { stdout, stderr } = await execFileAsync(makeCmd, [`-j${jobs}`, 'all'], {
+		const makeArgs = [`-j${jobs}`];
+		if (rebuildPlan.forceRebuild) {
+			makeArgs.push('-B');
+		}
+		makeArgs.push('all');
+		const { stdout, stderr } = await execFileAsync(makeCmd, makeArgs, {
 			cwd: buildDir,
 			env: childEnv,
 			timeout: 120000
@@ -468,6 +488,7 @@ async function toolBuild(params) {
 				// best-effort only
 			}
 		}
+		clearDirtyBuildState(wsRoot);
 		return {
 			success: true,
 			exitCode: 0,
@@ -475,6 +496,8 @@ async function toolBuild(params) {
 			debugDir,
 			buildDir,
 			elfPath: elfPath ?? null,
+			rebuildPlan,
+			preBuildSync,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
 			gccResolutionTried: gccResolution.tried,
@@ -491,6 +514,8 @@ async function toolBuild(params) {
 			makePath: makeCmd,
 			debugDir,
 			buildDir,
+			rebuildPlan,
+			preBuildSync,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
 			gccResolutionTried: gccResolution.tried,
@@ -746,8 +771,8 @@ function detectGeneratedProjectArtifacts(wsRoot) {
 		path.join(wsRoot, 'Startup'),
 	];
 
-	const mainC = sourceCandidates.find(isExistingFile) ?? null;
-	const mainH = headerCandidates.find(isExistingFile) ?? null;
+	const mainC = pickNewestExistingFile(sourceCandidates);
+	const mainH = pickNewestExistingFile(headerCandidates);
 	const startupDir = startupCandidates.find(isExistingDirectory) ?? null;
 
 	return {
@@ -756,6 +781,27 @@ function detectGeneratedProjectArtifacts(wsRoot) {
 		mainH,
 		startupDir,
 	};
+}
+
+function pickNewestExistingFile(candidates) {
+	let bestPath = null;
+	let bestMtime = -1;
+	for (const candidate of candidates) {
+		if (!isExistingFile(candidate)) {
+			continue;
+		}
+		let mtime = 0;
+		try {
+			mtime = fs.statSync(candidate).mtimeMs;
+		} catch {
+			mtime = 0;
+		}
+		if (!bestPath || mtime >= bestMtime) {
+			bestPath = candidate;
+			bestMtime = mtime;
+		}
+	}
+	return bestPath;
 }
 
 function sanitizeIocForCubeMx(iocPath, wsRoot, options = {}) {
@@ -1105,6 +1151,10 @@ function getBuildStampPath(wsRoot) {
 	return path.join(wsRoot, '.mcp-last-build.json');
 }
 
+function getDirtyBuildStatePath(wsRoot) {
+	return path.join(wsRoot, '.mcp-dirty-build-state.json');
+}
+
 function writeLastBuildStamp(wsRoot, data) {
 	const stampPath = getBuildStampPath(wsRoot);
 	fs.writeFileSync(stampPath, JSON.stringify(data, null, 2), 'utf8');
@@ -1118,6 +1168,163 @@ function readLastBuildStamp(wsRoot) {
 	} catch {
 		return null;
 	}
+}
+
+function readDirtyBuildState(wsRoot) {
+	const statePath = getDirtyBuildStatePath(wsRoot);
+	if (!isExistingFile(statePath)) {
+		return { version: 1, files: [], updatedAt: null };
+	}
+	try {
+		const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+		if (!parsed || !Array.isArray(parsed.files)) {
+			return { version: 1, files: [], updatedAt: null };
+		}
+		return {
+			version: 1,
+			files: parsed.files.filter(entry => entry && typeof entry.path === 'string'),
+			updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
+		};
+	} catch {
+		return { version: 1, files: [], updatedAt: null };
+	}
+}
+
+function writeDirtyBuildState(wsRoot, state) {
+	const statePath = getDirtyBuildStatePath(wsRoot);
+	fs.writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf8');
+}
+
+function clearDirtyBuildState(wsRoot) {
+	const statePath = getDirtyBuildStatePath(wsRoot);
+	try {
+		if (isExistingFile(statePath)) {
+			fs.unlinkSync(statePath);
+		}
+	} catch {
+		// ignore cleanup failure
+	}
+}
+
+function markWorkspaceFileDirty(wsRoot, absPath, reason = 'write') {
+	const rel = path.relative(wsRoot, absPath).replace(/\\/g, '/');
+	if (!rel || rel.startsWith('..')) {
+		return;
+	}
+
+	const state = readDirtyBuildState(wsRoot);
+	const nowIso = new Date().toISOString();
+	const next = state.files.filter(entry => entry.path !== rel);
+	next.push({ path: rel, reason, at: nowIso });
+	writeDirtyBuildState(wsRoot, {
+		version: 1,
+		updatedAt: nowIso,
+		files: next,
+	});
+}
+
+function bumpFileMtimeForward(absPath, plusMs = 2500) {
+	try {
+		const now = Date.now() + plusMs;
+		const dt = new Date(now);
+		fs.utimesSync(absPath, dt, dt);
+	} catch {
+		// ignore on unsupported file systems
+	}
+}
+
+function collectObjectFilesInBuildDir(buildDir) {
+	const found = [];
+	const stack = [buildDir];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		let entries = [];
+		try {
+			entries = fs.readdirSync(current, { withFileTypes: true });
+		} catch {
+			entries = [];
+		}
+		for (const entry of entries) {
+			const full = path.join(current, entry.name);
+			if (entry.isDirectory()) {
+				stack.push(full);
+				continue;
+			}
+			if (entry.isFile() && entry.name.toLowerCase().endsWith('.o')) {
+				found.push(full);
+			}
+		}
+	}
+	return found;
+}
+
+function prepareBuildForRecentWrites(wsRoot, buildDir, params) {
+	const state = readDirtyBuildState(wsRoot);
+	const dirtyEntries = [];
+	for (const entry of state.files) {
+		try {
+			const absPath = safeResolvePath(wsRoot, entry.path);
+			if (!isExistingFile(absPath)) {
+				continue;
+			}
+			dirtyEntries.push({ ...entry, absPath });
+		} catch {
+			// ignore invalid dirty-state path entries
+		}
+	}
+
+	const forceRebuildByParam = params?.forceRebuild === true;
+	if (dirtyEntries.length === 0 && !forceRebuildByParam) {
+		return {
+			forceRebuild: false,
+			reason: 'no recent writes',
+			dirtyFiles: [],
+			deletedObjects: 0,
+		};
+	}
+
+	for (const entry of dirtyEntries) {
+		bumpFileMtimeForward(entry.absPath);
+	}
+
+	const broadInvalidation = dirtyEntries.some(entry => /\.(h|hpp|ioc|ld)$/i.test(entry.path));
+	const objects = collectObjectFilesInBuildDir(buildDir);
+	let deletedObjects = 0;
+
+	if (broadInvalidation) {
+		for (const objPath of objects) {
+			try {
+				fs.unlinkSync(objPath);
+				deletedObjects += 1;
+			} catch {
+				// ignore deletion errors
+			}
+		}
+	} else {
+		const targetObjectNames = new Set(
+			dirtyEntries
+				.filter(entry => /\.(c|cpp|s)$/i.test(entry.path))
+				.map(entry => `${path.basename(entry.path, path.extname(entry.path))}.o`)
+		);
+		for (const objPath of objects) {
+			if (!targetObjectNames.has(path.basename(objPath))) {
+				continue;
+			}
+			try {
+				fs.unlinkSync(objPath);
+				deletedObjects += 1;
+			} catch {
+				// ignore deletion errors
+			}
+		}
+	}
+
+	return {
+		forceRebuild: true,
+		reason: forceRebuildByParam ? 'forceRebuild parameter' : 'recent MCP writes',
+		dirtyFiles: dirtyEntries.map(entry => entry.path),
+		deletedObjects,
+	};
 }
 
 function isStaleBuildArtifact(wsRoot, elfPath) {
@@ -1580,6 +1787,180 @@ function findBuildDirectoryWithMakefile(wsRoot) {
 	return null;
 }
 
+function normalizeRelPath(relPath) {
+	return String(relPath ?? '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+}
+
+function detectPreferredSourceRoots(wsRoot, buildDir) {
+	const sourceCandidates = ['Core/Src', 'Src'];
+	const includeCandidates = ['Core/Inc', 'Inc'];
+
+	const sourceFromBuild = detectRootFromBuildArtifacts(buildDir, sourceCandidates);
+	const includeFromBuild = detectRootFromBuildArtifacts(buildDir, includeCandidates);
+	const sourceFromFreshFiles = detectRootFromFreshGeneratedFiles(wsRoot, sourceCandidates, 'main.c');
+	const includeFromFreshFiles = detectRootFromFreshGeneratedFiles(wsRoot, includeCandidates, 'main.h');
+
+	const sourceRoot = sourceFromBuild
+		?? sourceFromFreshFiles
+		?? (isExistingDirectory(path.join(wsRoot, 'Src')) ? 'Src' : (isExistingDirectory(path.join(wsRoot, 'Core', 'Src')) ? 'Core/Src' : 'Core/Src'));
+	const includeRoot = includeFromBuild
+		?? includeFromFreshFiles
+		?? (isExistingDirectory(path.join(wsRoot, 'Inc')) ? 'Inc' : (isExistingDirectory(path.join(wsRoot, 'Core', 'Inc')) ? 'Core/Inc' : 'Core/Inc'));
+
+	return { sourceRoot, includeRoot };
+}
+
+function detectRootFromFreshGeneratedFiles(wsRoot, rootCandidates, markerFileName) {
+	let bestRoot = null;
+	let bestMtime = -1;
+
+	for (const root of rootCandidates) {
+		const probe = path.join(wsRoot, root, markerFileName);
+		if (!isExistingFile(probe)) {
+			continue;
+		}
+		let mtime = 0;
+		try {
+			mtime = fs.statSync(probe).mtimeMs;
+		} catch {
+			mtime = 0;
+		}
+		if (!bestRoot || mtime >= bestMtime) {
+			bestRoot = root;
+			bestMtime = mtime;
+		}
+	}
+
+	return bestRoot;
+}
+
+function detectRootFromBuildArtifacts(buildDir, rootCandidates) {
+	if (!buildDir || !isExistingDirectory(buildDir)) {
+		return null;
+	}
+	const probeFiles = [
+		path.join(buildDir, 'objects.list'),
+		path.join(buildDir, 'sources.mk'),
+		path.join(buildDir, 'subdir.mk'),
+		path.join(buildDir, 'makefile'),
+		path.join(buildDir, 'Makefile'),
+	];
+
+	for (const probe of probeFiles) {
+		if (!isExistingFile(probe)) {
+			continue;
+		}
+		let content = '';
+		try {
+			content = fs.readFileSync(probe, 'utf8');
+		} catch {
+			continue;
+		}
+		for (const candidate of rootCandidates) {
+			const escaped = candidate.replace('/', '[\\/]');
+			if (new RegExp(`(^|[^A-Za-z0-9_])${escaped}[\\/]`, 'm').test(content)) {
+				return candidate;
+			}
+		}
+	}
+
+	return null;
+}
+
+function mapToPreferredTree(relPath, preferredRoots) {
+	const rel = normalizeRelPath(relPath);
+	if (rel.startsWith('Core/Src/')) {
+		return preferredRoots.sourceRoot === 'Src' ? `Src/${rel.slice('Core/Src/'.length)}` : rel;
+	}
+	if (rel.startsWith('Src/')) {
+		return preferredRoots.sourceRoot === 'Core/Src' ? `Core/Src/${rel.slice('Src/'.length)}` : rel;
+	}
+	if (rel.startsWith('Core/Inc/')) {
+		return preferredRoots.includeRoot === 'Inc' ? `Inc/${rel.slice('Core/Inc/'.length)}` : rel;
+	}
+	if (rel.startsWith('Inc/')) {
+		return preferredRoots.includeRoot === 'Core/Inc' ? `Core/Inc/${rel.slice('Inc/'.length)}` : rel;
+	}
+	return rel;
+}
+
+function getCounterpartRelPath(relPath) {
+	const rel = normalizeRelPath(relPath);
+	if (rel.startsWith('Core/Src/')) return `Src/${rel.slice('Core/Src/'.length)}`;
+	if (rel.startsWith('Src/')) return `Core/Src/${rel.slice('Src/'.length)}`;
+	if (rel.startsWith('Core/Inc/')) return `Inc/${rel.slice('Core/Inc/'.length)}`;
+	if (rel.startsWith('Inc/')) return `Core/Inc/${rel.slice('Inc/'.length)}`;
+	return null;
+}
+
+function syncEditedFileToCounterpart(wsRoot, effectiveRelPath) {
+	const counterpartRel = getCounterpartRelPath(effectiveRelPath);
+	if (!counterpartRel) {
+		return [];
+	}
+	const srcAbs = safeResolvePath(wsRoot, effectiveRelPath);
+	const dstAbs = safeResolvePath(wsRoot, counterpartRel);
+	if (!isExistingFile(srcAbs)) {
+		return [];
+	}
+
+	if (!isExistingDirectory(path.dirname(dstAbs)) && !isExistingFile(dstAbs)) {
+		return [];
+	}
+
+	try {
+		fs.mkdirSync(path.dirname(dstAbs), { recursive: true });
+		fs.copyFileSync(srcAbs, dstAbs);
+		bumpFileMtimeForward(dstAbs);
+		markWorkspaceFileDirty(wsRoot, dstAbs, 'counterpartSync');
+		return [counterpartRel];
+	} catch {
+		return [];
+	}
+}
+
+function synchronizeCriticalDuplicateFiles(wsRoot, preferredRoots) {
+	const pairs = [
+		['Core/Src/main.c', 'Src/main.c', preferredRoots.sourceRoot === 'Core/Src' ? 'Core/Src/main.c' : 'Src/main.c'],
+		['Core/Inc/main.h', 'Inc/main.h', preferredRoots.includeRoot === 'Core/Inc' ? 'Core/Inc/main.h' : 'Inc/main.h'],
+	];
+
+	const changed = [];
+	for (const [aRel, bRel, canonicalRel] of pairs) {
+		const aAbs = safeResolvePath(wsRoot, aRel);
+		const bAbs = safeResolvePath(wsRoot, bRel);
+		if (!isExistingFile(aAbs) || !isExistingFile(bAbs)) {
+			continue;
+		}
+		let aText = '';
+		let bText = '';
+		try {
+			aText = fs.readFileSync(aAbs, 'utf8');
+			bText = fs.readFileSync(bAbs, 'utf8');
+		} catch {
+			continue;
+		}
+		if (aText === bText) {
+			continue;
+		}
+
+		const srcRel = canonicalRel;
+		const dstRel = canonicalRel === aRel ? bRel : aRel;
+		const srcAbs = safeResolvePath(wsRoot, srcRel);
+		const dstAbs = safeResolvePath(wsRoot, dstRel);
+		try {
+			fs.copyFileSync(srcAbs, dstAbs);
+			bumpFileMtimeForward(dstAbs);
+			markWorkspaceFileDirty(wsRoot, dstAbs, 'preBuildDuplicateSync');
+			changed.push({ source: srcRel, target: dstRel });
+		} catch {
+			// ignore sync failure
+		}
+	}
+
+	return { changedCount: changed.length, changes: changed };
+}
+
 function findLatestCubeFwPackageForFamily(familyName) {
 	const userProfile = process.env.USERPROFILE ?? '';
 	const homeCombined = `${process.env.HOMEDRIVE ?? ''}${process.env.HOMEPATH ?? ''}`;
@@ -1801,7 +2182,8 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 		};
 	}
 
-	const srcDir = path.join(wsRoot, 'Src');
+	const preferredRoots = detectPreferredSourceRoots(wsRoot, null);
+	const srcDir = path.join(wsRoot, ...preferredRoots.sourceRoot.split('/'));
 	if (!isExistingDirectory(srcDir)) {
 		return { success: false, exitCode: 1, stdout: '', stderr: `Generated source directory not found: ${srcDir}` };
 	}
@@ -1812,7 +2194,11 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 	fs.mkdirSync(objDir, { recursive: true });
 
 	const includeArgs = [
-		`-I${path.join(wsRoot, 'Inc')}`,
+		...Array.from(new Set([
+			path.join(wsRoot, ...preferredRoots.includeRoot.split('/')),
+			path.join(wsRoot, 'Core', 'Inc'),
+			path.join(wsRoot, 'Inc'),
+		].filter(isExistingDirectory))).map(includeDir => `-I${includeDir}`),
 		`-I${path.join(halRoot, 'Inc')}`,
 		`-I${path.join(halRoot, 'Inc', 'Legacy')}`,
 		`-I${path.join(deviceRoot, 'Include')}`,
@@ -2311,18 +2697,34 @@ function toolWriteFile(params) {
 	if (!params.filePath) throw Object.assign(new Error('filePath required'), { code: -32602 });
 	if (params.content === undefined) throw Object.assign(new Error('content required'), { code: -32602 });
 	const base = resolveWorkspacePath(params);
-	const full = safeResolvePath(base, params.filePath);
+	const preferredRoots = detectPreferredSourceRoots(base, findBuildDirectoryWithMakefile(base));
+	const requestedRelPath = normalizeRelPath(params.filePath);
+	const effectiveRelPath = mapToPreferredTree(requestedRelPath, preferredRoots);
+	const full = safeResolvePath(base, effectiveRelPath);
 	fs.mkdirSync(path.dirname(full), { recursive: true });
 	fs.writeFileSync(full, params.content, 'utf8');
-	return { filePath: params.filePath, bytesWritten: Buffer.byteLength(params.content, 'utf8'), success: true };
+	bumpFileMtimeForward(full);
+	markWorkspaceFileDirty(base, full, 'writeFile');
+	const mirroredFiles = syncEditedFileToCounterpart(base, effectiveRelPath);
+	return {
+		filePath: effectiveRelPath,
+		requestedFilePath: requestedRelPath,
+		bytesWritten: Buffer.byteLength(params.content, 'utf8'),
+		success: true,
+		buildInvalidated: true,
+		mirroredFiles,
+	};
 }
 
 function toolPatchUserCode(params) {
 	if (!params.filePath) throw Object.assign(new Error('filePath required'), { code: -32602 });
 	if (!Array.isArray(params.patches) || params.patches.length === 0) throw Object.assign(new Error('patches array required'), { code: -32602 });
 	const base = resolveWorkspacePath(params);
-	const full = safeResolvePath(base, params.filePath);
-	if (!fs.existsSync(full)) throw Object.assign(new Error(`File not found: ${params.filePath}`), { code: -32602 });
+	const preferredRoots = detectPreferredSourceRoots(base, findBuildDirectoryWithMakefile(base));
+	const requestedRelPath = normalizeRelPath(params.filePath);
+	const effectiveRelPath = mapToPreferredTree(requestedRelPath, preferredRoots);
+	const full = safeResolvePath(base, effectiveRelPath);
+	if (!fs.existsSync(full)) throw Object.assign(new Error(`File not found: ${effectiveRelPath}`), { code: -32602 });
 	let content = fs.readFileSync(full, 'utf8');
 	const results = [];
 	for (const patch of params.patches) {
@@ -2344,7 +2746,16 @@ function toolPatchUserCode(params) {
 		results.push({ sectionName, success: true });
 	}
 	fs.writeFileSync(full, content, 'utf8');
-	return { filePath: params.filePath, patches: results };
+	bumpFileMtimeForward(full);
+	markWorkspaceFileDirty(base, full, 'patchUserCode');
+	const mirroredFiles = syncEditedFileToCounterpart(base, effectiveRelPath);
+	return {
+		filePath: effectiveRelPath,
+		requestedFilePath: requestedRelPath,
+		patches: results,
+		buildInvalidated: true,
+		mirroredFiles,
+	};
 }
 
 function toolCreateIocFromPins(params) {
@@ -2504,8 +2915,9 @@ async function toolAutoWorkflow(params) {
 
 	// 3. patchUserCode
 	if (Array.isArray(params.userCodePatches) && params.userCodePatches.length > 0) {
-		const projectName = params.projectName ?? 'project';
-		const mainC = `Core/Src/main.c`;
+		const buildDirForMain = findBuildDirectoryWithMakefile(base);
+		const preferredRoots = detectPreferredSourceRoots(base, buildDirForMain);
+		const mainC = `${preferredRoots.sourceRoot}/main.c`;
 		try {
 			const patchResult = toolPatchUserCode({ filePath: mainC, patches: params.userCodePatches, workspacePath: base });
 			steps.push({ step: 'patchUserCode', success: true, result: patchResult });

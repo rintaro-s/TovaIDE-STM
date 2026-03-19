@@ -23,5 +23,6 @@
   "configuration.mcp.transport.description": "Preferred MCP transport type for generated MCP client config JSON.",
   "configuration.mcp.host.description": "Default MCP host for generated MCP client config JSON.",
   "configuration.mcp.port.description": "Default MCP port for generated MCP client config JSON.",
+  "configuration.mcp.forceTakeoverPort.description": "When enabled, if the MCP port is occupied, TovaIDE-STM force-stops the occupying process and starts/switches to the STM32 MCP server automatically.",
   "configuration.mcp.requestTimeoutMs.description": "Default MCP request timeout (milliseconds) for generated MCP client config JSON."
 }

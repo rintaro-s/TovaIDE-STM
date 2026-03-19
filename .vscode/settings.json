@@ -28,6 +28,7 @@
 	"stm32.build.directory": "Debug",
 	"stm32.build.backend": "mcp",
 	"stm32ux.mcp.autoStart": false,
+	"stm32ux.mcp.forceTakeoverPort": true,
 	"stm32ai.mcp.autoStartServer": false,
 	"stm32ai.mcp.host": "127.0.0.1",
 	"stm32ai.mcp.port": 3737,

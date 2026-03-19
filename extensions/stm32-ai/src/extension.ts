@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 
 declare const require: (moduleName: string) => unknown;
+declare const process: { platform: string };
 
 const httpModule = require('http') as {
 	createServer: (handler: (req: IncomingMessageLike, res: ServerResponseLike) => void) => HttpServerLike;
@@ -13,6 +14,14 @@ const httpModule = require('http') as {
 };
 const cryptoModule = require('crypto') as {
 	randomBytes: (size: number) => { toString: (encoding: string) => string };
+};
+const childProcess = require('child_process') as {
+	execFile: (
+		command: string,
+		args: string[],
+		options: { cwd?: string; shell?: boolean },
+		callback: (error: Error | null, stdout: string, stderr: string) => void
+	) => void;
 };
 
 type LmApi = {
@@ -66,6 +75,7 @@ const sseSessions = new Map<string, ServerResponseLike>();
 let mcpServerRunning = false;
 let mcpServerStarting = false;
 let mcpRequireAuth = false;
+let mcpTakeoverInProgress = false;
 
 const MCP_TOKEN_SECRET_KEY = 'stm32ai.mcp.token';
 
@@ -482,7 +492,7 @@ async function ensureMcpServerToken(context: vscode.ExtensionContext): Promise<s
 	return generated;
 }
 
-async function startMcpServer(context: vscode.ExtensionContext): Promise<void> {
+async function startMcpServer(context: vscode.ExtensionContext, takeoverAttempt = 0): Promise<void> {
 	if (mcpServerRunning || mcpServerStarting) {
 		return;
 	}
@@ -515,7 +525,14 @@ async function startMcpServer(context: vscode.ExtensionContext): Promise<void> {
 		const anyError = error as Error & { code?: string };
 		assistantOutput.appendLine(`[STM32-AI] MCP server error: ${anyError.message}`);
 		if (anyError.code === 'EADDRINUSE') {
-			vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー起動失敗: {0}:{1} は既に使用中です。既存MCPを停止して再実行してください。', mcpServerHost, String(mcpServerPort)));
+			if (!mcpTakeoverInProgress && takeoverAttempt < 3) {
+				mcpTakeoverInProgress = true;
+				void forceTakeoverAndRestart(context, takeoverAttempt + 1).finally(() => {
+					mcpTakeoverInProgress = false;
+				});
+				return;
+			}
+			vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー起動失敗: ポート占有を解放できませんでした ({0}:{1})。', mcpServerHost, String(mcpServerPort)));
 			return;
 		}
 		vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバーでエラーが発生しました。出力を確認してください。'));
@@ -528,6 +545,85 @@ async function startMcpServer(context: vscode.ExtensionContext): Promise<void> {
 		assistantOutput.appendLine(`[STM32-AI] MCP server started at ${url}`);
 		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `MCPサーバー起動: ${url}` });
 	});
+}
+
+async function forceTakeoverAndRestart(context: vscode.ExtensionContext, nextAttempt: number): Promise<void> {
+	assistantOutput.appendLine(`[STM32-AI] MCP takeover attempt ${String(nextAttempt)} on ${mcpServerHost}:${String(mcpServerPort)}`);
+
+	const alive = await isMcpHealthReachable(mcpServerHost, mcpServerPort, 900);
+	if (alive) {
+		mcpServerRunning = true;
+		mcpServerStarting = false;
+		const url = `http://${mcpServerHost}:${mcpServerPort}/mcp`;
+		assistantOutput.appendLine(`[STM32-AI] Reusing running MCP at ${url}`);
+		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `既存MCPに接続: ${url}` });
+		return;
+	}
+
+	const pids = await findListeningPidsOnPort(mcpServerPort);
+	if (pids.length === 0) {
+		assistantOutput.appendLine('[STM32-AI] Port is reported in use but no PID was resolved. Retrying start.');
+		await waitMs(250);
+		await startMcpServer(context, nextAttempt);
+		return;
+	}
+
+	assistantOutput.appendLine(`[STM32-AI] Force-stopping MCP port occupants: ${pids.join(', ')}`);
+	for (const pid of pids) {
+		await killPid(pid);
+	}
+
+	await waitMs(300);
+	await startMcpServer(context, nextAttempt);
+}
+
+async function isMcpHealthReachable(host: string, port: number, timeoutMs = 1200): Promise<boolean> {
+	return await new Promise<boolean>(resolve => {
+		const req = httpModule.get(`http://${host}:${String(port)}/health`, res => {
+			res.on('data', () => undefined);
+			res.on('end', () => resolve((res.statusCode ?? 0) > 0));
+		});
+		req.on('error', () => resolve(false));
+		setTimeout(() => resolve(false), timeoutMs);
+		req.end();
+	});
+}
+
+async function findListeningPidsOnPort(port: number): Promise<number[]> {
+	if (process.platform !== 'win32') {
+		return [];
+	}
+	try {
+		const result = await execFileAsync('netstat', ['-ano', '-p', 'tcp'], undefined);
+		const pids = new Set<number>();
+		for (const line of result.stdout.split(/\r?\n/u)) {
+			if (!line.includes('LISTENING') || !line.includes(`:${String(port)}`)) {
+				continue;
+			}
+			const parts = line.trim().split(/\s+/u);
+			const pid = Number(parts[parts.length - 1]);
+			if (Number.isFinite(pid) && pid > 0) {
+				pids.add(pid);
+			}
+		}
+		return Array.from(pids);
+	} catch {
+		return [];
+	}
+}
+
+async function killPid(pid: number): Promise<void> {
+	if (process.platform === 'win32') {
+		try {
+			await execFileAsync('taskkill', ['/PID', String(pid), '/T', '/F'], undefined);
+		} catch {
+			// ignore
+		}
+	}
+}
+
+async function waitMs(ms: number): Promise<void> {
+	await new Promise<void>(resolve => setTimeout(resolve, ms));
 }
 
 function stopMcpServer(): void {
@@ -802,6 +898,19 @@ function readRequestBody(req: IncomingMessageLike): Promise<string> {
 			text += String(chunk);
 		});
 		req.on('end', () => resolve(text));
+	});
+}
+
+function execFileAsync(command: string, args: string[], cwd: string | undefined): Promise<{ stdout: string; stderr: string }> {
+	return new Promise((resolve, reject) => {
+		const needsShell = command.endsWith('.bat') || command.endsWith('.sh');
+		childProcess.execFile(command, args, { cwd, shell: needsShell }, (error, stdout, stderr) => {
+			if (error) {
+				reject(error);
+				return;
+			}
+			resolve({ stdout, stderr });
+		});
 	});
 }
 
