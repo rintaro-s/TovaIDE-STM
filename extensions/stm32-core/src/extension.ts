@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { registerPhase2Features } from './phase2';
+import { autoCheckProjectHealth, diagnoseAndFixProject, healthCheckCommand } from './extension-diagnostics';
 
 declare const require: (moduleName: string) => any;
 declare const process: { platform: string; env: Record<string, string | undefined> };
@@ -118,37 +119,46 @@ let gdbServerProcess: ReturnType<typeof spawn> | undefined;
 let stLinkPollTimer: number | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-	outputChannel = vscode.window.createOutputChannel('STM32 Build/Flash');
-	buildStatusItem = vscode.window.createStatusBarItem('status.stm32.build', vscode.StatusBarAlignment.Left, 200);
-	stLinkStatusItem = vscode.window.createStatusBarItem('status.stm32.stlink', vscode.StatusBarAlignment.Left, 199);
-	branchStatusItem = vscode.window.createStatusBarItem('status.stm32.branch', vscode.StatusBarAlignment.Left, 198);
+	outputChannel = vscode.window.createOutputChannel('STM32', { log: true });
+	outputChannel.appendLine('[STM32] Extension activated.');
 
-	buildStatusItem.name = vscode.l10n.t('STM32 Build Status');
-	buildStatusItem.text = '$(tools) STM32: 未ビルド';
-	buildStatusItem.tooltip = vscode.l10n.t('STM32 build status');
+	buildStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+	buildStatusItem.command = 'stm32.buildDebug';
+	buildStatusItem.text = '$(tools) STM32: ビルド';
+	buildStatusItem.show();
+	context.subscriptions.push(buildStatusItem);
+
+	stLinkStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+	stLinkStatusItem.command = 'stm32.checkStLink';
+	stLinkStatusItem.text = '$(plug) ST-LINK: 確認中';
+	stLinkStatusItem.show();
+	context.subscriptions.push(stLinkStatusItem);
+
+	// Auto-diagnose project health on startup
+	setTimeout(() => autoCheckProjectHealth(getWorkspaceRoot(), outputChannel), 2000);
 	buildStatusItem.command = 'stm32.buildDebug';
 
 	stLinkStatusItem.name = vscode.l10n.t('STM32 ST-LINK Status');
 	stLinkStatusItem.text = '$(debug-disconnect) ST-LINK: 未確認';
 	stLinkStatusItem.tooltip = vscode.l10n.t('Run ST-LINK connection check');
-	stLinkStatusItem.command = 'stm32.checkStLink';
 
+	branchStatusItem = vscode.window.createStatusBarItem('status.stm32.branch', vscode.StatusBarAlignment.Left, 198);
 	branchStatusItem.name = vscode.l10n.t('STM32 Branch Status');
 	branchStatusItem.text = '$(git-branch) ブランチ: -';
 	branchStatusItem.tooltip = vscode.l10n.t('Current branch from SCM');
-
-	buildStatusItem.show();
-	stLinkStatusItem.show();
 	branchStatusItem.show();
 
 	context.subscriptions.push(outputChannel, buildStatusItem, stLinkStatusItem, branchStatusItem);
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.newProject', () => showNewProjectGuide()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.detectCubeCLT', () => detectCubeCLTMetadata()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32.buildDebug', () => buildDebug()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32.flash', () => flashLatestBuild()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32.buildAndFlash', () => buildAndFlash()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32.checkStLink', () => checkStLink()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32.openCubeMX', () => openCubeMx()));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.buildDebug', buildDebug));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.flashLatestBuild', flashLatestBuild));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.buildAndFlash', buildAndFlash));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.checkStLink', checkStLink));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.detectCubeCLTMetadata', detectCubeCLTMetadata));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.diagnoseAndFixProject', () => diagnoseAndFixProject(getWorkspaceRoot(), outputChannel)));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.healthCheck', () => healthCheckCommand(getWorkspaceRoot(), outputChannel)));
+	context.subscriptions.push(vscode.commands.registerCommand('stm32.regenerateWithCubeMX', regenerateWithCubeMX));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.jumpToFirstBuildError', () => jumpToFirstBuildError()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.startDebug', () => startDebugSession()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.stopDebug', () => stopDebugSession()));
@@ -364,7 +374,23 @@ async function buildDebug(): Promise<boolean> {
 	if (result.exitCode === 0) {
 		buildStatusItem.text = '$(check) STM32: Debugビルド成功';
 		buildStatusItem.backgroundColor = undefined;
-		vscode.window.showInformationMessage(vscode.l10n.t('Debugビルドが成功しました。'));
+
+		// CRITICAL: Verify ELF file was actually generated
+		const elfPath = await findElfFile(workspaceRoot);
+		if (!elfPath) {
+			outputChannel.appendLine('[TovaIDE] WARNING: Build succeeded but no ELF file found!');
+			vscode.window.showWarningMessage(
+				vscode.l10n.t('ビルドは成功しましたが、ELFファイルが見つかりません。Makefileの設定を確認してください。'),
+				vscode.l10n.t('診断実行')
+			).then(choice => {
+				if (choice === vscode.l10n.t('診断実行')) {
+					vscode.commands.executeCommand('stm32.healthCheck');
+				}
+			});
+		} else {
+			outputChannel.appendLine(`[TovaIDE] Build succeeded. ELF: ${elfPath}`);
+			vscode.window.showInformationMessage(vscode.l10n.t('Debugビルドが成功しました。'));
+		}
 		return true;
 	}
 
@@ -495,6 +521,50 @@ async function openCubeMx(): Promise<void> {
 	}
 }
 
+async function regenerateWithCubeMX(): Promise<void> {
+	const workspaceRoot = getWorkspaceRoot();
+	if (!workspaceRoot) {
+		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		return;
+	}
+
+	const iocPath = await findTopLevelIocFile(workspaceRoot);
+	if (!iocPath) {
+		vscode.window.showErrorMessage(vscode.l10n.t('.iocファイルが見つかりません。STM32CubeMXで新規プロジェクトを作成してください。'));
+		return;
+	}
+
+	const choice = await vscode.window.showWarningMessage(
+		vscode.l10n.t('STM32CubeMXでプロジェクトを再生成します。\n\n重要: Project Manager → Project で Toolchain/IDE を "Makefile" に設定してから Generate Code を実行してください。'),
+		{ modal: true },
+		vscode.l10n.t('CubeMXを起動'),
+		vscode.l10n.t('手順を表示'),
+		vscode.l10n.t('キャンセル')
+	);
+
+	if (choice === vscode.l10n.t('CubeMXを起動')) {
+		await openCubeMx();
+		vscode.window.showInformationMessage(
+			vscode.l10n.t('CubeMXでコード生成後、ビルドを実行してください。'),
+			vscode.l10n.t('今すぐビルド')
+		).then(async buildChoice => {
+			if (buildChoice === vscode.l10n.t('今すぐビルド')) {
+				await vscode.commands.executeCommand('stm32.buildDebug');
+			}
+		});
+	} else if (choice === vscode.l10n.t('手順を表示')) {
+		const docPath = join(workspaceRoot, 'REGENERATE_PROJECT.md');
+		if (await probeFilePath(docPath)) {
+			const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(docPath));
+			await vscode.window.showTextDocument(doc);
+		} else {
+			vscode.window.showInformationMessage(
+				vscode.l10n.t('1. CubeMXで .ioc を開く\n2. Project Manager → Toolchain を "Makefile" に設定\n3. Generate Code を実行\n4. TovaIDEでビルド')
+			);
+		}
+	}
+}
+
 async function resolveCubeMxExecutable(): Promise<string> {
 	const configuredPath = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
 	if (configuredPath.length === 0) {
@@ -604,6 +674,11 @@ async function findTopLevelIocFile(workspaceRoot: string): Promise<string | unde
 
 async function findElfFile(workspaceRoot: string): Promise<string | undefined> {
 	const folderCandidates = await getBuildDirectoryCandidates(workspaceRoot);
+	// CRITICAL: Also search workspace root directly
+	if (!folderCandidates.includes(workspaceRoot)) {
+		folderCandidates.push(workspaceRoot);
+	}
+
 	const found: Array<{ path: string; mtimeMs: number }> = [];
 
 	for (const folderPath of folderCandidates) {
@@ -621,8 +696,49 @@ async function findElfFile(workspaceRoot: string): Promise<string | undefined> {
 		}
 	}
 
+	// If no ELF found in standard locations, do recursive search (max depth 3)
+	if (found.length === 0) {
+		outputChannel.appendLine('[TovaIDE] ELF not found in standard locations. Performing recursive search...');
+		await recursiveElfSearch(workspaceRoot, found, 0, 3);
+	}
+
 	found.sort((a, b) => b.mtimeMs - a.mtimeMs);
+	if (found[0]) {
+		outputChannel.appendLine(`[TovaIDE] Found ELF: ${found[0].path}`);
+	} else {
+		outputChannel.appendLine('[TovaIDE] No ELF file found in workspace.');
+	}
 	return found[0]?.path;
+}
+
+async function recursiveElfSearch(
+	dirPath: string,
+	found: Array<{ path: string; mtimeMs: number }>,
+	depth: number,
+	maxDepth: number
+): Promise<void> {
+	if (depth >= maxDepth) {
+		return;
+	}
+
+	const entries = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => [] as Array<{ isFile: () => boolean; isDirectory: () => boolean; name: string }>);
+
+	for (const entry of entries) {
+		// Skip common non-build directories
+		if (entry.isDirectory()) {
+			const skipDirs = ['node_modules', '.git', '.vscode', 'Drivers', 'Middlewares', 'Core'];
+			if (skipDirs.includes(entry.name)) {
+				continue;
+			}
+			await recursiveElfSearch(join(dirPath, entry.name), found, depth + 1, maxDepth);
+		} else if (entry.isFile() && entry.name.toLowerCase().endsWith('.elf')) {
+			const elfPath = join(dirPath, entry.name);
+			const stat = await fs.stat(elfPath).catch(() => undefined);
+			if (stat) {
+				found.push({ path: elfPath, mtimeMs: stat.mtimeMs });
+			}
+		}
+	}
 }
 
 async function resolveBuildDirectory(workspaceRoot: string): Promise<string | undefined> {
@@ -696,9 +812,8 @@ async function isExistingDirectory(dirPath: string): Promise<boolean> {
 async function isStLinkConnected(workspaceRoot: string): Promise<boolean> {
 	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
 	const programmerExecutable = await resolveProgrammerExecutable(metadata);
+	// Use ONLY -l to avoid resetting the MCU during connection checks
 	const commands: string[][] = [
-		['-c', 'port=SWD', '-l'],
-		['-c', 'port=SWD'],
 		['-l'],
 	];
 

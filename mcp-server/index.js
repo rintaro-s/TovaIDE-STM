@@ -405,9 +405,11 @@ async function toolBuild(params) {
 			success: false,
 			exitCode: 1,
 			makePath: makeCmd,
+			makeResolved: makeCmd,
 			debugDir,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
+			gccResolved: gccCmd,
 			gccResolutionTried: gccResolution.tried,
 			stdout: '',
 			stderr: `workspacePath not found or not a directory: ${wsRoot}`
@@ -423,13 +425,16 @@ async function toolBuild(params) {
 			success: fallback.success,
 			exitCode: fallback.exitCode,
 			makePath: makeCmd,
+			makeResolved: makeCmd,
 			debugDir,
 			buildDir: fallback.buildDir ?? null,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
+			gccResolved: gccCmd,
 			gccResolutionTried: gccResolution.tried,
 			stdout: fallback.stdout ?? '',
-			stderr: fallback.stderr ?? ''
+			stderr: fallback.stderr ?? '',
+			note: 'Built with bare-metal fallback (no Makefile found)'
 		};
 	}
 
@@ -450,13 +455,26 @@ async function toolBuild(params) {
 			success: false,
 			exitCode: 'ENOENT',
 			makePath: makeCmd,
+			makeResolved: makeCmd,
 			debugDir,
 			buildDir,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
+			gccResolved: gccCmd,
 			gccResolutionTried: gccResolution.tried,
 			stdout: '',
-			stderr: `make path does not exist or is not a file: ${makeCmd}`
+			stderr: [
+				`make path does not exist or is not a file: ${makeCmd}`,
+				'',
+				'Resolution attempts:',
+				...makeResolution.tried.map(t => `  - ${t}`),
+				'',
+				'Troubleshooting:',
+				'  1. Install STM32CubeCLT or GNU ARM Embedded Toolchain',
+				'  2. Set stm32.makePath in settings',
+				'  3. Add make to system PATH',
+				'  4. Set STM32_MAKE_PATH environment variable'
+			].join('\n')
 		};
 	}
 
@@ -469,13 +487,21 @@ async function toolBuild(params) {
 					success: false,
 					exitCode: 'ENOENT',
 					makePath: makeCmd,
+					makeResolved: makeCmd,
 					debugDir,
 					buildDir,
 					resolutionTried: makeResolution.tried,
 					gccPath: gccCmd,
+					gccResolved: gccCmd,
 					gccResolutionTried: gccResolution.tried,
 					stdout: versionErr.stdout ?? '',
-					stderr: `make executable exists but cannot be launched: ${makeCmd}. Possible missing runtime DLL/dependency or execution restriction.`
+					stderr: [
+						`make executable exists but cannot be launched: ${makeCmd}`,
+						'Possible missing runtime DLL/dependency or execution restriction.',
+						'',
+						'On Windows: Install Visual C++ Redistributables',
+						'On Linux/Mac: Check file permissions and dependencies'
+					].join('\n')
 				};
 			}
 		}
@@ -505,6 +531,8 @@ async function toolBuild(params) {
 			success: true,
 			exitCode: 0,
 			makePath: makeCmd,
+			makeResolved: makeCmd,
+			makeCommand: `${makeCmd} -j${jobs}${rebuildPlan.forceRebuild ? ' -B' : ''} all`,
 			debugDir,
 			buildDir,
 			elfPath: elfPath ?? null,
@@ -513,18 +541,33 @@ async function toolBuild(params) {
 			preBuildSync,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
+			gccResolved: gccCmd,
 			gccResolutionTried: gccResolution.tried,
 			stdout,
-			stderr
+			stderr,
+			note: elfPath ? 'Build succeeded. ELF file ready for flashing.' : 'Build succeeded but ELF file not found.'
 		};
 	} catch (err) {
 		const detail = err.code === 'ENOENT'
-			? `make launch failed: ${makeCmd}. cwd=${buildDir}. Tried=${makeResolution.tried.join(' | ')}.`
+			? [
+				`make launch failed: ${makeCmd}`,
+				`cwd: ${buildDir}`,
+				'',
+				'Resolution attempts:',
+				...makeResolution.tried.map(t => `  - ${t}`),
+				'',
+				'Troubleshooting:',
+				'  1. Verify make is installed',
+				'  2. Check PATH includes make directory',
+				'  3. Reinstall STM32CubeCLT or GNU ARM Toolchain'
+			].join('\n')
 			: (typeof err.stderr === 'string' && err.stderr.length > 0 ? err.stderr : (err.message ?? 'build failed'));
 		return {
 			success: false,
 			exitCode: err.code ?? 1,
 			makePath: makeCmd,
+			makeResolved: makeCmd,
+			makeCommand: `${makeCmd} -j${jobs}${rebuildPlan.forceRebuild ? ' -B' : ''} all`,
 			debugDir,
 			buildDir,
 			rebuildPlan,
@@ -532,6 +575,7 @@ async function toolBuild(params) {
 			preBuildSync,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
+			gccResolved: gccCmd,
 			gccResolutionTried: gccResolution.tried,
 			stdout: err.stdout ?? '',
 			stderr: detail
@@ -580,6 +624,23 @@ async function toolFlash(params) {
 
 	const stlink = await detectStLink(programmer);
 	if (!stlink.connected) {
+		const errorDetail = [
+			'ST-LINK not detected.',
+			'',
+			'Programmer resolution:',
+			...programmerResolution.tried.map(t => `  - ${t}`),
+			'',
+			'Detection attempts:',
+			stlink.attemptLog ?? 'no attempt log',
+			'',
+			'Troubleshooting:',
+			'  1. Check ST-LINK cable connection',
+			'  2. Check target board power',
+			'  3. Verify STM32_Programmer_CLI is installed',
+			'  4. Check ST-LINK driver installation',
+			'  5. Verify target voltage (VAPP)'
+		].join('\n');
+
 		if (allowMakeFlashFallback) {
 			const makeFlash = await flashViaMakeTarget(wsRoot);
 			if (makeFlash.success) {
@@ -600,8 +661,9 @@ async function toolFlash(params) {
 			success: false,
 			workspacePath: wsRoot,
 			programmerPath: programmer,
+			programmerResolved: programmer,
 			resolutionTried: programmerResolution.tried,
-			error: 'ST-LINK not detected. Check cable/power/driver and target voltage.',
+			error: errorDetail,
 			detection: stlink,
 			makeFlashTried: allowMakeFlashFallback
 		};
@@ -659,9 +721,11 @@ async function toolFlash(params) {
 			};
 		}
 
+		const flashArgs = ['-c', 'port=SWD', `freq=${freq}`, '-w', elfPath, '-v', '-rst'];
+		verbose(`Flash command: ${programmer} ${flashArgs.join(' ')}`);
 		const { stdout, stderr } = await execFileAsync(
 			programmer,
-			['-c', 'port=SWD', `freq=${freq}`, '-w', elfPath, '-v', '-rst'],
+			flashArgs,
 			{ cwd: wsRoot, timeout: 60000 }
 		);
 		const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
@@ -683,10 +747,13 @@ async function toolFlash(params) {
 			workspacePath: wsRoot,
 			elfPath,
 			programmerPath: programmer,
+			programmerResolved: programmer,
 			resolutionTried: programmerResolution.tried,
+			flashCommand: `${programmer} ${flashArgs.join(' ')}`,
 			stdout,
 			stderr,
-			detection: stlink
+			detection: stlink,
+			note: 'Flash completed with -rst flag (MCU will reset and run program immediately)'
 		};
 	} catch (err) {
 		return {
@@ -874,13 +941,25 @@ async function toolRegenerateCode(params) {
 				iocPath,
 				workspacePath: wsRoot,
 				cubemxPath,
+				cubemxResolved: cubemxPath,
 				resolutionTried: cubemxResolution.tried,
 				sanitizedIoc: iocSanitize.changed || retryRepair.changed,
 				sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
 				retriedAfterRepair,
 				stdout,
 				stderr,
-				error: 'CubeMX reported fatal errors during regenerate.',
+				error: [
+					'CubeMX reported fatal errors during regenerate.',
+					'',
+					'Fatal diagnostics:',
+					...fatalDiagnostics.map(d => `  - ${d}`),
+					'',
+					'Troubleshooting:',
+					'  1. Open .ioc file in STM32CubeMX GUI and verify it loads',
+					'  2. Check for invalid pin configurations',
+					'  3. Ensure MCU/Board name is correct',
+					'  4. Update STM32CubeMX to the latest version'
+				].join('\n'),
 				fatalDiagnostics,
 				diagnostics: [...extractCubeMxDiagnostics(combinedOutput), ...fatalDiagnostics].slice(0, 50)
 			};
@@ -894,13 +973,25 @@ async function toolRegenerateCode(params) {
 				iocPath,
 				workspacePath: wsRoot,
 				cubemxPath,
+				cubemxResolved: cubemxPath,
 				resolutionTried: cubemxResolution.tried,
 				sanitizedIoc: iocSanitize.changed || retryRepair.changed,
 				sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
 				retriedAfterRepair,
 				stdout,
 				stderr,
-				error: 'CubeMX completed but STM project sources were not generated.',
+				error: [
+					'CubeMX completed but STM project sources were not generated.',
+					'',
+					'Expected artifacts not found:',
+					'  - main.c or main.h',
+					'  - Makefile or project files',
+					'',
+					'Verify CubeMX project settings:',
+					'  1. Toolchain/IDE should be "Makefile" or "STM32CubeIDE"',
+					'  2. Project path should be correct',
+					'  3. Check CubeMX output for warnings'
+				].join('\n'),
 				diagnostics: extractCubeMxDiagnostics(combinedOutput),
 				projectArtifacts,
 				generatedRootHints
@@ -916,6 +1007,7 @@ async function toolRegenerateCode(params) {
 				iocPath,
 				workspacePath: wsRoot,
 				cubemxPath,
+				cubemxResolved: cubemxPath,
 				resolutionTried: cubemxResolution.tried,
 				sanitizedIoc: iocSanitize.changed || retryRepair.changed,
 				sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
@@ -928,7 +1020,8 @@ async function toolRegenerateCode(params) {
 				syncedCounterparts: counterpartSync.synced,
 				skippedCounterparts: counterpartSync.skipped,
 				makefileGenerated: false,
-				diagnostics: extractCubeMxDiagnostics(combinedOutput)
+				diagnostics: extractCubeMxDiagnostics(combinedOutput),
+				note: 'Code regenerated but manual build setup may be required.'
 			};
 		}
 
@@ -937,6 +1030,7 @@ async function toolRegenerateCode(params) {
 			iocPath,
 			workspacePath: wsRoot,
 			cubemxPath,
+			cubemxResolved: cubemxPath,
 			resolutionTried: cubemxResolution.tried,
 			sanitizedIoc: iocSanitize.changed || retryRepair.changed,
 			sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
@@ -948,17 +1042,30 @@ async function toolRegenerateCode(params) {
 			makefileGenerated: true,
 			buildDir,
 			stdout,
-			stderr
+			stderr,
+			note: 'Code regenerated successfully. Project is ready to build.'
 		};
 	} catch (err) {
 		const detail = err.code === 'ENOENT'
-			? `STM32CubeMX executable not found: ${cubemxPath}. Tried=${cubemxResolution.tried.join(' | ')}. Set stm32.cubemxPath to the executable file or install STM32CubeMX.`
+			? [
+				`STM32CubeMX executable not found: ${cubemxPath}`,
+				'',
+				'Resolution attempts:',
+				...cubemxResolution.tried.map(t => `  - ${t}`),
+				'',
+				'Troubleshooting:',
+				'  1. Install STM32CubeMX from st.com',
+				'  2. Set stm32.cubemxPath in settings to executable path',
+				'  3. Add STM32CubeMX to system PATH',
+				'  4. Set STM32_CUBEMX_PATH environment variable'
+			].join('\n')
 			: ((typeof err.stderr === 'string' && err.stderr.length > 0) ? err.stderr : (err.message ?? 'regenerate failed'));
 		return {
 			success: false,
 			iocPath,
 			workspacePath: wsRoot,
 			cubemxPath,
+			cubemxResolved: cubemxPath,
 			resolutionTried: cubemxResolution.tried,
 			exitCode: err.code ?? 1,
 			stdout: err.stdout ?? '',
@@ -1254,7 +1361,11 @@ function sanitizeIocForCubeMx(iocPath, wsRoot, options = {}) {
 		if (!getValue('ProjectManager.ProjectName')) setValue('ProjectManager.ProjectName', iocBaseName);
 		if (!getValue('ProjectManager.ProjectFileName')) setValue('ProjectManager.ProjectFileName', `${iocBaseName}.ioc`);
 		if (!getValue('ProjectManager.ProjectPath')) setValue('ProjectManager.ProjectPath', 'Core');
-		if (!getValue('ProjectManager.ToolChain')) setValue('ProjectManager.ToolChain', 'Makefile');
+		// CRITICAL: Always force Toolchain to Makefile, regardless of current value
+		const currentToolchain = getValue('ProjectManager.ToolChain');
+		if (currentToolchain !== 'Makefile') {
+			setValue('ProjectManager.ToolChain', 'Makefile');
+		}
 		if (!getValue('ProjectManager.NoMain')) setValue('ProjectManager.NoMain', 'false');
 
 		if (!getValue('Mcu.Name') && canonicalMcu) setValue('Mcu.Name', canonicalMcu);
@@ -1610,19 +1721,31 @@ async function toolCheckStLink(params) {
 			success: false,
 			connected: false,
 			programmerPath: programmer,
+			programmerResolved: programmer,
 			resolutionTried: programmerResolution.tried,
 			stdout: result.stdout,
 			stderr: result.stderr,
-			error: result.error ?? 'ST-LINK not detected'
+			attemptLog: result.attemptLog,
+			error: result.error ?? 'ST-LINK not detected',
+			troubleshooting: [
+				'1. Check ST-LINK cable connection',
+				'2. Check target board power',
+				'3. Verify STM32_Programmer_CLI is installed',
+				'4. Check ST-LINK driver installation',
+				'5. Verify target voltage (VAPP)',
+				'6. Try running manually: ' + programmer + ' -c port=SWD -l'
+			].join('\n')
 		};
 	}
 	return {
 		success: true,
 		connected: true,
 		programmerPath: programmer,
+		programmerResolved: programmer,
 		resolutionTried: programmerResolution.tried,
 		stdout: result.stdout,
 		stderr: result.stderr,
+		attemptLog: result.attemptLog,
 		interface: result.interface,
 		board: result.board,
 		sn: result.sn
@@ -1661,18 +1784,61 @@ async function toolValidateEnvironment(params) {
 		forFlash: checks.workspaceExists && checks.programmerFound && (stlink ? stlink.connected : false),
 	};
 
+	const issues = [];
+	const recommendations = [];
+
+	if (!checks.workspaceExists) {
+		issues.push('Workspace directory does not exist');
+		recommendations.push('Verify workspace path is correct');
+	}
+	if (!checks.iocFound) {
+		issues.push('.ioc file not found in workspace');
+		recommendations.push('Create .ioc file using STM32CubeMX or stm32.createIocFromPins tool');
+	}
+	if (!checks.makeFound) {
+		issues.push('make executable not found');
+		recommendations.push('Install STM32CubeCLT or add make to system PATH');
+		recommendations.push('Set stm32.makePath in VS Code settings');
+	}
+	if (!checks.gccFound) {
+		issues.push('ARM GCC compiler not found');
+		recommendations.push('Install GNU ARM Embedded Toolchain');
+		recommendations.push('Add arm-none-eabi-gcc to system PATH');
+	}
+	if (!checks.cubemxFound) {
+		issues.push('STM32CubeMX executable not found');
+		recommendations.push('Install STM32CubeMX from st.com');
+		recommendations.push('Set stm32.cubemxPath in VS Code settings');
+	}
+	if (!checks.programmerFound) {
+		issues.push('STM32_Programmer_CLI not found');
+		recommendations.push('Install STM32CubeProgrammer');
+		recommendations.push('Set stm32.programmerPath in VS Code settings');
+	}
+	if (stlink && !stlink.connected) {
+		issues.push('ST-LINK probe not detected');
+		recommendations.push('Check ST-LINK cable connection');
+		recommendations.push('Verify target board has power');
+		recommendations.push('Install ST-LINK drivers');
+	}
+
 	return {
 		success: true,
 		workspacePath: wsRoot,
 		iocPath: iocPath ?? null,
 		buildDir: buildDir ?? null,
-		make: { command: makeResolution.makeCmd, tried: makeResolution.tried },
-		gcc: { command: gccResolution.gccCmd, tried: gccResolution.tried },
-		cubemx: { command: cubemxResolution.cubemxCmd, tried: cubemxResolution.tried },
-		programmer: { command: programmerResolution.programmerCmd, tried: programmerResolution.tried },
+		make: { command: makeResolution.makeCmd, resolved: makeResolution.makeCmd, tried: makeResolution.tried },
+		gcc: { command: gccResolution.gccCmd, resolved: gccResolution.gccCmd, tried: gccResolution.tried },
+		cubemx: { command: cubemxResolution.cubemxCmd, resolved: cubemxResolution.cubemxCmd, tried: cubemxResolution.tried },
+		programmer: { command: programmerResolution.programmerCmd, resolved: programmerResolution.programmerCmd, tried: programmerResolution.tried },
 		checks,
 		readiness,
 		stlink,
+		issues,
+		recommendations,
+		summary: issues.length === 0
+			? 'All tools detected. Environment is ready.'
+			: `${issues.length} issue(s) detected. See recommendations for fixes.`
 	};
 }
 
@@ -1717,59 +1883,76 @@ function findElfFile(wsRoot) {
 }
 
 async function detectStLink(programmer) {
+	const attemptLog = [];
+	// Use ONLY -l to avoid resetting the MCU during connection checks
 	const attempts = [
-		{ args: ['-c', 'port=SWD', '-l'], iface: 'SWD' },
-		{ args: ['-c', 'port=SWD'], iface: 'SWD-connect' },
-		{ args: ['-l'], iface: 'default-list' },
-		{ args: ['-l', 'st-link'], iface: 'st-link' },
+		{ args: ['-l'], iface: 'list-only' },
 	];
 
 	let lastOut = '';
 	let lastErr = '';
+	attemptLog.push(`Programmer path: ${programmer}`);
+
 	for (const attempt of attempts) {
 		try {
+			const cmdLine = `${programmer} ${attempt.args.join(' ')}`;
+			attemptLog.push(`Trying: ${cmdLine}`);
 			const { stdout, stderr } = await execFileAsync(programmer, attempt.args, { timeout: 15000 });
 			const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
 			lastOut = stdout ?? '';
 			lastErr = stderr ?? '';
+			attemptLog.push(`Result (${attempt.iface}): stdout=${stdout?.length ?? 0} bytes, stderr=${stderr?.length ?? 0} bytes`);
 			const hasProbeToken = /ST-?LINK|STLINK|Board\s*:|SN\s*:|Connected to target|Target connected|Device ID|Chip ID|STM32|Memory map|Read out protection/i.test(combined);
 			const hasNegativeToken = /No\s+ST-?LINK|No\s+debug\s+probe|not\s+detected|0\s+st-?link|Error: No STM32|failed to connect|Cannot connect/i.test(combined);
 			const connected = hasProbeToken && !hasNegativeToken;
+			attemptLog.push(`Detection: hasProbe=${hasProbeToken}, hasNegative=${hasNegativeToken}, connected=${connected}`);
 			if (connected) {
 				const board = combined.match(/(?:Board\s*Name|Board)\s*:\s*(.+)/i)?.[1]?.trim() ?? null;
 				const sn = combined.match(/(?:ST-?LINK\s*SN|SN)\s*:\s*([A-Za-z0-9]+)/i)?.[1]?.trim() ?? null;
-				return { connected: true, interface: attempt.iface, board, sn, stdout, stderr };
+				attemptLog.push(`SUCCESS: ST-LINK detected via ${attempt.iface}`);
+				return { connected: true, interface: attempt.iface, board, sn, stdout, stderr, attemptLog: attemptLog.join('\n') };
 			}
 		} catch (err) {
 			lastOut = err.stdout ?? '';
 			lastErr = err.stderr ?? err.message ?? '';
+			attemptLog.push(`ERROR (${attempt.iface}): ${err.code ?? 'unknown'} - ${err.message ?? 'no message'}`);
 			if (err && err.code === 'ENOENT') {
+				attemptLog.push(`Programmer binary not found at: ${programmer}`);
 				// Keep trying fallbacks (e.g., st-info) instead of returning immediately.
 				continue;
 			}
 		}
 	}
 
+	attemptLog.push('Trying st-info fallback...');
 	const stInfoFallback = await detectStLinkViaStInfo();
 	if (stInfoFallback.connected) {
-		return stInfoFallback;
+		attemptLog.push('SUCCESS: ST-LINK detected via st-info');
+		return { ...stInfoFallback, attemptLog: attemptLog.join('\n') };
 	}
+	attemptLog.push('st-info fallback failed');
 
 	// Final attempt: just check if the programmer binary responds (version check)
 	try {
+		attemptLog.push('Trying --version check...');
 		const { stdout: verOut, stderr: verErr } = await execFileAsync(programmer, ['--version'], { timeout: 8000 });
 		const combined = `${verOut ?? ''}\n${verErr ?? ''}`;
 		if (/ST-?LINK|STM32|Cube|Programmer/i.test(combined)) {
 			lastOut = verOut ?? '';
 			lastErr = verErr ?? '';
+			attemptLog.push('Programmer binary responds to --version');
 		}
-	} catch { /* ignore */ }
+	} catch (err) {
+		attemptLog.push(`--version check failed: ${err.message ?? 'unknown'}`);
+	}
 
+	attemptLog.push('FAILED: No ST-LINK detected by any method');
 	return {
 		connected: false,
 		stdout: lastOut,
 		stderr: lastErr,
-		error: `No ST-LINK probe found. Programmer CLI='${programmer}', and st-info fallback also failed.`
+		error: `No ST-LINK probe found. Programmer CLI='${programmer}', and st-info fallback also failed.`,
+		attemptLog: attemptLog.join('\n')
 	};
 }
 
@@ -1805,6 +1988,7 @@ async function detectStLinkViaStInfo() {
 function resolveProgrammerCliCommand(configuredPath, workspacePath) {
 	const tried = [];
 
+	// Priority 1: Explicit parameter
 	const explicit = resolveBinaryCandidate(configuredPath, ['STM32_Programmer_CLI.exe', 'STM32_Programmer_CLI']);
 	if (configuredPath) {
 		tried.push(`param:${sanitizePathValue(configuredPath)}`);
@@ -1813,10 +1997,28 @@ function resolveProgrammerCliCommand(configuredPath, workspacePath) {
 		return { programmerCmd: explicit, tried };
 	}
 
+	// Priority 2: STM32_CUBECLT_PATH environment variable (HIGHEST PRIORITY for CubeCLT)
+	const cltRoot = sanitizePathValue(process.env.STM32_CUBECLT_PATH);
+	if (cltRoot) {
+		tried.push(`env:STM32_CUBECLT_PATH=${cltRoot}`);
+		// Try multiple paths within CubeCLT installation
+		const cltCandidates = [
+			path.join(cltRoot, 'STM32CubeProgrammer', 'bin', process.platform === 'win32' ? 'STM32_Programmer_CLI.exe' : 'STM32_Programmer_CLI'),
+			path.join(cltRoot, 'bin', process.platform === 'win32' ? 'STM32_Programmer_CLI.exe' : 'STM32_Programmer_CLI'),
+		];
+		for (const candidate of cltCandidates) {
+			tried.push(`clt:${candidate}`);
+			if (fs.existsSync(candidate)) {
+				return { programmerCmd: candidate, tried };
+			}
+		}
+	}
+
+	// Priority 3: VS Code settings and environment variables
 	const settingCandidates = [
-		getConfigValue('cubectlPath', ['STM32_PROGRAMMER_CLI_PATH', 'STM32_CUBECTL_PATH'], workspacePath),
-		getConfigValue('programmerPath', ['STM32_PROGRAMMER_PATH'], workspacePath),
+		getConfigValue('programmerPath', ['STM32_PROGRAMMER_PATH', 'STM32_PROGRAMMER_CLI_PATH'], workspacePath),
 		getConfigValue('cubeprogrammerPath', ['STM32_CUBEPROGRAMMER_PATH'], workspacePath),
+		getConfigValue('cubectlPath', ['STM32_CUBECTL_PATH'], workspacePath),
 	].filter(Boolean);
 
 	for (const configured of settingCandidates) {
@@ -1826,7 +2028,7 @@ function resolveProgrammerCliCommand(configuredPath, workspacePath) {
 			return { programmerCmd: fromSettings, tried };
 		}
 
-		// If this points to CubeMX executable/folder, try nearby CubeProgrammer locations.
+		// If this points to a folder, try nearby CubeProgrammer locations
 		const configuredSanitized = sanitizePathValue(configured);
 		if (configuredSanitized) {
 			const cfgRoot = fs.existsSync(configuredSanitized) && fs.statSync(configuredSanitized).isFile()
@@ -1846,15 +2048,7 @@ function resolveProgrammerCliCommand(configuredPath, workspacePath) {
 		}
 	}
 
-	const cltRoot = sanitizePathValue(process.env.STM32_CUBECLT_PATH);
-	if (cltRoot) {
-		const fromClt = resolveBinaryCandidate(cltRoot, ['STM32_Programmer_CLI.exe', 'STM32_Programmer_CLI', 'STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe', 'STM32CubeProgrammer/bin/STM32_Programmer_CLI']);
-		tried.push(`env:STM32_CUBECLT_PATH=${cltRoot}`);
-		if (fromClt) {
-			return { programmerCmd: fromClt, tried };
-		}
-	}
-
+	// Priority 4: System PATH
 	for (const cmdName of ['STM32_Programmer_CLI.exe', 'STM32_Programmer_CLI']) {
 		tried.push(`path:${cmdName}`);
 		try {
@@ -1872,7 +2066,29 @@ function resolveProgrammerCliCommand(configuredPath, workspacePath) {
 		}
 	}
 
+	// Priority 5: Common installation paths
 	if (process.platform === 'win32') {
+		// Check E:\installs\cubeCLT pattern (user's actual installation)
+		const driveLetters = ['E', 'D', 'C'];
+		for (const drive of driveLetters) {
+			const installsPath = `${drive}:/installs/cubeCLT`;
+			if (fs.existsSync(installsPath)) {
+				tried.push(`scanning:${installsPath}`);
+				try {
+					const entries = fs.readdirSync(installsPath);
+					for (const entry of entries) {
+						if (entry.startsWith('STM32CubeCLT')) {
+							const candidate = path.join(installsPath, entry, 'STM32CubeProgrammer', 'bin', 'STM32_Programmer_CLI.exe');
+							tried.push(`installs:${candidate}`);
+							if (fs.existsSync(candidate)) {
+								return { programmerCmd: candidate, tried };
+							}
+						}
+					}
+				} catch { /* ignore */ }
+			}
+		}
+
 		const winCandidates = [
 			'C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',
 			'C:/Program Files (x86)/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',

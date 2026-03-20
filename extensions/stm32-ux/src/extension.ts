@@ -567,6 +567,11 @@ async function openMcpOperationDesk(): Promise<void> {
 			case 'startMcp':
 				{
 					const status = await ensureMcpServerReady();
+					await panel.webview.postMessage({
+						type: 'status', message: status.running
+							? vscode.l10n.t('MCPサーバー起動: {0}', status.endpoint ?? '')
+							: vscode.l10n.t('MCP起動に失敗しました: {0}', status.detail)
+					});
 					if (!status.running) {
 						vscode.window.showErrorMessage(vscode.l10n.t('MCP起動に失敗しました: {0}', status.detail));
 					}
@@ -592,14 +597,18 @@ async function openMcpOperationDesk(): Promise<void> {
 				}
 				break;
 			case 'stopMcp':
-				try {
-					await vscode.commands.executeCommand('stm32ai.stopMcpServer');
-				} catch {
-					// ignore and continue status check
+				{
+					const result = await stopMcpServerCompletely();
+					await panel.webview.postMessage({
+						type: 'status', message: result.ok
+							? vscode.l10n.t('MCPサーバーを停止しました。')
+							: vscode.l10n.t('MCP停止に失敗しました: {0}', result.detail)
+					});
+					if (!result.ok) {
+						vscode.window.showErrorMessage(vscode.l10n.t('MCP停止に失敗しました: {0}', result.detail));
+					}
+					await publishStatus();
 				}
-				await tryStopManagedMcpProcess();
-				await waitMs(400);
-				await publishStatus();
 				break;
 			case 'envSettings':
 				await openEnvironmentSettingsDialog();
@@ -906,6 +915,12 @@ async function tryStartManagedMcpProcess(): Promise<ManagedMcpStartResult> {
 	if (!workspacePath) {
 		return { ok: false, detail: 'ワークスペース未検出のため managed 起動をスキップ' };
 	}
+	try {
+		await ensureMcpServerInWorkspace(vscode.Uri.file(workspacePath));
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { ok: false, detail: `managed 起動準備に失敗しました: ${message}` };
+	}
 	const config = vscode.workspace.getConfiguration('stm32ux');
 	const host = config.get<string>('mcp.host', '127.0.0.1');
 	const port = config.get<number>('mcp.port', 3737);
@@ -984,13 +999,41 @@ async function tryStopManagedMcpProcess(): Promise<void> {
 	if (process.platform === 'win32') {
 		const apostrophe = String.fromCharCode(39);
 		const escapedWorkspace = workspacePath.split(apostrophe).join(apostrophe + apostrophe);
-		const script = `$procs = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*mcp-server\\index.js*' -and $_.CommandLine -like '*--workspace*${escapedWorkspace}*' }; foreach ($p in $procs) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }`;
+		const script = `$procs = Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*mcp-server\\index.js*' -and $_.CommandLine -like '*--workspace*${escapedWorkspace}*' }; foreach ($p in $procs) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }`;
 		try {
 			await execFileAsync('powershell', ['-NoProfile', '-Command', script], workspacePath);
 		} catch {
 			// ignore
 		}
 	}
+}
+
+async function stopMcpServerCompletely(): Promise<{ ok: boolean; detail: string }> {
+	const detailNotes: string[] = [];
+	try {
+		await vscode.commands.executeCommand('stm32ai.stopMcpServer');
+		detailNotes.push('stm32ai.stopMcpServer 実行');
+	} catch {
+		detailNotes.push('stm32ai.stopMcpServer 失敗');
+	}
+
+	await tryStopManagedMcpProcess();
+	await waitMs(300);
+
+	const workspacePath = getPrimaryWorkspacePath();
+	const endpoint = getConfiguredMcpEndpoint();
+	const pids = await getListeningPidsOnPort(endpoint.port, workspacePath);
+	if (pids.length > 0) {
+		await killPids(pids, workspacePath);
+		detailNotes.push(`port ${String(endpoint.port)} を占有するPIDを停止: ${pids.join(', ')}`);
+		await waitMs(300);
+	}
+
+	const status = await checkMcpHealth();
+	if (status.running) {
+		return { ok: false, detail: `MCP停止後も応答中: ${status.detail} | ${detailNotes.join(' / ')}` };
+	}
+	return { ok: true, detail: detailNotes.join(' / ') };
 }
 
 async function ensureMcpServerReady(): Promise<McpHealthStatus> {
