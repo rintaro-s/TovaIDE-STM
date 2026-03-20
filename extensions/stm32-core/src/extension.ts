@@ -419,7 +419,7 @@ async function flashLatestBuild(): Promise<boolean> {
 			progress.report({ increment: 5, message: vscode.l10n.t('接続中...') });
 			const flashResult = await runCliWithProgress(
 				programmerExecutable,
-				['-c', 'port=SWD', `freq=${frequency}`, '-w', elfPath, '0x08000000', '-v'],
+				['-c', 'port=SWD', `freq=${frequency}`, '-w', elfPath, '-v', '-rst'],
 				workspaceRoot,
 				vscode.l10n.t('書込み'),
 				increment => progress.report({ increment, message: vscode.l10n.t('進行中...') }),
@@ -697,9 +697,9 @@ async function isStLinkConnected(workspaceRoot: string): Promise<boolean> {
 	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
 	const programmerExecutable = await resolveProgrammerExecutable(metadata);
 	const commands: string[][] = [
-		['-l', 'st-link'],
-		['-l', 'stlink'],
-		['-l', 'usb']
+		['-c', 'port=SWD', '-l'],
+		['-c', 'port=SWD'],
+		['-l'],
 	];
 
 	for (const args of commands) {
@@ -714,8 +714,8 @@ async function isStLinkConnected(workspaceRoot: string): Promise<boolean> {
 
 function isSuccessfulStLinkOutput(result: CliResult): boolean {
 	const text = `${result.stdout}\n${result.stderr}`;
-	const hasLink = /ST-?LINK|STLink|ST-LINK SN|ST-LINK\s*Probe/i.test(text);
-	const hasNegative = /No ST-?LINK|0\s*ST-?LINK|not found|cannot find|no debug probe/i.test(text);
+	const hasLink = /ST-?LINK|STLink|ST-LINK SN|ST-LINK\s*Probe|Connected to target|Target connected|Device ID|Chip ID|STM32|Memory map|Read out protection/i.test(text);
+	const hasNegative = /No ST-?LINK|0\s*ST-?LINK|not found|cannot find|no debug probe|Error: No STM32|failed to connect|Cannot connect/i.test(text);
 	return result.exitCode === 0 && hasLink && !hasNegative;
 }
 

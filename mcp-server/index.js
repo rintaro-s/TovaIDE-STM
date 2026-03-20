@@ -168,6 +168,17 @@ const TOOLS = [
 		}
 	},
 	{
+		name: 'stm32.validateEnvironment',
+		description: 'Validate end-to-end STM32 toolchain readiness (CubeMX, GCC, make, Programmer CLI, build dir, ioc) and optionally probe ST-LINK.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				workspacePath: { type: ['string', 'null'], description: 'Workspace root path (optional)' },
+				probeHardware: { type: ['boolean', 'null'], description: 'Also run ST-LINK probe check (default: true)' }
+			}
+		}
+	},
+	{
 		name: 'stm32.readRegister',
 		description: 'Read a peripheral register value from a running/halted STM32 via ST-LINK.',
 		inputSchema: {
@@ -423,13 +434,14 @@ async function toolBuild(params) {
 	}
 
 	const preferredRoots = detectPreferredSourceRoots(wsRoot, buildDir);
+	const preBuildHealing = healGeneratedMainFiles(wsRoot);
 	const preBuildSync = synchronizeCriticalDuplicateFiles(wsRoot, preferredRoots);
 	let rebuildPlan = prepareBuildForRecentWrites(wsRoot, buildDir, params);
-	if (preBuildSync.changedCount > 0 && !rebuildPlan.forceRebuild) {
+	if ((preBuildSync.changedCount > 0 || preBuildHealing.fixedCount > 0) && !rebuildPlan.forceRebuild) {
 		rebuildPlan = {
 			...rebuildPlan,
 			forceRebuild: true,
-			reason: `pre-build duplicate sync (${preBuildSync.changedCount} files)`
+			reason: `pre-build sanitize (healed=${preBuildHealing.fixedCount}, synced=${preBuildSync.changedCount})`
 		};
 	}
 
@@ -497,6 +509,7 @@ async function toolBuild(params) {
 			buildDir,
 			elfPath: elfPath ?? null,
 			rebuildPlan,
+			preBuildHealing,
 			preBuildSync,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
@@ -515,6 +528,7 @@ async function toolBuild(params) {
 			debugDir,
 			buildDir,
 			rebuildPlan,
+			preBuildHealing,
 			preBuildSync,
 			resolutionTried: makeResolution.tried,
 			gccPath: gccCmd,
@@ -524,19 +538,72 @@ async function toolBuild(params) {
 		};
 	}
 }
+
+function healGeneratedMainFiles(wsRoot) {
+	const candidates = ['Src/main.c', 'Core/Src/main.c'];
+	const fixed = [];
+
+	for (const relPath of candidates) {
+		const abs = safeResolvePath(wsRoot, relPath);
+		if (!isExistingFile(abs)) {
+			continue;
+		}
+		let original = '';
+		try {
+			original = fs.readFileSync(abs, 'utf8');
+		} catch {
+			continue;
+		}
+		const lineBreak = /\r\n/.test(original) ? '\r\n' : '\n';
+		const repaired = repairMainCCommonBraceIssue(original, lineBreak);
+		if (repaired !== original) {
+			try {
+				fs.writeFileSync(abs, repaired, 'utf8');
+				bumpFileMtimeForward(abs);
+				markWorkspaceFileDirty(wsRoot, abs, 'preBuildMainRepair');
+				fixed.push(relPath);
+			} catch {
+				// ignore single-file write failure
+			}
+		}
+	}
+
+	return { fixedCount: fixed.length, fixed };
+}
 async function toolFlash(params) {
 	const wsRoot = resolveWorkspacePath(params);
 	const freq = params.frequencyKHz ?? 4000;
 	const forceFlash = params.force === true;
-	const programmer = params.programmerPath ?? findExecutable('STM32_Programmer_CLI');
+	const allowMakeFlashFallback = params.makeFlashFallback !== false;
+	const programmerResolution = resolveProgrammerCliCommand(params.programmerPath, wsRoot);
+	const programmer = programmerResolution.programmerCmd;
 
 	const stlink = await detectStLink(programmer);
 	if (!stlink.connected) {
+		if (allowMakeFlashFallback) {
+			const makeFlash = await flashViaMakeTarget(wsRoot);
+			if (makeFlash.success) {
+				return {
+					success: true,
+					workspacePath: wsRoot,
+					programmerPath: programmer,
+					resolutionTried: programmerResolution.tried,
+					stdout: makeFlash.stdout ?? '',
+					stderr: makeFlash.stderr ?? '',
+					detection: stlink,
+					flashTool: makeFlash.tool,
+					note: 'Flashed via make flash target fallback.'
+				};
+			}
+		}
 		return {
 			success: false,
 			workspacePath: wsRoot,
+			programmerPath: programmer,
+			resolutionTried: programmerResolution.tried,
 			error: 'ST-LINK not detected. Check cable/power/driver and target voltage.',
-			detection: stlink
+			detection: stlink,
+			makeFlashTried: allowMakeFlashFallback
 		};
 	}
 
@@ -564,9 +631,37 @@ async function toolFlash(params) {
 	}
 
 	try {
+		if (stlink.interface === 'st-info') {
+			const fallbackFlash = await flashViaStFlash(wsRoot, elfPath);
+			if (!fallbackFlash.success) {
+				return {
+					success: false,
+					workspacePath: wsRoot,
+					elfPath,
+					programmerPath: programmer,
+					resolutionTried: programmerResolution.tried,
+					stdout: fallbackFlash.stdout ?? '',
+					stderr: fallbackFlash.stderr ?? '',
+					error: fallbackFlash.error ?? 'Fallback flash failed',
+					detection: stlink
+				};
+			}
+			return {
+				success: true,
+				workspacePath: wsRoot,
+				elfPath,
+				programmerPath: programmer,
+				resolutionTried: programmerResolution.tried,
+				stdout: fallbackFlash.stdout ?? '',
+				stderr: fallbackFlash.stderr ?? '',
+				detection: stlink,
+				flashTool: fallbackFlash.tool
+			};
+		}
+
 		const { stdout, stderr } = await execFileAsync(
 			programmer,
-			['-c', 'port=SWD', `freq=${freq}`, '-w', elfPath, '0x08000000', '-v'],
+			['-c', 'port=SWD', `freq=${freq}`, '-w', elfPath, '-v', '-rst'],
 			{ cwd: wsRoot, timeout: 60000 }
 		);
 		const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
@@ -576,22 +671,114 @@ async function toolFlash(params) {
 				success: false,
 				workspacePath: wsRoot,
 				elfPath,
+				programmerPath: programmer,
+				resolutionTried: programmerResolution.tried,
 				stdout,
 				stderr,
 				error: 'Flash command finished without verification signature in output.'
 			};
 		}
-		return { success: true, workspacePath: wsRoot, elfPath, stdout, stderr, detection: stlink };
+		return {
+			success: true,
+			workspacePath: wsRoot,
+			elfPath,
+			programmerPath: programmer,
+			resolutionTried: programmerResolution.tried,
+			stdout,
+			stderr,
+			detection: stlink
+		};
 	} catch (err) {
 		return {
 			success: false,
 			workspacePath: wsRoot,
 			elfPath,
+			programmerPath: programmer,
+			resolutionTried: programmerResolution.tried,
 			exitCode: err.code ?? 1,
 			stdout: err.stdout ?? '',
 			stderr: err.stderr ?? err.message,
 			detection: stlink
 		};
+	}
+}
+
+async function flashViaMakeTarget(wsRoot) {
+	const buildDir = findBuildDirectoryWithMakefile(wsRoot) ?? wsRoot;
+	const makeResolution = resolveMakeCommand(getConfigValue('makePath', ['STM32_MAKE_PATH', 'MAKE_PATH'], wsRoot));
+	const makeCmd = makeResolution.makeCmd;
+
+	const makefilePath = path.join(buildDir, 'Makefile');
+	if (!isLikelyCubeMxMakefile(makefilePath) && !isExistingFile(makefilePath)) {
+		return { success: false, tool: makeCmd, error: `Makefile not found: ${makefilePath}`, stdout: '', stderr: '' };
+	}
+
+	try {
+		const makeText = fs.readFileSync(makefilePath, 'utf8');
+		if (!/^flash\s*:/m.test(makeText)) {
+			return { success: false, tool: makeCmd, error: 'flash target not found in Makefile', stdout: '', stderr: '' };
+		}
+	} catch {
+		return { success: false, tool: makeCmd, error: 'failed to inspect Makefile', stdout: '', stderr: '' };
+	}
+
+	try {
+		const { stdout, stderr } = await execFileAsync(makeCmd, ['flash'], { cwd: buildDir, timeout: 120000 });
+		const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
+		const ok = !/error|failed|No such file|not found|cannot/i.test(combined);
+		if (!ok) {
+			return { success: false, tool: makeCmd, stdout, stderr, error: 'make flash finished with failure signatures' };
+		}
+		return { success: true, tool: makeCmd, stdout, stderr };
+	} catch (err) {
+		return {
+			success: false,
+			tool: makeCmd,
+			stdout: err.stdout ?? '',
+			stderr: err.stderr ?? err.message ?? '',
+			error: 'make flash execution failed'
+		};
+	}
+}
+
+async function flashViaStFlash(wsRoot, elfPath) {
+	const stFlashCmd = resolveCommandFromPath(['st-flash']);
+	if (!stFlashCmd) {
+		return { success: false, error: 'st-flash not found on PATH', stdout: '', stderr: '' };
+	}
+
+	let binPath = elfPath;
+	let tempBinPath = null;
+	try {
+		if (/\.elf$/i.test(elfPath)) {
+			const objcopyCmd = resolveArmObjcopyCommand(wsRoot);
+			if (!objcopyCmd) {
+				return { success: false, error: 'arm-none-eabi-objcopy not found for ELF conversion', stdout: '', stderr: '' };
+			}
+			tempBinPath = path.join(require('os').tmpdir(), `mcp-flash-${Date.now()}.bin`);
+			await execFileAsync(objcopyCmd, ['-O', 'binary', elfPath, tempBinPath], { cwd: wsRoot, timeout: 60000 });
+			binPath = tempBinPath;
+		}
+
+		const { stdout, stderr } = await execFileAsync(stFlashCmd, ['--reset', 'write', binPath, '0x08000000'], { cwd: wsRoot, timeout: 60000 });
+		const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
+		const ok = /verified|flash written|flashing|wrote|success/i.test(combined) || (stderr ?? '').length === 0;
+		if (!ok) {
+			return { success: false, tool: stFlashCmd, stdout, stderr, error: 'st-flash finished without success signature.' };
+		}
+		return { success: true, tool: stFlashCmd, stdout, stderr };
+	} catch (err) {
+		return {
+			success: false,
+			tool: stFlashCmd,
+			stdout: err.stdout ?? '',
+			stderr: err.stderr ?? err.message ?? '',
+			error: 'st-flash execution failed'
+		};
+	} finally {
+		if (tempBinPath) {
+			try { fs.unlinkSync(tempBinPath); } catch { }
+		}
 	}
 }
 
@@ -638,18 +825,34 @@ async function toolRegenerateCode(params) {
 	// Repair .ioc before first run (normal mode)
 	const iocSanitize = sanitizeIocForCubeMx(iocPath, wsRoot, { aggressive: false });
 
-	const normalizedWsRoot = wsRoot.replace(/\\/g, '/');
 	const normalizedIocPath = iocPath.replace(/\\/g, '/');
-	const scriptContent = `config load "${normalizedIocPath}"\ngenerate code "${normalizedWsRoot}"\nexit\n`;
+	const normalizedWsRoot = wsRoot.replace(/\\/g, '/');
+	// CubeMX CLI script: some versions need the output path, others do not.
+	// We generate both variants and choose based on success.
+	const scriptContent = `config load "${normalizedIocPath}"\ngenerate code\nexit\n`;
+	const scriptContentWithPath = `config load "${normalizedIocPath}"\ngenerate code "${normalizedWsRoot}"\nexit\n`;
 	const scriptPath = path.join(require('os').tmpdir(), `cubemx-script-${Date.now()}.txt`);
 	fs.writeFileSync(scriptPath, scriptContent, 'utf8');
 
 	try {
-		const runCubeMx = async () => {
+		const runCubeMxWithScript = async (content) => {
+			fs.writeFileSync(scriptPath, content, 'utf8');
 			const { stdout, stderr } = await execFileAsync(cubemxPath, ['-s', scriptPath], { cwd: wsRoot, timeout: 120000 });
 			const combinedOutput = `${stdout ?? ''}\n${stderr ?? ''}`;
 			const fatalDiagnostics = extractCubeMxFatalDiagnostics(combinedOutput);
 			return { stdout, stderr, combinedOutput, fatalDiagnostics };
+		};
+		const runCubeMx = async () => {
+			// Try without explicit output path first (preferred for newer CubeMX versions)
+			const result = await runCubeMxWithScript(scriptContent);
+			// If fatal errors mention path issues, retry with explicit path
+			const pathError = result.fatalDiagnostics.some(d =>
+				/path|directory|folder|output|cannot find|not found/i.test(d)
+			);
+			if (result.fatalDiagnostics.length > 0 && pathError) {
+				return await runCubeMxWithScript(scriptContentWithPath);
+			}
+			return result;
 		};
 
 		let firstRun = await runCubeMx();
@@ -683,7 +886,8 @@ async function toolRegenerateCode(params) {
 			};
 		}
 
-		const projectArtifacts = detectGeneratedProjectArtifacts(wsRoot);
+		const generatedRootHints = extractGeneratedRootHintsFromCubeMxOutput(combinedOutput, wsRoot);
+		const projectArtifacts = detectGeneratedProjectArtifacts(wsRoot, iocPath, generatedRootHints);
 		if (!projectArtifacts.generated) {
 			return {
 				success: false,
@@ -698,9 +902,12 @@ async function toolRegenerateCode(params) {
 				stderr,
 				error: 'CubeMX completed but STM project sources were not generated.',
 				diagnostics: extractCubeMxDiagnostics(combinedOutput),
-				projectArtifacts
+				projectArtifacts,
+				generatedRootHints
 			};
 		}
+
+		const counterpartSync = syncGeneratedArtifactsToCounterparts(wsRoot, projectArtifacts);
 
 		const buildDir = findBuildDirectoryWithMakefile(wsRoot);
 		if (!buildDir) {
@@ -717,6 +924,9 @@ async function toolRegenerateCode(params) {
 				stderr,
 				warning: 'CubeMX generated project sources, but no Makefile-based build directory was found.',
 				projectArtifacts,
+				generatedRootHints,
+				syncedCounterparts: counterpartSync.synced,
+				skippedCounterparts: counterpartSync.skipped,
 				makefileGenerated: false,
 				diagnostics: extractCubeMxDiagnostics(combinedOutput)
 			};
@@ -732,6 +942,9 @@ async function toolRegenerateCode(params) {
 			sanitizedKeys: [...new Set([...(iocSanitize.changedKeys ?? []), ...(retryRepair.changedKeys ?? [])])],
 			retriedAfterRepair,
 			projectArtifacts,
+			generatedRootHints,
+			syncedCounterparts: counterpartSync.synced,
+			skippedCounterparts: counterpartSync.skipped,
 			makefileGenerated: true,
 			buildDir,
 			stdout,
@@ -757,22 +970,81 @@ async function toolRegenerateCode(params) {
 	}
 }
 
-function detectGeneratedProjectArtifacts(wsRoot) {
-	const sourceCandidates = [
-		path.join(wsRoot, 'Core', 'Src', 'main.c'),
-		path.join(wsRoot, 'Src', 'main.c'),
-	];
-	const headerCandidates = [
-		path.join(wsRoot, 'Core', 'Inc', 'main.h'),
-		path.join(wsRoot, 'Inc', 'main.h'),
-	];
-	const startupCandidates = [
-		path.join(wsRoot, 'Core', 'Startup'),
-		path.join(wsRoot, 'Startup'),
-	];
+function detectGeneratedProjectArtifacts(wsRoot, iocPath = null, generatedRootHints = null) {
+	const buildDir = findBuildDirectoryWithMakefile(wsRoot);
+	const preferredRoots = detectPreferredSourceRoots(wsRoot, buildDir);
+	const iocProjectPath = readIocProjectPath(iocPath);
+	const rootsByIoc = deriveSourceRootsFromIocProjectPath(iocProjectPath);
 
-	const mainC = pickNewestExistingFile(sourceCandidates);
-	const mainH = pickNewestExistingFile(headerCandidates);
+	const expectedSourceRoot = generatedRootHints?.sourceRoot ?? rootsByIoc.sourceRoot ?? preferredRoots.sourceRoot;
+	const expectedIncludeRoot = generatedRootHints?.includeRoot ?? rootsByIoc.includeRoot ?? preferredRoots.includeRoot;
+
+	const rootPairs = [
+		{ sourceRoot: 'Core/Src', includeRoot: 'Core/Inc' },
+		{ sourceRoot: 'Src', includeRoot: 'Inc' },
+	];
+	let bestPair = null;
+	let bestScore = Number.NEGATIVE_INFINITY;
+	const now = Date.now();
+
+	for (const pair of rootPairs) {
+		const mainCPath = path.join(wsRoot, pair.sourceRoot, 'main.c');
+		const mainHPath = path.join(wsRoot, pair.includeRoot, 'main.h');
+		if (!isExistingFile(mainCPath) || !isExistingFile(mainHPath)) {
+			continue;
+		}
+
+		let score = 0;
+		try {
+			score += scoreGeneratedFileContent(fs.readFileSync(mainCPath, 'utf8'), 'c');
+		} catch {
+			score -= 20;
+		}
+		try {
+			score += scoreGeneratedFileContent(fs.readFileSync(mainHPath, 'utf8'), 'h');
+		} catch {
+			score -= 10;
+		}
+
+		score += scoreFileRecency(getFileMtimeSafe(mainCPath), now);
+		score += scoreFileRecency(getFileMtimeSafe(mainHPath), now);
+
+		if (pair.sourceRoot === expectedSourceRoot) {
+			score += 10;
+		}
+		if (pair.includeRoot === expectedIncludeRoot) {
+			score += 10;
+		}
+
+		if (generatedRootHints?.sourceRoot || generatedRootHints?.includeRoot) {
+			if (generatedRootHints?.sourceRoot && pair.sourceRoot === generatedRootHints.sourceRoot) {
+				score += 140;
+			}
+			if (generatedRootHints?.includeRoot && pair.includeRoot === generatedRootHints.includeRoot) {
+				score += 140;
+			}
+			if (generatedRootHints?.sourceRoot && pair.sourceRoot !== generatedRootHints.sourceRoot) {
+				score -= 80;
+			}
+			if (generatedRootHints?.includeRoot && pair.includeRoot !== generatedRootHints.includeRoot) {
+				score -= 80;
+			}
+		}
+
+		if (!bestPair || score > bestScore) {
+			bestPair = pair;
+			bestScore = score;
+		}
+	}
+
+	const sourceRoot = bestPair?.sourceRoot ?? expectedSourceRoot;
+	const includeRoot = bestPair?.includeRoot ?? expectedIncludeRoot;
+	const mainC = isExistingFile(path.join(wsRoot, sourceRoot, 'main.c')) ? path.join(wsRoot, sourceRoot, 'main.c') : null;
+	const mainH = isExistingFile(path.join(wsRoot, includeRoot, 'main.h')) ? path.join(wsRoot, includeRoot, 'main.h') : null;
+	const startupCandidates = [
+		path.join(wsRoot, sourceRoot.startsWith('Core/') ? 'Core/Startup' : 'Startup'),
+		path.join(wsRoot, sourceRoot.startsWith('Core/') ? 'Startup' : 'Core/Startup'),
+	];
 	const startupDir = startupCandidates.find(isExistingDirectory) ?? null;
 
 	return {
@@ -780,7 +1052,136 @@ function detectGeneratedProjectArtifacts(wsRoot) {
 		mainC,
 		mainH,
 		startupDir,
+		expectedSourceRoot: sourceRoot,
+		expectedIncludeRoot: includeRoot,
 	};
+}
+
+function scoreFileRecency(mtimeMs, nowMs = Date.now()) {
+	if (!mtimeMs || mtimeMs <= 0) {
+		return -30;
+	}
+	const ageMs = Math.max(0, nowMs - mtimeMs);
+	if (ageMs <= 2 * 60 * 1000) {
+		return 80;
+	}
+	if (ageMs <= 10 * 60 * 1000) {
+		return 50;
+	}
+	if (ageMs <= 60 * 60 * 1000) {
+		return 20;
+	}
+	if (ageMs <= 24 * 60 * 60 * 1000) {
+		return 5;
+	}
+	return -10;
+}
+
+function getFileMtimeSafe(filePath) {
+	try {
+		return fs.statSync(filePath).mtimeMs;
+	} catch {
+		return 0;
+	}
+}
+
+function readIocProjectPath(iocPath) {
+	if (!iocPath || !isExistingFile(iocPath)) {
+		return null;
+	}
+	try {
+		const content = fs.readFileSync(iocPath, 'utf8');
+		const raw = content.match(/^ProjectManager\.ProjectPath=(.+)$/m)?.[1]?.trim() ?? '';
+		if (!raw) {
+			return null;
+		}
+		const normalized = raw.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').replace(/\/+$/, '');
+		if (!normalized || normalized.includes('..')) {
+			return null;
+		}
+		return normalized;
+	} catch {
+		return null;
+	}
+}
+
+function deriveSourceRootsFromIocProjectPath(projectPath) {
+	const normalized = (projectPath ?? '').toLowerCase();
+	if (normalized === 'core') {
+		return { sourceRoot: 'Core/Src', includeRoot: 'Core/Inc' };
+	}
+	if (normalized === '.' || normalized === '' || normalized === 'src' || normalized === 'inc') {
+		return { sourceRoot: 'Src', includeRoot: 'Inc' };
+	}
+	return { sourceRoot: null, includeRoot: null };
+}
+
+function pickBestGeneratedCandidate(candidates, expectedRoot, fileKind) {
+	let bestPath = null;
+	let bestScore = Number.NEGATIVE_INFINITY;
+
+	for (const candidate of candidates) {
+		if (!isExistingFile(candidate)) {
+			continue;
+		}
+
+		let score = 0;
+		try {
+			const text = fs.readFileSync(candidate, 'utf8');
+			score += scoreGeneratedFileContent(text, fileKind);
+		} catch {
+			score -= 10;
+		}
+
+		try {
+			const mtime = fs.statSync(candidate).mtimeMs;
+			score += Math.min(50, Math.max(0, mtime / 1e12));
+		} catch {
+			// ignore mtime scoring failure
+		}
+
+		const normalizedCandidate = candidate.replace(/\\/g, '/').toLowerCase();
+		if (expectedRoot && normalizedCandidate.includes(`/${expectedRoot.toLowerCase()}/`)) {
+			score += 40;
+		}
+
+		if (!bestPath || score > bestScore) {
+			bestPath = candidate;
+			bestScore = score;
+		}
+	}
+
+	return bestPath;
+}
+
+function scoreGeneratedFileContent(text, fileKind) {
+	let score = 0;
+	if (/\/\*\s*USER CODE BEGIN\s+/i.test(text)) {
+		score += 120;
+	}
+	if (fileKind === 'c') {
+		if (/HAL_Init\s*\(/.test(text)) {
+			score += 40;
+		}
+		if (/SystemClock_Config\s*\(/.test(text)) {
+			score += 25;
+		}
+		if (/MX_GPIO_Init\s*\(/.test(text)) {
+			score += 20;
+		}
+		if (/stm32f[0-9a-z]+_hal\.h/i.test(text)) {
+			score += 15;
+		}
+	}
+	if (fileKind === 'h') {
+		if (/void\s+Error_Handler\s*\(/.test(text)) {
+			score += 20;
+		}
+		if (/__MAIN_H|MAIN_H/.test(text)) {
+			score += 10;
+		}
+	}
+	return score;
 }
 
 function pickNewestExistingFile(candidates) {
@@ -852,6 +1253,9 @@ function sanitizeIocForCubeMx(iocPath, wsRoot, options = {}) {
 		if (!getValue('File.Version')) setValue('File.Version', '6');
 		if (!getValue('ProjectManager.ProjectName')) setValue('ProjectManager.ProjectName', iocBaseName);
 		if (!getValue('ProjectManager.ProjectFileName')) setValue('ProjectManager.ProjectFileName', `${iocBaseName}.ioc`);
+		if (!getValue('ProjectManager.ProjectPath')) setValue('ProjectManager.ProjectPath', 'Core');
+		if (!getValue('ProjectManager.ToolChain')) setValue('ProjectManager.ToolChain', 'Makefile');
+		if (!getValue('ProjectManager.NoMain')) setValue('ProjectManager.NoMain', 'false');
 
 		if (!getValue('Mcu.Name') && canonicalMcu) setValue('Mcu.Name', canonicalMcu);
 		if (!getValue('Mcu.CPN') && canonicalMcu) setValue('Mcu.CPN', canonicalMcu);
@@ -864,6 +1268,60 @@ function sanitizeIocForCubeMx(iocPath, wsRoot, options = {}) {
 
 		if (!getValue('Mcu.IPNb')) setValue('Mcu.IPNb', '0');
 		if (!getValue('Mcu.ThirdPartyNb')) setValue('Mcu.ThirdPartyNb', '0');
+
+		// Ensure minimal IP set for valid HAL code generation (MX_GPIO_Init, clock, system init).
+		const ipEntries = [];
+		for (let i = 0; i < lines.length; i++) {
+			const m = lines[i].match(/^Mcu\.IP(\d+)=(.+)$/);
+			if (!m) {
+				continue;
+			}
+			ipEntries.push({ index: Number(m[1]), value: m[2].trim() });
+		}
+		const existingIps = ipEntries
+			.sort((a, b) => a.index - b.index)
+			.map(e => e.value)
+			.filter(Boolean);
+		const requiredIps = ['GPIO', 'RCC', 'SYS'];
+		for (const ip of requiredIps) {
+			if (!existingIps.includes(ip)) {
+				existingIps.push(ip);
+			}
+		}
+		for (let i = 0; i < existingIps.length; i++) {
+			setValue(`Mcu.IP${i}`, existingIps[i]);
+		}
+		setValue('Mcu.IPNb', String(existingIps.length));
+
+		// Remove broken pin entries that often make CubeMX load partial/empty project state.
+		const configuredSignalPins = new Set();
+		for (const line of lines) {
+			const m = line.match(/^([A-Z]{1,2}\d+|VP_[A-Z0-9_]+)\.(?:Signal|Mode)=/i);
+			if (m) {
+				configuredSignalPins.add(m[1].toUpperCase());
+			}
+		}
+		const validPins = [];
+		for (const line of lines) {
+			const m = line.match(/^Mcu\.Pin\d+=(.+)$/);
+			if (!m) {
+				continue;
+			}
+			const pinName = (m[1] ?? '').trim();
+			if (!pinName) {
+				continue;
+			}
+			const key = pinName.toUpperCase();
+			if (configuredSignalPins.has(key) || key.startsWith('VP_')) {
+				validPins.push(pinName);
+			}
+		}
+		if (validPins.length > 0) {
+			for (let i = 0; i < validPins.length; i++) {
+				setValue(`Mcu.Pin${i}`, validPins[i]);
+			}
+			setValue('Mcu.PinsNb', String(validPins.length));
+		}
 
 		const pinCount = lines.filter(l => /^Mcu\.Pin\d+=.+$/.test(l.trim())).length;
 		const existingPinsNb = getValue('Mcu.PinsNb');
@@ -951,6 +1409,97 @@ function extractCubeMxFatalDiagnostics(output) {
 		}
 	}
 	return picked;
+}
+
+function extractGeneratedRootHintsFromCubeMxOutput(output, wsRoot) {
+	if (typeof output !== 'string' || output.length === 0) {
+		return null;
+	}
+
+	const normalizedWs = String(wsRoot ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+	const stats = {
+		coreSrc: 0,
+		src: 0,
+		coreInc: 0,
+		inc: 0,
+		coreMainC: 0,
+		srcMainC: 0,
+		coreMainH: 0,
+		incMainH: 0,
+	};
+
+	for (const line of output.split(/\r?\n/)) {
+		const match = line.match(/Generated code:\s*(.+)$/i);
+		if (!match) {
+			continue;
+		}
+		let rawPath = (match[1] ?? '').trim().replace(/\\/g, '/').replace(/\r/g, '');
+		if (!rawPath) {
+			continue;
+		}
+
+		const lowerPath = rawPath.toLowerCase();
+		let rel = lowerPath;
+		if (normalizedWs) {
+			if (lowerPath === normalizedWs) {
+				rel = '';
+			} else if (lowerPath.startsWith(`${normalizedWs}/`)) {
+				rel = lowerPath.slice(normalizedWs.length + 1);
+			} else {
+				const idx = lowerPath.indexOf(`/${normalizedWs}/`);
+				if (idx >= 0) {
+					rel = lowerPath.slice(idx + normalizedWs.length + 2);
+				}
+			}
+		}
+
+		rel = rel.replace(/^\/+/, '');
+		if (!rel) {
+			continue;
+		}
+
+		if (rel.startsWith('core/src/')) stats.coreSrc += 1;
+		if (rel.startsWith('src/')) stats.src += 1;
+		if (rel.startsWith('core/inc/')) stats.coreInc += 1;
+		if (rel.startsWith('inc/')) stats.inc += 1;
+
+		if (rel.endsWith('core/src/main.c')) stats.coreMainC += 1;
+		if (rel.endsWith('src/main.c')) stats.srcMainC += 1;
+		if (rel.endsWith('core/inc/main.h')) stats.coreMainH += 1;
+		if (rel.endsWith('inc/main.h')) stats.incMainH += 1;
+	}
+
+	let sourceRoot = null;
+	if (stats.srcMainC > 0 && stats.coreMainC === 0) {
+		sourceRoot = 'Src';
+	} else if (stats.coreMainC > 0 && stats.srcMainC === 0) {
+		sourceRoot = 'Core/Src';
+	} else if (stats.src > stats.coreSrc) {
+		sourceRoot = 'Src';
+	} else if (stats.coreSrc > 0) {
+		sourceRoot = 'Core/Src';
+	}
+
+	let includeRoot = null;
+	if (stats.incMainH > 0 && stats.coreMainH === 0) {
+		includeRoot = 'Inc';
+	} else if (stats.coreMainH > 0 && stats.incMainH === 0) {
+		includeRoot = 'Core/Inc';
+	} else if (stats.inc > stats.coreInc) {
+		includeRoot = 'Inc';
+	} else if (stats.coreInc > 0) {
+		includeRoot = 'Core/Inc';
+	}
+
+	if (!sourceRoot && !includeRoot) {
+		return null;
+	}
+
+	return {
+		sourceRoot,
+		includeRoot,
+		stats,
+	};
 }
 
 function toolAnalyzeHardFault(params) {
@@ -1052,12 +1601,16 @@ async function toolListElfSymbols(params) {
 }
 
 async function toolCheckStLink(params) {
-	const programmer = params.programmerPath ?? findExecutable('STM32_Programmer_CLI');
+	const wsRoot = resolveWorkspacePath(params);
+	const programmerResolution = resolveProgrammerCliCommand(params.programmerPath, wsRoot);
+	const programmer = programmerResolution.programmerCmd;
 	const result = await detectStLink(programmer);
 	if (!result.connected) {
 		return {
 			success: false,
 			connected: false,
+			programmerPath: programmer,
+			resolutionTried: programmerResolution.tried,
 			stdout: result.stdout,
 			stderr: result.stderr,
 			error: result.error ?? 'ST-LINK not detected'
@@ -1066,6 +1619,8 @@ async function toolCheckStLink(params) {
 	return {
 		success: true,
 		connected: true,
+		programmerPath: programmer,
+		resolutionTried: programmerResolution.tried,
 		stdout: result.stdout,
 		stderr: result.stderr,
 		interface: result.interface,
@@ -1074,8 +1629,57 @@ async function toolCheckStLink(params) {
 	};
 }
 
+async function toolValidateEnvironment(params) {
+	const wsRoot = resolveWorkspacePath(params);
+	const makeResolution = resolveMakeCommand(getConfigValue('makePath', ['STM32_MAKE_PATH', 'MAKE_PATH'], wsRoot));
+	const gccResolution = resolveArmGccCommand(wsRoot);
+	const cubemxResolution = resolveCubeMxCommand(getConfigValue('cubemxPath', ['STM32_CUBEMX_PATH', 'STM32CUBEMX_PATH'], wsRoot), wsRoot);
+	const programmerResolution = resolveProgrammerCliCommand(getConfigValue('programmerPath', ['STM32_PROGRAMMER_PATH'], wsRoot), wsRoot);
+	const buildDir = findBuildDirectoryWithMakefile(wsRoot);
+	const iocPath = selectPreferredIocPath(wsRoot);
+	const probeHardware = params?.probeHardware !== false;
+
+	let stlink = null;
+	if (probeHardware) {
+		stlink = await detectStLink(programmerResolution.programmerCmd);
+	}
+
+	const checks = {
+		workspaceExists: isExistingDirectory(wsRoot),
+		iocFound: Boolean(iocPath && isExistingFile(iocPath)),
+		buildDirFound: Boolean(buildDir),
+		makeFound: Boolean(makeResolution.makeCmd && (path.isAbsolute(makeResolution.makeCmd) ? isExistingFile(makeResolution.makeCmd) : true)),
+		gccFound: Boolean(gccResolution.gccCmd && isExistingFile(gccResolution.gccCmd)),
+		cubemxFound: Boolean(cubemxResolution.cubemxCmd && isExistingFile(cubemxResolution.cubemxCmd)),
+		programmerFound: Boolean(programmerResolution.programmerCmd && (path.isAbsolute(programmerResolution.programmerCmd) ? isExistingFile(programmerResolution.programmerCmd) : true)),
+		stlinkConnected: stlink ? Boolean(stlink.connected) : null,
+	};
+
+	const readiness = {
+		forGenerate: checks.workspaceExists && checks.iocFound && checks.cubemxFound,
+		forBuild: checks.workspaceExists && checks.gccFound && (checks.makeFound || !checks.buildDirFound),
+		forFlash: checks.workspaceExists && checks.programmerFound && (stlink ? stlink.connected : false),
+	};
+
+	return {
+		success: true,
+		workspacePath: wsRoot,
+		iocPath: iocPath ?? null,
+		buildDir: buildDir ?? null,
+		make: { command: makeResolution.makeCmd, tried: makeResolution.tried },
+		gcc: { command: gccResolution.gccCmd, tried: gccResolution.tried },
+		cubemx: { command: cubemxResolution.cubemxCmd, tried: cubemxResolution.tried },
+		programmer: { command: programmerResolution.programmerCmd, tried: programmerResolution.tried },
+		checks,
+		readiness,
+		stlink,
+	};
+}
+
 async function toolReadRegister(params) {
-	const programmer = params.programmerPath ?? findExecutable('STM32_Programmer_CLI');
+	const wsRoot = resolveWorkspacePath(params);
+	const programmerResolution = resolveProgrammerCliCommand(params.programmerPath, wsRoot);
+	const programmer = programmerResolution.programmerCmd;
 	const address = params.address;
 	try {
 		const { stdout, stderr } = await execFileAsync(
@@ -1114,9 +1718,10 @@ function findElfFile(wsRoot) {
 
 async function detectStLink(programmer) {
 	const attempts = [
+		{ args: ['-c', 'port=SWD', '-l'], iface: 'SWD' },
+		{ args: ['-c', 'port=SWD'], iface: 'SWD-connect' },
+		{ args: ['-l'], iface: 'default-list' },
 		{ args: ['-l', 'st-link'], iface: 'st-link' },
-		{ args: ['-l', 'stlink'], iface: 'stlink' },
-		{ args: ['-l', 'usb'], iface: 'usb' },
 	];
 
 	let lastOut = '';
@@ -1127,24 +1732,246 @@ async function detectStLink(programmer) {
 			const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
 			lastOut = stdout ?? '';
 			lastErr = stderr ?? '';
-			const connected = /ST-?LINK SN|Board\s*:|ST-?LINK FW/i.test(combined);
+			const hasProbeToken = /ST-?LINK|STLINK|Board\s*:|SN\s*:|Connected to target|Target connected|Device ID|Chip ID|STM32|Memory map|Read out protection/i.test(combined);
+			const hasNegativeToken = /No\s+ST-?LINK|No\s+debug\s+probe|not\s+detected|0\s+st-?link|Error: No STM32|failed to connect|Cannot connect/i.test(combined);
+			const connected = hasProbeToken && !hasNegativeToken;
 			if (connected) {
 				const board = combined.match(/(?:Board\s*Name|Board)\s*:\s*(.+)/i)?.[1]?.trim() ?? null;
-				const sn = combined.match(/ST-?LINK SN\s*:\s*([A-Za-z0-9]+)/i)?.[1]?.trim() ?? null;
+				const sn = combined.match(/(?:ST-?LINK\s*SN|SN)\s*:\s*([A-Za-z0-9]+)/i)?.[1]?.trim() ?? null;
 				return { connected: true, interface: attempt.iface, board, sn, stdout, stderr };
 			}
 		} catch (err) {
 			lastOut = err.stdout ?? '';
 			lastErr = err.stderr ?? err.message ?? '';
+			if (err && err.code === 'ENOENT') {
+				// Keep trying fallbacks (e.g., st-info) instead of returning immediately.
+				continue;
+			}
 		}
 	}
+
+	const stInfoFallback = await detectStLinkViaStInfo();
+	if (stInfoFallback.connected) {
+		return stInfoFallback;
+	}
+
+	// Final attempt: just check if the programmer binary responds (version check)
+	try {
+		const { stdout: verOut, stderr: verErr } = await execFileAsync(programmer, ['--version'], { timeout: 8000 });
+		const combined = `${verOut ?? ''}\n${verErr ?? ''}`;
+		if (/ST-?LINK|STM32|Cube|Programmer/i.test(combined)) {
+			lastOut = verOut ?? '';
+			lastErr = verErr ?? '';
+		}
+	} catch { /* ignore */ }
 
 	return {
 		connected: false,
 		stdout: lastOut,
 		stderr: lastErr,
-		error: 'No ST-LINK probe found via STM32_Programmer_CLI list commands.'
+		error: `No ST-LINK probe found. Programmer CLI='${programmer}', and st-info fallback also failed.`
 	};
+}
+
+async function detectStLinkViaStInfo() {
+	const stInfoCmd = resolveCommandFromPath(['st-info']);
+	if (!stInfoCmd) {
+		return { connected: false, stdout: '', stderr: '', error: 'st-info not found' };
+	}
+	try {
+		const { stdout, stderr } = await execFileAsync(stInfoCmd, ['--probe'], { timeout: 15000 });
+		const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
+		const connected = /serial|chipid|flash:\s*\d+|sram:\s*\d+/i.test(combined);
+		if (!connected) {
+			return {
+				connected: false,
+				stdout,
+				stderr,
+				error: 'No ST-LINK probe found via st-info --probe.'
+			};
+		}
+		const sn = combined.match(/serial\s*:\s*([A-Fa-f0-9]+)/i)?.[1]?.trim() ?? null;
+		return { connected: true, interface: 'st-info', board: null, sn, stdout, stderr };
+	} catch (err) {
+		return {
+			connected: false,
+			stdout: err.stdout ?? '',
+			stderr: err.stderr ?? err.message ?? '',
+			error: 'st-info probe failed'
+		};
+	}
+}
+
+function resolveProgrammerCliCommand(configuredPath, workspacePath) {
+	const tried = [];
+
+	const explicit = resolveBinaryCandidate(configuredPath, ['STM32_Programmer_CLI.exe', 'STM32_Programmer_CLI']);
+	if (configuredPath) {
+		tried.push(`param:${sanitizePathValue(configuredPath)}`);
+	}
+	if (explicit) {
+		return { programmerCmd: explicit, tried };
+	}
+
+	const settingCandidates = [
+		getConfigValue('cubectlPath', ['STM32_PROGRAMMER_CLI_PATH', 'STM32_CUBECTL_PATH'], workspacePath),
+		getConfigValue('programmerPath', ['STM32_PROGRAMMER_PATH'], workspacePath),
+		getConfigValue('cubeprogrammerPath', ['STM32_CUBEPROGRAMMER_PATH'], workspacePath),
+	].filter(Boolean);
+
+	for (const configured of settingCandidates) {
+		tried.push(`settings/env:${configured}`);
+		const fromSettings = resolveBinaryCandidate(configured, ['STM32_Programmer_CLI.exe', 'STM32_Programmer_CLI']);
+		if (fromSettings) {
+			return { programmerCmd: fromSettings, tried };
+		}
+
+		// If this points to CubeMX executable/folder, try nearby CubeProgrammer locations.
+		const configuredSanitized = sanitizePathValue(configured);
+		if (configuredSanitized) {
+			const cfgRoot = fs.existsSync(configuredSanitized) && fs.statSync(configuredSanitized).isFile()
+				? path.dirname(configuredSanitized)
+				: configuredSanitized;
+			const siblingCandidates = [
+				path.join(cfgRoot, 'STM32CubeProgrammer', 'bin', process.platform === 'win32' ? 'STM32_Programmer_CLI.exe' : 'STM32_Programmer_CLI'),
+				path.join(path.dirname(cfgRoot), 'STM32CubeProgrammer', 'bin', process.platform === 'win32' ? 'STM32_Programmer_CLI.exe' : 'STM32_Programmer_CLI'),
+				path.join(cfgRoot, 'bin', process.platform === 'win32' ? 'STM32_Programmer_CLI.exe' : 'STM32_Programmer_CLI'),
+			];
+			for (const sibling of siblingCandidates) {
+				tried.push(`neighbor:${sibling}`);
+				if (fs.existsSync(sibling)) {
+					return { programmerCmd: sibling, tried };
+				}
+			}
+		}
+	}
+
+	const cltRoot = sanitizePathValue(process.env.STM32_CUBECLT_PATH);
+	if (cltRoot) {
+		const fromClt = resolveBinaryCandidate(cltRoot, ['STM32_Programmer_CLI.exe', 'STM32_Programmer_CLI', 'STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe', 'STM32CubeProgrammer/bin/STM32_Programmer_CLI']);
+		tried.push(`env:STM32_CUBECLT_PATH=${cltRoot}`);
+		if (fromClt) {
+			return { programmerCmd: fromClt, tried };
+		}
+	}
+
+	for (const cmdName of ['STM32_Programmer_CLI.exe', 'STM32_Programmer_CLI']) {
+		tried.push(`path:${cmdName}`);
+		try {
+			const which = process.platform === 'win32'
+				? spawnSync('where', [cmdName], { encoding: 'utf8' })
+				: spawnSync('which', [cmdName], { encoding: 'utf8' });
+			if (which.status === 0 && typeof which.stdout === 'string') {
+				const first = which.stdout.split(/\r?\n/).map(s => s.trim()).find(Boolean);
+				if (first && fs.existsSync(first)) {
+					return { programmerCmd: first, tried };
+				}
+			}
+		} catch {
+			// ignore and continue
+		}
+	}
+
+	if (process.platform === 'win32') {
+		const winCandidates = [
+			'C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',
+			'C:/Program Files (x86)/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',
+			'C:/ST/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',
+		];
+		for (const candidate of winCandidates) {
+			tried.push(`candidate:${candidate}`);
+			if (fs.existsSync(candidate)) {
+				return { programmerCmd: candidate, tried };
+			}
+		}
+
+		const fromCubeIde = findProgrammerCliFromCubeIde();
+		if (fromCubeIde) {
+			tried.push(`cubeide:${fromCubeIde}`);
+			return { programmerCmd: fromCubeIde, tried };
+		}
+	}
+
+	const fallback = findExecutable('STM32_Programmer_CLI');
+	tried.push(`fallback:${fallback}`);
+	return { programmerCmd: fallback, tried };
+}
+
+function findProgrammerCliFromCubeIde() {
+	if (process.platform !== 'win32') {
+		return null;
+	}
+	const roots = [
+		'C:/ST/STM32CubeIDE',
+		'C:/Program Files/STMicroelectronics/STM32CubeIDE',
+		'C:/Program Files (x86)/STMicroelectronics/STM32CubeIDE',
+	];
+
+	for (const root of roots) {
+		if (!isExistingDirectory(root)) {
+			continue;
+		}
+		let versions = [];
+		try {
+			versions = fs.readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => path.join(root, entry.name));
+		} catch {
+			versions = [];
+		}
+		for (const baseDir of versions) {
+			const pluginsDir = path.join(baseDir, 'plugins');
+			if (!isExistingDirectory(pluginsDir)) {
+				continue;
+			}
+			let entries = [];
+			try {
+				entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
+			} catch {
+				entries = [];
+			}
+			for (const entry of entries) {
+				const pluginPath = path.join(pluginsDir, entry.name);
+				if (!/cubeprogrammer|programmer/i.test(entry.name)) {
+					continue;
+				}
+				const candidate = path.join(pluginPath, 'tools', 'bin', 'STM32_Programmer_CLI.exe');
+				if (isExistingFile(candidate)) {
+					return candidate;
+				}
+			}
+		}
+	}
+
+	return null;
+}
+
+function resolveCommandFromPath(commandNames) {
+	for (const cmdName of commandNames) {
+		try {
+			const which = process.platform === 'win32'
+				? spawnSync('where', [cmdName], { encoding: 'utf8' })
+				: spawnSync('which', [cmdName], { encoding: 'utf8' });
+			if (which.status === 0 && typeof which.stdout === 'string') {
+				const first = which.stdout.split(/\r?\n/).map(s => s.trim()).find(Boolean);
+				if (first && fs.existsSync(first)) {
+					return first;
+				}
+			}
+		} catch {
+			// ignore and continue
+		}
+	}
+	return null;
+}
+
+function resolveArmObjcopyCommand(workspacePath) {
+	const gccResolution = resolveArmGccCommand(workspacePath);
+	if (gccResolution.gccCmd) {
+		const candidate = path.join(path.dirname(gccResolution.gccCmd), process.platform === 'win32' ? 'arm-none-eabi-objcopy.exe' : 'arm-none-eabi-objcopy');
+		if (fs.existsSync(candidate)) {
+			return candidate;
+		}
+	}
+	return resolveCommandFromPath(['arm-none-eabi-objcopy.exe', 'arm-none-eabi-objcopy']);
 }
 
 function getBuildStampPath(wsRoot) {
@@ -1417,10 +2244,18 @@ function resolveBinaryCandidate(pathValue, binaryNames) {
 	if (!candidate) {
 		return null;
 	}
+	const expectedNames = Array.isArray(binaryNames) ? binaryNames.map(name => String(name).toLowerCase()) : [];
+	const fileNameMatches = (filePath) => {
+		if (expectedNames.length === 0) {
+			return true;
+		}
+		const base = path.basename(filePath).toLowerCase();
+		return expectedNames.includes(base);
+	};
 	if (fs.existsSync(candidate)) {
 		const stat = fs.statSync(candidate);
 		if (stat.isFile()) {
-			return candidate;
+			return fileNameMatches(candidate) ? candidate : null;
 		}
 		if (stat.isDirectory()) {
 			for (const bin of binaryNames) {
@@ -1433,8 +2268,175 @@ function resolveBinaryCandidate(pathValue, binaryNames) {
 	}
 	if (process.platform === 'win32' && !candidate.toLowerCase().endsWith('.exe')) {
 		const exeCandidate = `${candidate}.exe`;
-		if (fs.existsSync(exeCandidate) && fs.statSync(exeCandidate).isFile()) {
+		if (fs.existsSync(exeCandidate) && fs.statSync(exeCandidate).isFile() && fileNameMatches(exeCandidate)) {
 			return exeCandidate;
+		}
+	}
+	return null;
+}
+
+function parseJsonLikeSettings(content) {
+	if (typeof content !== 'string' || content.trim().length === 0) {
+		return {};
+	}
+
+	const src = content;
+	let out = '';
+	let inString = false;
+	let escaped = false;
+	let inLineComment = false;
+	let inBlockComment = false;
+
+	for (let i = 0; i < src.length; i++) {
+		const ch = src[i];
+		const next = i + 1 < src.length ? src[i + 1] : '';
+
+		if (inLineComment) {
+			if (ch === '\n') {
+				inLineComment = false;
+				out += ch;
+			}
+			continue;
+		}
+
+		if (inBlockComment) {
+			if (ch === '*' && next === '/') {
+				inBlockComment = false;
+				i += 1;
+			}
+			continue;
+		}
+
+		if (inString) {
+			out += ch;
+			if (escaped) {
+				escaped = false;
+			} else if (ch === '\\') {
+				escaped = true;
+			} else if (ch === '"') {
+				inString = false;
+			}
+			continue;
+		}
+
+		if (ch === '/' && next === '/') {
+			inLineComment = true;
+			i += 1;
+			continue;
+		}
+		if (ch === '/' && next === '*') {
+			inBlockComment = true;
+			i += 1;
+			continue;
+		}
+
+		if (ch === '"') {
+			inString = true;
+			out += ch;
+			continue;
+		}
+
+		out += ch;
+	}
+
+	const normalized = out.replace(/,\s*([}\]])/g, '$1');
+	try {
+		return JSON.parse(normalized);
+	} catch {
+		return {};
+	}
+}
+
+function getUserVscodeSettingsCandidates() {
+	const appData = sanitizePathValue(process.env.APPDATA);
+	const userHome = sanitizePathValue(process.env.USERPROFILE || process.env.HOME);
+	const candidates = [];
+
+	if (appData) {
+		candidates.push(path.join(appData, 'Code', 'User', 'settings.json'));
+		candidates.push(path.join(appData, 'Code - Insiders', 'User', 'settings.json'));
+		candidates.push(path.join(appData, 'VSCodium', 'User', 'settings.json'));
+	}
+
+	if (userHome) {
+		candidates.push(path.join(userHome, '.config', 'Code', 'User', 'settings.json'));
+		candidates.push(path.join(userHome, '.config', 'Code - Insiders', 'User', 'settings.json'));
+		candidates.push(path.join(userHome, '.config', 'VSCodium', 'User', 'settings.json'));
+	}
+
+	const unique = [];
+	const seen = new Set();
+	for (const p of candidates) {
+		const abs = path.resolve(p);
+		const key = process.platform === 'win32' ? abs.toLowerCase() : abs;
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		unique.push(abs);
+	}
+	return unique;
+}
+
+function loadUserVscodeSettings() {
+	for (const settingsPath of getUserVscodeSettingsCandidates()) {
+		try {
+			if (!fs.existsSync(settingsPath)) {
+				continue;
+			}
+			const content = fs.readFileSync(settingsPath, 'utf8');
+			const parsed = parseJsonLikeSettings(content);
+			if (parsed && typeof parsed === 'object') {
+				return parsed;
+			}
+		} catch {
+			// try next candidate
+		}
+	}
+	return {};
+}
+
+function getSettingKeyCandidates(configKey) {
+	const base = String(configKey ?? '').trim();
+	if (!base) {
+		return [];
+	}
+	const lower = base.charAt(0).toLowerCase() + base.slice(1);
+	const stem = lower.endsWith('Path') ? lower.slice(0, -4) : lower;
+	const keys = new Set([
+		`stm32.${base}`,
+		`stm32.${lower}`,
+		`stm32.${stem}`,
+		`stm32.${stem}.path`,
+	]);
+
+	if (base === 'cubemxPath') {
+		keys.add('stm32.cubemx.path');
+	}
+	if (base === 'programmerPath') {
+		keys.add('stm32.programmer.path');
+		keys.add('stm32.cubeprogrammer.path');
+		keys.add('stm32.cubectl.path');
+	}
+	if (base === 'armGccPath') {
+		keys.add('stm32.armgcc.path');
+		keys.add('stm32.gcc.path');
+	}
+	if (base === 'makePath') {
+		keys.add('stm32.make.path');
+	}
+
+	return Array.from(keys);
+}
+
+function readFirstSettingValue(settings, settingKeys) {
+	if (!settings || typeof settings !== 'object') {
+		return null;
+	}
+	for (const key of settingKeys) {
+		const value = sanitizePathValue(settings[key]);
+		if (value) {
+			return value;
 		}
 	}
 	return null;
@@ -1448,7 +2450,7 @@ function loadVscodeSettings(workspacePath) {
 			return {};
 		}
 		const content = fs.readFileSync(settingsPath, 'utf8');
-		return JSON.parse(content);
+		return parseJsonLikeSettings(content);
 	} catch {
 		return {};
 	}
@@ -1456,24 +2458,32 @@ function loadVscodeSettings(workspacePath) {
 
 /** Get a configuration value with environment variable fallback */
 function getConfigValue(configKey, envVarNames, workspacePath) {
-	for (const envVarName of envVarNames ?? []) {
-		const envValue = sanitizePathValue(process.env[envVarName]);
-		if (envValue) {
-			return envValue;
-		}
-	}
+	const settingKeys = getSettingKeyCandidates(configKey);
 
 	const primarySettings = loadVscodeSettings(workspacePath);
-	const primaryValue = sanitizePathValue(primarySettings[`stm32.${configKey}`]);
+	const primaryValue = readFirstSettingValue(primarySettings, settingKeys);
 	if (primaryValue) {
 		return primaryValue;
 	}
 
 	if (workspacePath && path.resolve(workspacePath) !== path.resolve(WORKSPACE)) {
 		const fallbackSettings = loadVscodeSettings(WORKSPACE);
-		const fallbackValue = sanitizePathValue(fallbackSettings[`stm32.${configKey}`]);
+		const fallbackValue = readFirstSettingValue(fallbackSettings, settingKeys);
 		if (fallbackValue) {
 			return fallbackValue;
+		}
+	}
+
+	const userSettings = loadUserVscodeSettings();
+	const userValue = readFirstSettingValue(userSettings, settingKeys);
+	if (userValue) {
+		return userValue;
+	}
+
+	for (const envVarName of envVarNames ?? []) {
+		const envValue = sanitizePathValue(process.env[envVarName]);
+		if (envValue) {
+			return envValue;
 		}
 	}
 
@@ -1734,7 +2744,7 @@ function isLikelyCubeMxMakefile(makefilePath) {
 
 	try {
 		const content = fs.readFileSync(makefilePath, 'utf8');
-		return /arm-none-eabi-gcc|objects\.list|startup_stm32|STM32/i.test(content);
+		return /objects\.list|subdir\.mk|C_SOURCES\s*=|ASM_SOURCES\s*=|LDSCRIPT\s*=|Drivers\/CMSIS|Drivers\/STM32/i.test(content);
 	} catch {
 		return false;
 	}
@@ -1802,10 +2812,10 @@ function detectPreferredSourceRoots(wsRoot, buildDir) {
 
 	const sourceRoot = sourceFromBuild
 		?? sourceFromFreshFiles
-		?? (isExistingDirectory(path.join(wsRoot, 'Src')) ? 'Src' : (isExistingDirectory(path.join(wsRoot, 'Core', 'Src')) ? 'Core/Src' : 'Core/Src'));
+		?? (isExistingDirectory(path.join(wsRoot, 'Core', 'Src')) ? 'Core/Src' : (isExistingDirectory(path.join(wsRoot, 'Src')) ? 'Src' : 'Core/Src'));
 	const includeRoot = includeFromBuild
 		?? includeFromFreshFiles
-		?? (isExistingDirectory(path.join(wsRoot, 'Inc')) ? 'Inc' : (isExistingDirectory(path.join(wsRoot, 'Core', 'Inc')) ? 'Core/Inc' : 'Core/Inc'));
+		?? (isExistingDirectory(path.join(wsRoot, 'Core', 'Inc')) ? 'Core/Inc' : (isExistingDirectory(path.join(wsRoot, 'Inc')) ? 'Inc' : 'Core/Inc'));
 
 	return { sourceRoot, includeRoot };
 }
@@ -1961,6 +2971,84 @@ function synchronizeCriticalDuplicateFiles(wsRoot, preferredRoots) {
 	return { changedCount: changed.length, changes: changed };
 }
 
+function syncGeneratedArtifactsToCounterparts(wsRoot, projectArtifacts) {
+	const synced = [];
+	const skipped = [];
+
+	const mainCRel = projectArtifacts?.mainC ? normalizeRelPath(path.relative(wsRoot, projectArtifacts.mainC)) : null;
+	const mainHRel = projectArtifacts?.mainH ? normalizeRelPath(path.relative(wsRoot, projectArtifacts.mainH)) : null;
+	const sourceRoot = mainCRel ? mainCRel.replace(/\/main\.c$/i, '') : null;
+	const includeRoot = mainHRel ? mainHRel.replace(/\/main\.h$/i, '') : null;
+	const sourceCounterpartRoot = sourceRoot ? getCounterpartRelPath(`${sourceRoot}/main.c`)?.replace(/\/main\.c$/i, '') : null;
+	const includeCounterpartRoot = includeRoot ? getCounterpartRelPath(`${includeRoot}/main.h`)?.replace(/\/main\.h$/i, '') : null;
+
+	const filePairs = [];
+	if (sourceRoot && sourceCounterpartRoot) {
+		for (const rel of listTreeFiles(wsRoot, sourceRoot, ['.c'])) {
+			filePairs.push({ srcRel: rel, dstRel: `${sourceCounterpartRoot}/${path.basename(rel)}` });
+		}
+	}
+	if (includeRoot && includeCounterpartRoot) {
+		for (const rel of listTreeFiles(wsRoot, includeRoot, ['.h'])) {
+			filePairs.push({ srcRel: rel, dstRel: `${includeCounterpartRoot}/${path.basename(rel)}` });
+		}
+	}
+
+	for (const pair of filePairs) {
+		const srcAbs = safeResolvePath(wsRoot, pair.srcRel);
+		const dstAbs = safeResolvePath(wsRoot, pair.dstRel);
+		try {
+			if (!isExistingFile(srcAbs)) {
+				continue;
+			}
+
+			// For C files, avoid overwriting manual/custom counterpart files.
+			if (path.extname(pair.dstRel).toLowerCase() === '.c' && isExistingFile(dstAbs)) {
+				const dstText = fs.readFileSync(dstAbs, 'utf8');
+				const looksGenerated = /\/\*\s*USER CODE BEGIN\s+/i.test(dstText) || /\*\s*@file\s*:/i.test(dstText);
+				if (!looksGenerated) {
+					skipped.push(pair.dstRel);
+					continue;
+				}
+			}
+
+			fs.mkdirSync(path.dirname(dstAbs), { recursive: true });
+			fs.copyFileSync(srcAbs, dstAbs);
+			bumpFileMtimeForward(dstAbs);
+			markWorkspaceFileDirty(wsRoot, dstAbs, 'regenerateSync');
+			synced.push(pair.dstRel);
+		} catch {
+			// best effort
+		}
+	}
+	return { synced, skipped };
+}
+
+function listTreeFiles(wsRoot, relDir, extensions) {
+	const out = [];
+	const dirAbs = safeResolvePath(wsRoot, relDir);
+	if (!isExistingDirectory(dirAbs)) {
+		return out;
+	}
+	let entries = [];
+	try {
+		entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+	} catch {
+		return out;
+	}
+	for (const entry of entries) {
+		if (!entry.isFile()) {
+			continue;
+		}
+		const ext = path.extname(entry.name).toLowerCase();
+		if (!extensions.includes(ext)) {
+			continue;
+		}
+		out.push(normalizeRelPath(`${relDir}/${entry.name}`));
+	}
+	return out;
+}
+
 function findLatestCubeFwPackageForFamily(familyName) {
 	const userProfile = process.env.USERPROFILE ?? '';
 	const homeCombined = `${process.env.HOMEDRIVE ?? ''}${process.env.HOMEPATH ?? ''}`;
@@ -2062,10 +3150,14 @@ function selectPreferredIocPath(wsRoot) {
 		return path.join(wsRoot, iocFiles[0]);
 	}
 
-	const dirBase = path.basename(path.resolve(wsRoot)).toLowerCase();
-	const exact = iocFiles.find(f => f.toLowerCase() === `${dirBase}.ioc`);
-	if (exact) {
-		return path.join(wsRoot, exact);
+	const configuredIoc = getConfigValue('iocPath', ['STM32_IOC_PATH'], wsRoot);
+	if (configuredIoc) {
+		const fullConfigured = path.isAbsolute(configuredIoc)
+			? configuredIoc
+			: safeResolvePath(wsRoot, configuredIoc);
+		if (isExistingFile(fullConfigured) && path.extname(fullConfigured).toLowerCase() === '.ioc') {
+			return fullConfigured;
+		}
 	}
 
 	const sorted = iocFiles
@@ -2076,6 +3168,14 @@ function selectPreferredIocPath(wsRoot) {
 			return { full, mtimeMs };
 		})
 		.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+	if (sorted.length >= 2 && sorted[0].mtimeMs === sorted[1].mtimeMs) {
+		const dirBase = path.basename(path.resolve(wsRoot)).toLowerCase();
+		const exact = sorted.find(entry => path.basename(entry.full).toLowerCase() === `${dirBase}.ioc`);
+		if (exact) {
+			return exact.full;
+		}
+	}
 
 	return sorted[0]?.full ?? null;
 }
@@ -2130,13 +3230,32 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 		};
 	}
 
+	const preBuildHealing = healGeneratedMainFiles(wsRoot);
+
 	const info = parseIocMcuInfo(wsRoot);
-	if (!info.family || info.family.toUpperCase() !== 'STM32F3') {
+	const familyUpper = (info.family ?? '').toUpperCase();
+	if (!familyUpper) {
 		return {
 			success: false,
 			exitCode: 1,
 			stdout: '',
-			stderr: `No Makefile-based build directory found and fallback build currently supports STM32F3 only. Detected family=${info.family ?? 'unknown'}.`
+			stderr: `No Makefile-based build directory found and unable to detect MCU family from IOC. Detected family=${info.family ?? 'unknown'}.`,
+			preBuildHealing
+		};
+	}
+
+	if (familyUpper === 'STM32F7') {
+		const result = await buildBareMetalFallbackF7(wsRoot, gccCmd, env, info.mcuName);
+		return { ...result, preBuildHealing };
+	}
+
+	if (familyUpper !== 'STM32F3') {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: `No Makefile-based build directory found and fallback build currently supports STM32F3/STM32F7 only. Detected family=${info.family ?? 'unknown'}.`,
+			preBuildHealing
 		};
 	}
 
@@ -2144,13 +3263,15 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 	if (!fwRoot) {
 		const mcuUpper = (info.mcuName ?? '').toUpperCase();
 		if (mcuUpper === 'STM32F303K8TX') {
-			return await buildBareMetalFallbackF303K8(wsRoot, gccCmd, env);
+			const result = await buildBareMetalFallbackF303K8(wsRoot, gccCmd, env);
+			return { ...result, preBuildHealing };
 		}
 		return {
 			success: false,
 			exitCode: 1,
 			stdout: '',
-			stderr: 'STM32Cube FW F3 package not found under %USERPROFILE%/STM32Cube/Repository.'
+			stderr: 'STM32Cube FW F3 package not found under %USERPROFILE%/STM32Cube/Repository.',
+			preBuildHealing
 		};
 	}
 
@@ -2164,7 +3285,8 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 			success: false,
 			exitCode: 1,
 			stdout: '',
-			stderr: `Required CMSIS templates not found: startup=${startup}, system=${system}`
+			stderr: `Required CMSIS templates not found: startup=${startup}, system=${system}`,
+			preBuildHealing
 		};
 	}
 
@@ -2178,14 +3300,15 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 			success: false,
 			exitCode: 1,
 			stdout: '',
-			stderr: 'Linker script for STM32F303K8 not found in STM32Cube FW F3 package.'
+			stderr: 'Linker script for STM32F303K8 not found in STM32Cube FW F3 package.',
+			preBuildHealing
 		};
 	}
 
 	const preferredRoots = detectPreferredSourceRoots(wsRoot, null);
 	const srcDir = path.join(wsRoot, ...preferredRoots.sourceRoot.split('/'));
 	if (!isExistingDirectory(srcDir)) {
-		return { success: false, exitCode: 1, stdout: '', stderr: `Generated source directory not found: ${srcDir}` };
+		return { success: false, exitCode: 1, stdout: '', stderr: `Generated source directory not found: ${srcDir}`, preBuildHealing };
 	}
 
 	const projectName = getProjectNameFromIoc(wsRoot);
@@ -2234,6 +3357,14 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 
 	const projectSources = fs.readdirSync(srcDir)
 		.filter(f => f.toLowerCase().endsWith('.c'))
+		.filter((fileName) => {
+			const lower = fileName.toLowerCase();
+			if (!lower.startsWith('stm32')) {
+				return true;
+			}
+			// Keep only family-matching STM32 support files for this fallback build.
+			return /stm32f3/i.test(lower);
+		})
 		.map(f => path.join(srcDir, f));
 
 	const allCSources = [
@@ -2315,170 +3446,346 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 		exitCode: 0,
 		buildDir,
 		stdout: buildStdout.trim(),
-		stderr: buildStderr.trim()
+		stderr: buildStderr.trim(),
+		preBuildHealing
 	};
 }
 
-async function buildBareMetalFallbackF303K8(wsRoot, gccCmd, env) {
+async function buildBareMetalFallbackF7(wsRoot, gccCmd, env, mcuName = null) {
 	const projectName = getProjectNameFromIoc(wsRoot);
 	const buildDir = path.join(wsRoot, 'Debug');
-	const fallbackDir = path.join(buildDir, '__mcp_fallback');
-	fs.mkdirSync(fallbackDir, { recursive: true });
+	const objDir = path.join(buildDir, 'obj');
+	fs.mkdirSync(objDir, { recursive: true });
 
-	const cPath = path.join(fallbackDir, 'main_fallback.c');
-	const ldPath = path.join(fallbackDir, 'stm32f303k8_flash.ld');
+	const fwRoot = findLatestCubeFwPackageForFamily('F7');
+	if (!fwRoot) {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: 'STM32Cube FW F7 package not found under %USERPROFILE%/STM32Cube/Repository.'
+		};
+	}
+
+	const cmsisRoot = path.join(fwRoot, 'Drivers', 'CMSIS');
+	const deviceRoot = path.join(cmsisRoot, 'Device', 'ST', 'STM32F7xx');
+	const halRoot = path.join(fwRoot, 'Drivers', 'STM32F7xx_HAL_Driver');
+	seedVendorHeaderForProject(wsRoot, path.join(halRoot, 'Inc', 'stm32f7xx_hal.h'), ['Inc/stm32f7xx_hal.h', 'Core/Inc/stm32f7xx_hal.h']);
+	seedVendorHeaderForProject(wsRoot, path.join(deviceRoot, 'Include', 'stm32f7xx.h'), ['Inc/stm32f7xx.h', 'Core/Inc/stm32f7xx.h']);
+
+	const mcuUpper = String(mcuName ?? '').toUpperCase();
+	const series = (mcuUpper.match(/^STM32(F\d{3})/)?.[1] ?? 'F767').toLowerCase();
+	const startup = path.join(deviceRoot, 'Source', 'Templates', 'gcc', `startup_stm32${series}xx.s`);
+	const system = path.join(deviceRoot, 'Source', 'Templates', 'system_stm32f7xx.c');
+	if (!isExistingFile(startup) || !isExistingFile(system)) {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: `Required CMSIS templates not found: startup=${startup}, system=${system}`
+		};
+	}
+
+	let linkerScript = findFileRecursive(
+		path.join(fwRoot, 'Projects'),
+		(name) => new RegExp(`STM32${series.toUpperCase()}[A-Z0-9]*.*FLASH\\.ld$`, 'i').test(name),
+		12
+	);
+	if (!linkerScript) {
+		linkerScript = findFileRecursive(
+			path.join(fwRoot, 'Projects'),
+			(name) => /STM32F7.*FLASH\.ld$/i.test(name),
+			12
+		);
+	}
+	if (!linkerScript) {
+		return {
+			success: false,
+			exitCode: 1,
+			stdout: '',
+			stderr: `Linker script for ${mcuUpper || 'STM32F7'} not found in STM32Cube FW F7 package.`
+		};
+	}
+
+	const preferredRoots = detectPreferredSourceRoots(wsRoot, null);
+	const srcDir = path.join(wsRoot, ...preferredRoots.sourceRoot.split('/'));
+	if (!isExistingDirectory(srcDir)) {
+		return { success: false, exitCode: 1, stdout: '', stderr: `Generated source directory not found: ${srcDir}` };
+	}
+
+	const includeArgs = [
+		...Array.from(new Set([
+			path.join(wsRoot, ...preferredRoots.includeRoot.split('/')),
+			path.join(wsRoot, 'Core', 'Inc'),
+			path.join(wsRoot, 'Inc'),
+		].filter(isExistingDirectory))).map(includeDir => `-I${includeDir}`),
+		`-I${path.join(halRoot, 'Inc')}`,
+		`-I${path.join(halRoot, 'Inc', 'Legacy')}`,
+		`-I${path.join(deviceRoot, 'Include')}`,
+		`-I${path.join(cmsisRoot, 'Include')}`,
+	];
+
+	const defineSeries = `STM32${series.toUpperCase()}xx`;
+	const commonFlags = [
+		'-mcpu=cortex-m7',
+		'-mthumb',
+		'-mfloat-abi=hard',
+		'-mfpu=fpv5-d16',
+		'-O0',
+		'-g3',
+		'-ffunction-sections',
+		'-fdata-sections',
+		'-Wall',
+		'-DUSE_HAL_DRIVER',
+		`-D${defineSeries}`,
+		...includeArgs,
+	];
+
+	const halSources = [
+		'stm32f7xx_hal.c',
+		'stm32f7xx_hal_cortex.c',
+		'stm32f7xx_hal_dma.c',
+		'stm32f7xx_hal_dma_ex.c',
+		'stm32f7xx_hal_exti.c',
+		'stm32f7xx_hal_flash.c',
+		'stm32f7xx_hal_flash_ex.c',
+		'stm32f7xx_hal_gpio.c',
+		'stm32f7xx_hal_pwr.c',
+		'stm32f7xx_hal_pwr_ex.c',
+		'stm32f7xx_hal_rcc.c',
+		'stm32f7xx_hal_rcc_ex.c',
+	];
+
+	const projectSources = fs.readdirSync(srcDir)
+		.filter(f => f.toLowerCase().endsWith('.c'))
+		.filter((fileName) => {
+			const lower = fileName.toLowerCase();
+			if (!lower.startsWith('stm32')) {
+				return true;
+			}
+			return /stm32f7/i.test(lower);
+		})
+		.map(f => path.join(srcDir, f));
+
+	const allCSources = [
+		...projectSources,
+		system,
+		...halSources.map(f => path.join(halRoot, 'Src', f)).filter(isExistingFile),
+	];
+
+	const objects = [];
+	let buildStdout = '';
+	let buildStderr = '';
+
+	for (const src of allCSources) {
+		const obj = path.join(objDir, `${path.basename(src, '.c')}.o`);
+		try {
+			const { stdout, stderr } = await execFileAsync(gccCmd, ['-c', src, '-o', obj, ...commonFlags], { cwd: wsRoot, env, timeout: 120000 });
+			buildStdout += stdout ?? '';
+			buildStderr += stderr ?? '';
+			objects.push(obj);
+		} catch (err) {
+			return {
+				success: false,
+				exitCode: err.code ?? 1,
+				buildDir,
+				stdout: (buildStdout + (err.stdout ?? '')).trim(),
+				stderr: (buildStderr + (err.stderr ?? err.message ?? '')).trim()
+			};
+		}
+	}
+
+	const startupObj = path.join(objDir, path.basename(startup, '.s') + '.o');
+	try {
+		const { stdout, stderr } = await execFileAsync(gccCmd, ['-c', startup, '-o', startupObj, ...commonFlags], { cwd: wsRoot, env, timeout: 120000 });
+		buildStdout += stdout ?? '';
+		buildStderr += stderr ?? '';
+		objects.push(startupObj);
+	} catch (err) {
+		return {
+			success: false,
+			exitCode: err.code ?? 1,
+			buildDir,
+			stdout: (buildStdout + (err.stdout ?? '')).trim(),
+			stderr: (buildStderr + (err.stderr ?? err.message ?? '')).trim()
+		};
+	}
+
 	const elfPath = path.join(buildDir, `${projectName}.elf`);
-
-	const cSource = `#include <stdint.h>
-
-#define RCC_AHBENR (*(volatile uint32_t *)0x40021014u)
-#define GPIOA_MODER (*(volatile uint32_t *)0x48000000u)
-#define GPIOA_ODR   (*(volatile uint32_t *)0x48000014u)
-
-extern unsigned long _estack;
-
-void Reset_Handler(void);
-void Default_Handler(void);
-
-__attribute__((section(".isr_vector")))
-void (*const g_pfnVectors[])(void) = {
-	(void (*)(void))(&_estack),
-	Reset_Handler,
-	Default_Handler,
-	Default_Handler,
-	Default_Handler,
-	Default_Handler,
-	Default_Handler,
-	0,
-	0,
-	0,
-	0,
-	Default_Handler,
-	Default_Handler,
-	0,
-	Default_Handler,
-	Default_Handler
-};
-
-static void delay_loop(volatile uint32_t n) {
-	while (n--) {
-		__asm__ volatile ("nop");
-	}
-}
-
-int main(void) {
-	RCC_AHBENR |= (1u << 17); /* GPIOAEN */
-
-	GPIOA_MODER &= ~((3u << (2u * 2u)) | (3u << (5u * 2u)));
-	GPIOA_MODER |= ((1u << (2u * 2u)) | (1u << (5u * 2u)));
-
-	GPIOA_ODR = (GPIOA_ODR & ~((1u << 2) | (1u << 5))) | (1u << 5);
-
-	for (;;) {
-		GPIOA_ODR ^= (1u << 2) | (1u << 5);
-		delay_loop(36000000u);
-	}
-}
-
-void Reset_Handler(void) {
-	(void)main();
-	for (;;) {
-	}
-}
-
-void Default_Handler(void) {
-	for (;;) {
-	}
-}
-`;
-
-	const ldSource = `ENTRY(Reset_Handler)
-
-_estack = ORIGIN(RAM) + LENGTH(RAM);
-
-MEMORY
-{
-	FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 64K
-	RAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 12K
-}
-
-SECTIONS
-{
-	.isr_vector :
-	{
-		. = ALIGN(4);
-		KEEP(*(.isr_vector))
-		. = ALIGN(4);
-	} > FLASH
-
-	.text :
-	{
-		. = ALIGN(4);
-		*(.text*)
-		*(.rodata*)
-		. = ALIGN(4);
-	} > FLASH
-
-	.ARM.exidx :
-	{
-		*(.ARM.exidx*)
-	} > FLASH
-
-	.data :
-	{
-		. = ALIGN(4);
-		*(.data*)
-		. = ALIGN(4);
-	} > RAM AT > FLASH
-
-	.bss :
-	{
-		. = ALIGN(4);
-		*(.bss*)
-		*(COMMON)
-		. = ALIGN(4);
-	} > RAM
-}
-`;
-
-	fs.writeFileSync(cPath, cSource, 'utf8');
-	fs.writeFileSync(ldPath, ldSource, 'utf8');
-
 	try {
 		const { stdout, stderr } = await execFileAsync(
 			gccCmd,
 			[
-				cPath,
-				'-mcpu=cortex-m4',
+				...objects,
+				'-mcpu=cortex-m7',
 				'-mthumb',
-				'-O2',
-				'-ffunction-sections',
-				'-fdata-sections',
-				'-fno-builtin',
-				'-nostdlib',
+				'-mfloat-abi=hard',
+				'-mfpu=fpv5-d16',
 				'-Wl,--gc-sections',
 				`-Wl,-Map=${path.join(buildDir, `${projectName}.map`)}`,
-				`-T${ldPath}`,
+				`-T${linkerScript}`,
+				'-specs=nosys.specs',
+				'-specs=nano.specs',
+				'-Wl,--start-group',
+				'-lc',
+				'-lm',
+				'-lnosys',
+				'-Wl,--end-group',
 				'-o',
 				elfPath,
 			],
 			{ cwd: wsRoot, env, timeout: 120000 }
 		);
+		buildStdout += stdout ?? '';
+		buildStderr += stderr ?? '';
+	} catch (err) {
+		return {
+			success: false,
+			exitCode: err.code ?? 1,
+			buildDir,
+			stdout: (buildStdout + (err.stdout ?? '')).trim(),
+			stderr: (buildStderr + (err.stderr ?? err.message ?? '')).trim()
+		};
+	}
 
+	return {
+		success: true,
+		exitCode: 0,
+		buildDir,
+		elfPath,
+		stdout: buildStdout.trim(),
+		stderr: buildStderr.trim()
+	};
+}
+
+function seedVendorHeaderForProject(wsRoot, vendorHeaderPath, targetRelPaths) {
+	if (!isExistingFile(vendorHeaderPath)) {
+		return;
+	}
+	let vendorContent = '';
+	try {
+		vendorContent = fs.readFileSync(vendorHeaderPath, 'utf8');
+	} catch {
+		return;
+	}
+
+	for (const relPath of targetRelPaths) {
+		const targetPath = safeResolvePath(wsRoot, relPath);
+		if (!isExistingDirectory(path.dirname(targetPath))) {
+			continue;
+		}
+		try {
+			fs.writeFileSync(targetPath, vendorContent, 'utf8');
+			bumpFileMtimeForward(targetPath);
+			markWorkspaceFileDirty(wsRoot, targetPath, 'vendorHeaderSeed');
+		} catch {
+			// ignore per-file write failures
+		}
+	}
+}
+
+async function buildBareMetalFallbackF303K8(wsRoot, gccCmd, env) {
+	const projectName = getProjectNameFromIoc(wsRoot);
+	const buildDir = path.join(wsRoot, 'Debug');
+	const objDir = path.join(buildDir, 'obj');
+	fs.mkdirSync(objDir, { recursive: true });
+
+	const elfPath = path.join(buildDir, `${projectName}.elf`);
+
+	const preferredRoots = detectPreferredSourceRoots(wsRoot, null);
+	const srcDir = path.join(wsRoot, ...preferredRoots.sourceRoot.split('/'));
+	if (!isExistingDirectory(srcDir)) {
+		return { success: false, exitCode: 1, buildDir, stdout: '', stderr: `Source directory not found: ${srcDir}` };
+	}
+
+	// Find linker script in workspace first, then fall back to a generated one
+	let ldScript = findFileRecursive(wsRoot, (name) => /\.ld$/i.test(name) && !/node_modules|Drivers/i.test(name), 4);
+	if (!ldScript) {
+		const ldPath = path.join(buildDir, 'stm32f303k8_flash.ld');
+		const ldSource = `ENTRY(Reset_Handler)\n\n_estack = ORIGIN(RAM) + LENGTH(RAM);\n\nMEMORY\n{\n\tFLASH (rx) : ORIGIN = 0x08000000, LENGTH = 64K\n\tRAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 12K\n}\n\nSECTIONS\n{\n\t.isr_vector :\n\t{\n\t\t. = ALIGN(4);\n\t\tKEEP(*(.isr_vector))\n\t\t. = ALIGN(4);\n\t} > FLASH\n\t.text :\n\t{\n\t\t. = ALIGN(4);\n\t\t*(.text*)\n\t\t*(.rodata*)\n\t\t. = ALIGN(4);\n\t} > FLASH\n\t.ARM.exidx : { *(.ARM.exidx*) } > FLASH\n\t.data :\n\t{\n\t\t. = ALIGN(4);\n\t\t*(.data*)\n\t\t. = ALIGN(4);\n\t} > RAM AT > FLASH\n\t.bss :\n\t{\n\t\t. = ALIGN(4);\n\t\t*(.bss*)\n\t\t*(COMMON)\n\t\t. = ALIGN(4);\n\t} > RAM\n}\n`;
+		fs.writeFileSync(ldPath, ldSource, 'utf8');
+		ldScript = ldPath;
+	}
+
+	const includeArgs = Array.from(new Set([
+		path.join(wsRoot, ...preferredRoots.includeRoot.split('/')),
+		path.join(wsRoot, 'Core', 'Inc'),
+		path.join(wsRoot, 'Inc'),
+	].filter(isExistingDirectory))).map(d => `-I${d}`);
+
+	const commonFlags = [
+		'-mcpu=cortex-m4', '-mthumb', '-O0', '-g3',
+		'-ffunction-sections', '-fdata-sections', '-Wall',
+		'-DUSE_HAL_DRIVER', '-DSTM32F303x8',
+		...includeArgs,
+	];
+
+	const projectSources = fs.readdirSync(srcDir)
+		.filter(f => f.toLowerCase().endsWith('.c'))
+		.filter((fileName) => {
+			const lower = fileName.toLowerCase();
+			if (!lower.startsWith('stm32')) { return true; }
+			return /stm32f3/i.test(lower);
+		})
+		.map(f => path.join(srcDir, f));
+
+	if (projectSources.length === 0) {
+		return { success: false, exitCode: 1, buildDir, stdout: '', stderr: `No source files found in ${srcDir}` };
+	}
+
+	const objects = [];
+	let buildStdout = '';
+	let buildStderr = '';
+
+	for (const src of projectSources) {
+		const obj = path.join(objDir, `${path.basename(src, '.c')}.o`);
+		try {
+			const { stdout, stderr } = await execFileAsync(gccCmd, ['-c', src, '-o', obj, ...commonFlags], { cwd: wsRoot, env, timeout: 120000 });
+			buildStdout += stdout ?? '';
+			buildStderr += stderr ?? '';
+			objects.push(obj);
+		} catch (err) {
+			return {
+				success: false,
+				exitCode: err.code ?? 1,
+				buildDir,
+				stdout: (buildStdout + (err.stdout ?? '')).trim(),
+				stderr: (buildStderr + (err.stderr ?? err.message ?? '')).trim()
+			};
+		}
+	}
+
+	try {
+		const { stdout, stderr } = await execFileAsync(
+			gccCmd,
+			[
+				...objects,
+				'-mcpu=cortex-m4', '-mthumb',
+				'-Wl,--gc-sections',
+				`-Wl,-Map=${path.join(buildDir, `${projectName}.map`)}`,
+				`-T${ldScript}`,
+				'-specs=nosys.specs', '-specs=nano.specs',
+				'-o', elfPath,
+			],
+			{ cwd: wsRoot, env, timeout: 120000 }
+		);
+		buildStdout += stdout ?? '';
+		buildStderr += stderr ?? '';
 		return {
 			success: true,
 			exitCode: 0,
 			buildDir,
-			stdout: (stdout ?? '').trim(),
-			stderr: (stderr ?? '').trim()
+			elfPath,
+			stdout: buildStdout.trim(),
+			stderr: buildStderr.trim()
 		};
 	} catch (err) {
 		return {
 			success: false,
 			exitCode: err.code ?? 1,
 			buildDir,
-			stdout: (err.stdout ?? '').trim(),
-			stderr: (err.stderr ?? err.message ?? '').trim()
+			stdout: (buildStdout + (err.stdout ?? '')).trim(),
+			stderr: (buildStdout + (err.stderr ?? err.message ?? '')).trim()
 		};
 	}
 }
@@ -2656,7 +3963,7 @@ function listCubeMxMcuDbCandidates(workspacePath) {
 function resolveCanonicalMcuName(rawMcuName, workspacePath) {
 	const normalized = normalizeMcuNameForCubeMx(rawMcuName);
 	if (!normalized || !/^STM32/i.test(normalized)) {
-		return { canonical: normalized, source: 'input' };
+		return { canonical: normalized, source: 'input', verified: false, candidates: [] };
 	}
 
 	const variants = [
@@ -2681,16 +3988,21 @@ function resolveCanonicalMcuName(rawMcuName, workspacePath) {
 			.map(e => e.name.slice(0, -4));
 
 		for (const candidate of variants) {
-			if (stems.some(stem => stem.toUpperCase() === candidate.toUpperCase())) {
-				return { canonical: candidate, source: `db:${dbDir}` };
+			const exact = stems.filter(stem => stem.toUpperCase() === candidate.toUpperCase());
+			if (exact.length > 0) {
+				return { canonical: exact[0], source: `db:${dbDir}`, verified: true, candidates: exact.slice(0, 5) };
 			}
-			if (stems.some(stem => cubeMxFileNameMatchesMcu(stem, candidate))) {
-				return { canonical: candidate, source: `db-pattern:${dbDir}` };
+			const matched = stems.filter(stem => cubeMxFileNameMatchesMcu(stem, candidate));
+			if (matched.length === 1) {
+				return { canonical: matched[0], source: `db-pattern:${dbDir}`, verified: true, candidates: matched };
+			}
+			if (matched.length > 1) {
+				return { canonical: candidate, source: `db-ambiguous:${dbDir}`, verified: false, candidates: matched.slice(0, 8) };
 			}
 		}
 	}
 
-	return { canonical: normalized, source: 'input-fallback' };
+	return { canonical: normalized, source: 'input-fallback', verified: false, candidates: [] };
 }
 
 function toolWriteFile(params) {
@@ -2723,39 +4035,442 @@ function toolPatchUserCode(params) {
 	const preferredRoots = detectPreferredSourceRoots(base, findBuildDirectoryWithMakefile(base));
 	const requestedRelPath = normalizeRelPath(params.filePath);
 	const effectiveRelPath = mapToPreferredTree(requestedRelPath, preferredRoots);
-	const full = safeResolvePath(base, effectiveRelPath);
-	if (!fs.existsSync(full)) throw Object.assign(new Error(`File not found: ${effectiveRelPath}`), { code: -32602 });
-	let content = fs.readFileSync(full, 'utf8');
+	const counterpartRelPath = getCounterpartRelPath(effectiveRelPath);
+	const candidateRelPaths = [effectiveRelPath, counterpartRelPath].filter(Boolean);
+
+	let selectedRelPath = null;
+	let selectedContent = '';
+	let bestScore = -1;
+	const selectionDetails = [];
+
+	for (const relPath of candidateRelPaths) {
+		const fullPath = safeResolvePath(base, relPath);
+		if (!fs.existsSync(fullPath)) {
+			selectionDetails.push({ filePath: relPath, exists: false, score: -1, availableSections: [] });
+			continue;
+		}
+		const candidateContent = fs.readFileSync(fullPath, 'utf8');
+		const availableSections = listUserCodeSections(candidateContent);
+		let score = 0;
+		for (const patch of params.patches) {
+			const sectionName = (patch.sectionName ?? '').toString().trim();
+			if (!sectionName) {
+				continue;
+			}
+			if (findUserCodeSectionRange(candidateContent, sectionName)) {
+				score += 1;
+			}
+		}
+		selectionDetails.push({ filePath: relPath, exists: true, score, availableSections });
+		if (score > bestScore) {
+			bestScore = score;
+			selectedRelPath = relPath;
+			selectedContent = candidateContent;
+		}
+	}
+
+	if (!selectedRelPath) {
+		throw Object.assign(new Error(`File not found: ${effectiveRelPath}`), { code: -32602 });
+	}
+
+	if (bestScore <= 0) {
+		return {
+			filePath: selectedRelPath,
+			requestedFilePath: requestedRelPath,
+			patches: params.patches.map(p => ({ sectionName: (p.sectionName ?? '').toString(), success: false, error: 'Section markers not found in candidate files' })),
+			success: false,
+			buildInvalidated: false,
+			mirroredFiles: [],
+			selectionDetails,
+		};
+	}
+
+	let content = selectedContent;
+	const lineBreak = /\r\n/.test(content) ? '\r\n' : '\n';
 	const results = [];
 	for (const patch of params.patches) {
-		const { sectionName, content: newCode } = patch;
+		const sectionName = (patch.sectionName ?? '').toString().trim();
+		const newCode = patch.content ?? '';
 		if (!sectionName) { results.push({ sectionName: '?', success: false, error: 'sectionName missing' }); continue; }
-		const begin = `/* USER CODE BEGIN ${sectionName} */`;
-		const end = `/* USER CODE END ${sectionName} */`;
-		const idx1 = content.indexOf(begin);
-		const idx2 = content.indexOf(end, idx1 + begin.length);
-		if (idx1 === -1 || idx2 === -1) {
+		const sectionRange = findUserCodeSectionRange(content, sectionName);
+		if (!sectionRange) {
 			results.push({ sectionName, success: false, error: `Section markers not found in file` });
 			continue;
 		}
-		const prefix = content.slice(0, idx1 + begin.length);
-		const suffix = content.slice(idx2);
-		const nl = newCode.startsWith('\n') ? '' : '\n';
-		const nl2 = newCode.endsWith('\n') ? '' : '\n';
-		content = prefix + nl + newCode + nl2 + suffix;
-		results.push({ sectionName, success: true });
+		const prefix = content.slice(0, sectionRange.beginEndIndex);
+		const suffix = content.slice(sectionRange.endStartIndex);
+		const textCode = normalizePatchSnippetText(String(newCode));
+		const normalizedCode = textCode.replace(/\r?\n/g, lineBreak);
+		const leading = normalizedCode.startsWith(lineBreak) ? '' : lineBreak;
+		const trailing = normalizedCode.endsWith(lineBreak) ? '' : lineBreak;
+		const replacement = `${leading}${normalizedCode}${trailing}`;
+		content = prefix + replacement + suffix;
+		results.push({ sectionName, resolvedSectionName: sectionRange.resolvedSectionName, success: true });
 	}
-	fs.writeFileSync(full, content, 'utf8');
-	bumpFileMtimeForward(full);
-	markWorkspaceFileDirty(base, full, 'patchUserCode');
-	const mirroredFiles = syncEditedFileToCounterpart(base, effectiveRelPath);
+	const selectedFull = safeResolvePath(base, selectedRelPath);
+	const successCount = results.filter(r => r.success).length;
+	const failureCount = results.length - successCount;
+	if (failureCount > 0) {
+		return {
+			filePath: selectedRelPath,
+			requestedFilePath: requestedRelPath,
+			patches: results,
+			success: false,
+			buildInvalidated: false,
+			selectionDetails,
+			mirroredFiles: [],
+			error: 'One or more USER CODE sections were not found. No file changes were applied.'
+		};
+	}
+
+	const markerBefore = countUserCodeMarkers(selectedContent);
+	const markerAfter = countUserCodeMarkers(content);
+	if (markerBefore.begin !== markerAfter.begin || markerBefore.end !== markerAfter.end) {
+		return {
+			filePath: selectedRelPath,
+			requestedFilePath: requestedRelPath,
+			patches: results,
+			success: false,
+			buildInvalidated: false,
+			selectionDetails,
+			mirroredFiles: [],
+			error: 'Patch rejected: USER CODE marker count changed unexpectedly.'
+		};
+	}
+
+	const ext = path.extname(selectedRelPath).toLowerCase();
+	let autoRepaired = false;
+	if (['.c', '.h', '.cpp', '.hpp', '.cc'].includes(ext)) {
+		const beforeBalance = analyzeCStructuralBalance(selectedContent);
+		let afterBalance = analyzeCStructuralBalance(content);
+
+		if (!afterBalance.balanced && ext === '.c' && /(^|\/)main\.c$/i.test(normalizeRelPath(selectedRelPath))) {
+			const repairedContent = repairMainCCommonBraceIssue(content, lineBreak);
+			if (repairedContent !== content) {
+				const repairedBalance = analyzeCStructuralBalance(repairedContent);
+				if (repairedBalance.balanced) {
+					content = repairedContent;
+					afterBalance = repairedBalance;
+					autoRepaired = true;
+				}
+			}
+		}
+
+		if (!afterBalance.balanced) {
+			return {
+				filePath: selectedRelPath,
+				requestedFilePath: requestedRelPath,
+				patches: results,
+				success: false,
+				buildInvalidated: false,
+				selectionDetails,
+				mirroredFiles: [],
+				error: 'Patch rejected: likely syntax imbalance introduced (brace/paren mismatch).',
+				balanceBefore: beforeBalance,
+				balanceAfter: afterBalance,
+			};
+		}
+	}
+
+	const changed = content !== selectedContent;
+	if (changed) {
+		fs.writeFileSync(selectedFull, content, 'utf8');
+		bumpFileMtimeForward(selectedFull);
+		markWorkspaceFileDirty(base, selectedFull, 'patchUserCode');
+	}
+	const mirroredFiles = changed ? syncEditedFileToCounterpart(base, selectedRelPath) : [];
 	return {
-		filePath: effectiveRelPath,
+		filePath: selectedRelPath,
 		requestedFilePath: requestedRelPath,
 		patches: results,
-		buildInvalidated: true,
+		success: successCount > 0,
+		buildInvalidated: changed,
+		autoRepaired,
+		selectionDetails,
 		mirroredFiles,
 	};
+}
+
+function repairMainCCommonBraceIssue(content, lineBreak = '\n') {
+	const lb = lineBreak || '\n';
+	const re = /(\/\*\s*USER CODE END 3\s*\*\/\r?\n\s*}\r?\n)(\r?\n\/\*\*\r?\n\s*\*\s*@brief\s+System Clock Configuration)/i;
+	if (!re.test(content)) {
+		return repairMainCByBraceBalance(content, lb);
+	}
+	const fastPatched = content.replace(re, (_m, p1, p2) => `${p1}  }${lb}${p2}`);
+	return repairMainCByBraceBalance(fastPatched, lb);
+}
+
+function repairMainCByBraceBalance(content, lineBreak = '\n') {
+	const lb = lineBreak || '\n';
+	const mainIdx = content.indexOf('int main(void)');
+	const sysIdx = content.indexOf('void SystemClock_Config(', Math.max(0, mainIdx + 1));
+	if (mainIdx < 0 || sysIdx < 0 || sysIdx <= mainIdx) {
+		return content;
+	}
+
+	const segment = content.slice(mainIdx, sysIdx);
+	const openCount = countCBraces(segment);
+	if (openCount <= 0) {
+		return content;
+	}
+
+	const prefix = content.slice(0, sysIdx);
+	const suffix = content.slice(sysIdx);
+	const trimmedPrefix = prefix.replace(/[ \t]+$/g, '');
+	const existingTail = trimmedPrefix.slice(Math.max(0, trimmedPrefix.length - 24));
+	if (/}\s*}\s*$/.test(existingTail)) {
+		return content;
+	}
+
+	const insertion = `${lb}${'  }' + lb}`.repeat(openCount);
+	return `${prefix}${insertion}${suffix}`;
+}
+
+function countCBraces(text) {
+	let depth = 0;
+	let inLineComment = false;
+	let inBlockComment = false;
+	let inString = false;
+	let inChar = false;
+	let escaped = false;
+
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		const next = i + 1 < text.length ? text[i + 1] : '';
+
+		if (inLineComment) {
+			if (ch === '\n') {
+				inLineComment = false;
+			}
+			continue;
+		}
+
+		if (inBlockComment) {
+			if (ch === '*' && next === '/') {
+				inBlockComment = false;
+				i += 1;
+			}
+			continue;
+		}
+
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+			} else if (ch === '\\') {
+				escaped = true;
+			} else if (ch === '"') {
+				inString = false;
+			}
+			continue;
+		}
+
+		if (inChar) {
+			if (escaped) {
+				escaped = false;
+			} else if (ch === '\\') {
+				escaped = true;
+			} else if (ch === "'") {
+				inChar = false;
+			}
+			continue;
+		}
+
+		if (ch === '/' && next === '/') {
+			inLineComment = true;
+			i += 1;
+			continue;
+		}
+		if (ch === '/' && next === '*') {
+			inBlockComment = true;
+			i += 1;
+			continue;
+		}
+		if (ch === '"') {
+			inString = true;
+			continue;
+		}
+		if (ch === "'") {
+			inChar = true;
+			continue;
+		}
+
+		if (ch === '{') {
+			depth += 1;
+		} else if (ch === '}') {
+			depth -= 1;
+		}
+	}
+
+	return Math.max(0, depth);
+}
+
+function countUserCodeMarkers(content) {
+	const begin = (content.match(/\/\*\s*USER\s+CODE\s+BEGIN\s+/gi) ?? []).length;
+	const end = (content.match(/\/\*\s*USER\s+CODE\s+END\s+/gi) ?? []).length;
+	return { begin, end };
+}
+
+function normalizePatchSnippetText(value) {
+	let out = String(value ?? '');
+
+	// Accept PowerShell-style escaped newlines that may arrive as literal `n text.
+	out = out.replace(/`r`n/g, '\n').replace(/`n/g, '\n').replace(/`r/g, '\r');
+
+	// If the payload appears single-line but contains JSON escaped newlines, decode them.
+	if (!/\r|\n/.test(out) && /\\n|\\r/.test(out)) {
+		out = out.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+	}
+
+	return out;
+}
+
+function analyzeCStructuralBalance(content) {
+	let brace = 0;
+	let paren = 0;
+	let bracket = 0;
+	let inLineComment = false;
+	let inBlockComment = false;
+	let inString = false;
+	let inChar = false;
+	let escape = false;
+
+	for (let i = 0; i < content.length; i++) {
+		const ch = content[i];
+		const next = i + 1 < content.length ? content[i + 1] : '';
+
+		if (inLineComment) {
+			if (ch === '\n') {
+				inLineComment = false;
+			}
+			continue;
+		}
+
+		if (inBlockComment) {
+			if (ch === '*' && next === '/') {
+				inBlockComment = false;
+				i += 1;
+			}
+			continue;
+		}
+
+		if (inString) {
+			if (escape) {
+				escape = false;
+			} else if (ch === '\\') {
+				escape = true;
+			} else if (ch === '"') {
+				inString = false;
+			}
+			continue;
+		}
+
+		if (inChar) {
+			if (escape) {
+				escape = false;
+			} else if (ch === '\\') {
+				escape = true;
+			} else if (ch === "'") {
+				inChar = false;
+			}
+			continue;
+		}
+
+		if (ch === '/' && next === '/') {
+			inLineComment = true;
+			i += 1;
+			continue;
+		}
+		if (ch === '/' && next === '*') {
+			inBlockComment = true;
+			i += 1;
+			continue;
+		}
+		if (ch === '"') {
+			inString = true;
+			continue;
+		}
+		if (ch === "'") {
+			inChar = true;
+			continue;
+		}
+
+		if (ch === '{') brace += 1;
+		if (ch === '}') brace -= 1;
+		if (ch === '(') paren += 1;
+		if (ch === ')') paren -= 1;
+		if (ch === '[') bracket += 1;
+		if (ch === ']') bracket -= 1;
+
+		if (brace < 0 || paren < 0 || bracket < 0) {
+			return { balanced: false, brace, paren, bracket };
+		}
+	}
+
+	const balanced = !inString && !inChar && !inBlockComment && brace === 0 && paren === 0 && bracket === 0;
+	return { balanced, brace, paren, bracket };
+}
+
+function escapeRegExp(value) {
+	return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeSectionName(value) {
+	return String(value ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function listUserCodeSections(content) {
+	const sections = [];
+	const re = /\/\*\s*USER\s+CODE\s+BEGIN\s+([^*]+?)\s*\*\//gi;
+	let m;
+	while ((m = re.exec(content)) !== null) {
+		const name = (m[1] ?? '').trim();
+		if (name) {
+			sections.push(name);
+		}
+	}
+	return Array.from(new Set(sections));
+}
+
+function findUserCodeSectionRange(content, sectionName) {
+	const requested = normalizeSectionName(sectionName);
+	if (!requested) {
+		return null;
+	}
+
+	const directBegin = new RegExp(`/\\*\\s*USER\\s+CODE\\s+BEGIN\\s+${escapeRegExp(sectionName)}\\s*\\*/`, 'i');
+	let beginMatch = directBegin.exec(content);
+
+	if (!beginMatch) {
+		const beginAny = /\/\*\s*USER\s+CODE\s+BEGIN\s+([^*]+?)\s*\*\//gi;
+		let m;
+		while ((m = beginAny.exec(content)) !== null) {
+			const candidateName = (m[1] ?? '').trim();
+			if (normalizeSectionName(candidateName) === requested) {
+				beginMatch = m;
+				break;
+			}
+		}
+	}
+
+	if (!beginMatch || beginMatch.index < 0) {
+		return null;
+	}
+
+	const beginStartIndex = beginMatch.index;
+	const beginEndIndex = beginStartIndex + beginMatch[0].length;
+	const resolvedSectionName = (beginMatch[1] ?? sectionName).toString().trim() || sectionName;
+
+	const endRe = new RegExp(`/\\*\\s*USER\\s+CODE\\s+END\\s+${escapeRegExp(resolvedSectionName)}\\s*\\*/`, 'i');
+	const tail = content.slice(beginEndIndex);
+	const endMatch = endRe.exec(tail);
+	if (!endMatch || endMatch.index < 0) {
+		return null;
+	}
+
+	const endStartIndex = beginEndIndex + endMatch.index;
+	const endEndIndex = endStartIndex + endMatch[0].length;
+	return { beginStartIndex, beginEndIndex, endStartIndex, endEndIndex, resolvedSectionName };
 }
 
 function toolCreateIocFromPins(params) {
@@ -2764,10 +4479,18 @@ function toolCreateIocFromPins(params) {
 	const canonical = resolveCanonicalMcuName(params.mcuName, base);
 	const mcuName = canonical.canonical;
 	if (!mcuName || !/^STM32/i.test(mcuName)) {
-		throw Object.assign(new Error(`Invalid mcuName for CubeMX: ${params.mcuName}`), { code: -32602 });
+		const hint = Array.isArray(canonical.candidates) && canonical.candidates.length > 0
+			? ` Candidates: ${canonical.candidates.join(', ')}`
+			: '';
+		throw Object.assign(new Error(`Invalid mcuName for CubeMX: ${params.mcuName}. source=${canonical.source}.${hint}`), { code: -32602 });
 	}
+	// Allow unverified names if CubeMX DB is not available; CubeMX itself will validate.
+	const mcuNameWarning = canonical.verified ? null : `MCU name '${mcuName}' could not be verified against CubeMX DB (source=${canonical.source}). CubeMX will validate.`;
 	const projectName = params.projectName ?? 'project';
-	const pins = params.pins ?? [];
+	const pins = normalizePinsInput(params.pins);
+	if (params.pins !== undefined && pins.length === 0) {
+		throw Object.assign(new Error('Invalid pins format. Expected array/object/json string of pin definitions.'), { code: -32602 });
+	}
 	const mcuFamily = inferMcuFamilyFromName(mcuName);
 
 	const pinLines = pins.map(p => `${p.pin}.Signal=${p.mode}`).join('\n');
@@ -2779,11 +4502,15 @@ function toolCreateIocFromPins(params) {
 	const iocContent = [
 		`#MicroXplorer Configuration settings - do not modify`,
 		`File.Version=6`,
+		`KeepUserPlacement=true`,
 		`LibraryCopySrc=1`,
 		`Mcu.CPN=${mcuName}`,
 		`Mcu.Family=${mcuFamily}`,
 		`Mcu.Name=${mcuName}`,
-		`Mcu.IPNb=0`,
+		`Mcu.IP0=GPIO`,
+		`Mcu.IP1=RCC`,
+		`Mcu.IP2=SYS`,
+		`Mcu.IPNb=3`,
 		`Mcu.ThirdPartyNb=0`,
 		...pins.map((p, i) => `Mcu.Pin${i}=${p.pin}`),
 		`Mcu.PinsNb=${pins.length}`,
@@ -2796,6 +4523,8 @@ function toolCreateIocFromPins(params) {
 		`ProjectManager.ProjectFileName=${projectName}.ioc`,
 		`ProjectManager.ProjectName=${projectName}`,
 		`ProjectManager.ToolChain=Makefile`,
+		`ProjectManager.ProjectPath=Core`,
+		`ProjectManager.NoMain=false`,
 		`ProjectManager.ComputerToolchain=0`,
 		`ProjectManager.LibraryCopySrc=1`,
 		``
@@ -2807,10 +4536,85 @@ function toolCreateIocFromPins(params) {
 		iocPath: path.relative(base, iocPath).replace(/\\/g, '/'),
 		mcuName,
 		mcuSource: canonical.source,
+		mcuVerified: canonical.verified,
+		mcuNameWarning: mcuNameWarning ?? null,
 		projectName,
 		pinCount: pins.length,
 		success: true
 	};
+}
+
+function normalizePinsInput(rawPins) {
+	if (rawPins === undefined || rawPins === null) {
+		return [];
+	}
+
+	if (typeof rawPins === 'string') {
+		try {
+			const parsed = JSON.parse(rawPins);
+			return normalizePinsInput(parsed);
+		} catch {
+			return [];
+		}
+	}
+
+	if (Array.isArray(rawPins)) {
+		const out = [];
+		for (const entry of rawPins) {
+			if (typeof entry === 'string') {
+				const m = entry.match(/^\s*([^:\s]+)\s*[:=]\s*(.+?)\s*$/);
+				if (m) {
+					out.push({ pin: m[1], mode: m[2] });
+				}
+				continue;
+			}
+			if (entry && typeof entry === 'object') {
+				const pin = String(entry.pin ?? '').trim();
+				const mode = String(entry.mode ?? '').trim();
+				if (pin && mode) {
+					out.push({ pin, mode });
+				}
+			}
+		}
+		return dedupePins(out);
+	}
+
+	if (rawPins && typeof rawPins === 'object') {
+		const out = [];
+		for (const [pinKey, value] of Object.entries(rawPins)) {
+			const pin = String(pinKey ?? '').trim();
+			if (!pin) {
+				continue;
+			}
+			if (value && typeof value === 'object') {
+				const modeObj = String(value.mode ?? value.signal ?? '').trim();
+				if (modeObj) {
+					out.push({ pin, mode: modeObj });
+				}
+				continue;
+			}
+			const mode = String(value ?? '').trim();
+			if (mode) {
+				out.push({ pin, mode });
+			}
+		}
+		return dedupePins(out);
+	}
+
+	return [];
+}
+
+function dedupePins(pins) {
+	const map = new Map();
+	for (const p of pins) {
+		const pin = String(p.pin ?? '').trim();
+		const mode = String(p.mode ?? '').trim();
+		if (!pin || !mode) {
+			continue;
+		}
+		map.set(pin.toUpperCase(), { pin, mode });
+	}
+	return Array.from(map.values());
 }
 
 function toolParseBuildErrors(params) {
@@ -2896,18 +4700,20 @@ async function toolAutoWorkflow(params) {
 	// 2. regenerateCode (optional, skip if skipRegenerate)
 	if (!params.skipRegenerate) {
 		let regenResult;
+		let regenOk = false;
 		try {
 			regenResult = await toolRegenerateCode({
 				workspacePath: base,
 				cubemxPath: params.cubemxPath ?? null,
 			});
-			steps.push({ step: 'regenerateCode', success: !!regenResult.success, result: regenResult });
-			if (!regenResult.success) {
-				return { success: false, goal: params.goal, steps };
-			}
+			regenOk = !!regenResult.success;
+			steps.push({ step: 'regenerateCode', success: regenOk, result: regenResult });
 		} catch (e) {
-			steps.push({ step: 'regenerateCode', success: false, error: e.message, note: 'Continue with patchUserCode anyway' });
-			return { success: false, goal: params.goal, steps };
+			steps.push({ step: 'regenerateCode', success: false, error: e.message, note: 'Continuing with patchUserCode/build anyway' });
+		}
+		// If regenerate failed and caller does not allow fallback continuation, stop.
+		if (!regenOk && params.abortOnRegenerateFail === true) {
+			return { success: false, goal: params.goal, steps, error: 'regenerateCode failed and abortOnRegenerateFail=true' };
 		}
 	} else {
 		steps.push({ step: 'regenerateCode', success: true, skipped: true });
@@ -2979,8 +4785,13 @@ async function dispatch(method, params) {
 		case 'initialize':
 			return {
 				protocolVersion: '2024-11-05',
-				capabilities: { tools: {} },
-				serverInfo: { name: 'cubeforge-stm32-mcp', version: '1.0.0' }
+				capabilities: {
+					tools: {},
+					experimental: {
+						transports: ['http-jsonrpc', 'http-sse', 'stdio-framed', 'stdio-linejson']
+					}
+				},
+				serverInfo: { name: 'cubeforge-stm32-mcp', version: '2.0.0' }
 			};
 		case 'notifications/initialized':
 			return null;
@@ -3013,6 +4824,8 @@ async function dispatch(method, params) {
 			return await toolListElfSymbols(params);
 		case 'stm32.checkStLink':
 			return await toolCheckStLink(params);
+		case 'stm32.validateEnvironment':
+			return await toolValidateEnvironment(params);
 		case 'stm32.readRegister':
 			return await toolReadRegister(params);
 		case 'stm32.listWorkspaceFiles':
@@ -3456,7 +5269,7 @@ const server = http.createServer(async (req, res) => {
 	if (req.method === 'GET' && req.url === '/health') {
 		writeJson(res, 200, {
 			status: 'ok',
-			version: '1.0.0',
+			version: '2.0.0',
 			instanceId: SERVER_INSTANCE_ID,
 			pid: process.pid,
 			startedAt: SERVER_STARTED_AT,
@@ -3464,7 +5277,8 @@ const server = http.createServer(async (req, res) => {
 			startupWorkspace: WORKSPACE,
 			activeWorkspace: ACTIVE_WORKSPACE,
 			host: HOST,
-			port: PORT
+			port: PORT,
+			transports: ['http-jsonrpc', 'http-sse', STDIO_MODE ? 'stdio-framed/linejson(active)' : 'stdio-framed/linejson(supported)']
 		});
 		return;
 	}
