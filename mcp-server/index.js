@@ -894,32 +894,55 @@ async function toolRegenerateCode(params) {
 
 	const normalizedIocPath = iocPath.replace(/\\/g, '/');
 	const normalizedWsRoot = wsRoot.replace(/\\/g, '/');
-	// CubeMX CLI script: some versions need the output path, others do not.
-	// We generate both variants and choose based on success.
-	const scriptContent = `config load "${normalizedIocPath}"\ngenerate code\nexit\n`;
-	const scriptContentWithPath = `config load "${normalizedIocPath}"\ngenerate code "${normalizedWsRoot}"\nexit\n`;
+
+	// CRITICAL: CubeMX script must explicitly set toolchain to Makefile
+	// The .ioc file already contains project settings, we just need to ensure toolchain is correct
+	const scriptContent = [
+		`config load "${normalizedIocPath}"`,
+		`project toolchain Makefile`,
+		`generate code`,
+		`exit`
+	].join('\n');
+
 	const scriptPath = path.join(require('os').tmpdir(), `cubemx-script-${Date.now()}.txt`);
 	fs.writeFileSync(scriptPath, scriptContent, 'utf8');
 
+	console.log('[MCP] CubeMX script:', scriptContent);
+
 	try {
-		const runCubeMxWithScript = async (content) => {
-			fs.writeFileSync(scriptPath, content, 'utf8');
-			const { stdout, stderr } = await execFileAsync(cubemxPath, ['-s', scriptPath], { cwd: wsRoot, timeout: 120000 });
-			const combinedOutput = `${stdout ?? ''}\n${stderr ?? ''}`;
-			const fatalDiagnostics = extractCubeMxFatalDiagnostics(combinedOutput);
-			return { stdout, stderr, combinedOutput, fatalDiagnostics };
-		};
 		const runCubeMx = async () => {
-			// Try without explicit output path first (preferred for newer CubeMX versions)
-			const result = await runCubeMxWithScript(scriptContent);
-			// If fatal errors mention path issues, retry with explicit path
-			const pathError = result.fatalDiagnostics.some(d =>
-				/path|directory|folder|output|cannot find|not found/i.test(d)
-			);
-			if (result.fatalDiagnostics.length > 0 && pathError) {
-				return await runCubeMxWithScript(scriptContentWithPath);
+			console.log(`[MCP] Executing CubeMX: ${cubemxPath}`);
+			console.log(`[MCP] Working directory: ${wsRoot}`);
+
+			console.log(`[MCP] Script path: ${scriptPath}`);
+
+			let stdout = '';
+			let stderr = '';
+			let exitCode = 0;
+
+			try {
+				const result = await execFileAsync(cubemxPath, ['-s', scriptPath], {
+					cwd: wsRoot,
+					timeout: 180000,
+					maxBuffer: 10 * 1024 * 1024
+				});
+				stdout = result.stdout || '';
+				stderr = result.stderr || '';
+			} catch (err) {
+				stdout = err.stdout || '';
+				stderr = err.stderr || '';
+				exitCode = err.code || 1;
+				console.error('[MCP] CubeMX execution error:', err.message);
 			}
-			return result;
+
+			const combinedOutput = `${stdout}\n${stderr}`;
+			const fatalDiagnostics = extractCubeMxFatalDiagnostics(combinedOutput);
+
+			console.log('[MCP] CubeMX stdout length:', stdout.length);
+			console.log('[MCP] CubeMX stderr length:', stderr.length);
+			console.log('[MCP] Fatal diagnostics:', fatalDiagnostics.length);
+
+			return { stdout, stderr, combinedOutput, fatalDiagnostics, exitCode };
 		};
 
 		let firstRun = await runCubeMx();
@@ -934,7 +957,38 @@ async function toolRegenerateCode(params) {
 			}
 		}
 
-		const { stdout, stderr, combinedOutput, fatalDiagnostics } = firstRun;
+		const { stdout, stderr, combinedOutput, fatalDiagnostics, exitCode } = firstRun;
+
+		// Check for execution errors first
+		if (exitCode !== 0 && exitCode !== undefined) {
+			return {
+				success: false,
+				iocPath,
+				workspacePath: wsRoot,
+				cubemxPath,
+				exitCode,
+				stdout,
+				stderr,
+				error: [
+					`CubeMX execution failed with exit code ${exitCode}.`,
+					'',
+					'This usually means:',
+					'  1. CubeMX executable not found or not executable',
+					'  2. .ioc file is corrupted or incompatible',
+					'  3. CubeMX crashed during code generation',
+					'',
+					'Troubleshooting:',
+					'  - Verify CubeMX path is correct',
+					'  - Try opening .ioc in CubeMX GUI',
+					'  - Check stderr output below for details',
+					'',
+					'STDERR:',
+					stderr || '(empty)'
+				].join('\n'),
+				diagnostics: extractCubeMxDiagnostics(combinedOutput)
+			};
+		}
+
 		if (fatalDiagnostics.length > 0) {
 			return {
 				success: false,
@@ -1000,10 +1054,20 @@ async function toolRegenerateCode(params) {
 
 		const counterpartSync = syncGeneratedArtifactsToCounterparts(wsRoot, projectArtifacts);
 
-		const buildDir = findBuildDirectoryWithMakefile(wsRoot);
-		if (!buildDir) {
+		// CRITICAL: Verify Makefile was actually generated
+		const makefilePath = path.join(wsRoot, 'Makefile');
+		const makefileExists = isExistingFile(makefilePath);
+
+		if (!makefileExists) {
+			console.error('[MCP] CRITICAL: Makefile not generated!');
+			console.error('[MCP] Checking .ioc settings...');
+
+			const iocContent = fs.readFileSync(iocPath, 'utf8');
+			const toolchainLine = iocContent.match(/ProjectManager\.ToolChain=(.+)/);
+			const currentToolchain = toolchainLine ? toolchainLine[1].trim() : 'NOT SET';
+
 			return {
-				success: true,
+				success: false,
 				iocPath,
 				workspacePath: wsRoot,
 				cubemxPath,
@@ -1014,16 +1078,57 @@ async function toolRegenerateCode(params) {
 				retriedAfterRepair,
 				stdout,
 				stderr,
-				warning: 'CubeMX generated project sources, but no Makefile-based build directory was found.',
+				error: [
+					'CRITICAL: CubeMX did not generate Makefile!',
+					'',
+					'Current .ioc Toolchain setting: ' + currentToolchain,
+					'Expected: Makefile',
+					'',
+					'This means CubeMX ignored the toolchain setting.',
+					'',
+					'REQUIRED ACTIONS:',
+					'  1. Open .ioc file in STM32CubeMX GUI',
+					'  2. Go to Project Manager → Project',
+					'  3. Set Toolchain/IDE to "Makefile"',
+					'  4. Click "GENERATE CODE"',
+					'  5. Verify Makefile appears in project root',
+					'',
+					'If Makefile still not generated:',
+					'  - Your CubeMX version may not support Makefile generation',
+					'  - Try selecting "STM32CubeIDE" instead',
+					'  - Update CubeMX to latest version'
+				].join('\n'),
 				projectArtifacts,
 				generatedRootHints,
 				syncedCounterparts: counterpartSync.synced,
 				skippedCounterparts: counterpartSync.skipped,
 				makefileGenerated: false,
 				diagnostics: extractCubeMxDiagnostics(combinedOutput),
-				note: 'Code regenerated but manual build setup may be required.'
+				currentToolchainSetting: currentToolchain
 			};
 		}
+
+		const buildDir = findBuildDirectoryWithMakefile(wsRoot);
+		console.log('[MCP] Makefile found at:', makefilePath);
+		console.log('[MCP] Build directory:', buildDir || wsRoot);
+
+		// Final verification: Check for HAL libraries
+		const driversPath = path.join(wsRoot, 'Drivers');
+		const hasDrivers = isExistingDirectory(driversPath);
+		const corePath = path.join(wsRoot, 'Core');
+		const hasCore = isExistingDirectory(corePath);
+
+		const verificationWarnings = [];
+		if (!hasDrivers) {
+			verificationWarnings.push('Drivers folder not found - HAL libraries may be missing');
+		}
+		if (!hasCore) {
+			verificationWarnings.push('Core folder not found - main.c may be missing');
+		}
+
+		console.log('[MCP] Verification: Drivers exists:', hasDrivers);
+		console.log('[MCP] Verification: Core exists:', hasCore);
+		console.log('[MCP] Code generation completed successfully!');
 
 		return {
 			success: true,
@@ -1040,10 +1145,19 @@ async function toolRegenerateCode(params) {
 			syncedCounterparts: counterpartSync.synced,
 			skippedCounterparts: counterpartSync.skipped,
 			makefileGenerated: true,
+			makefilePath,
 			buildDir,
+			verification: {
+				hasDrivers,
+				hasCore,
+				hasMakefile: true,
+				warnings: verificationWarnings
+			},
 			stdout,
 			stderr,
-			note: 'Code regenerated successfully. Project is ready to build.'
+			note: verificationWarnings.length > 0
+				? `Code regenerated with warnings: ${verificationWarnings.join('; ')}`
+				: 'Code regenerated successfully. Project is ready to build.'
 		};
 	} catch (err) {
 		const detail = err.code === 'ENOENT'
@@ -1360,11 +1474,33 @@ function sanitizeIocForCubeMx(iocPath, wsRoot, options = {}) {
 		if (!getValue('File.Version')) setValue('File.Version', '6');
 		if (!getValue('ProjectManager.ProjectName')) setValue('ProjectManager.ProjectName', iocBaseName);
 		if (!getValue('ProjectManager.ProjectFileName')) setValue('ProjectManager.ProjectFileName', `${iocBaseName}.ioc`);
-		if (!getValue('ProjectManager.ProjectPath')) setValue('ProjectManager.ProjectPath', 'Core');
+
 		// CRITICAL: Always force Toolchain to Makefile, regardless of current value
 		const currentToolchain = getValue('ProjectManager.ToolChain');
 		if (currentToolchain !== 'Makefile') {
 			setValue('ProjectManager.ToolChain', 'Makefile');
+		}
+		// Fix broken TargetToolchain key (board configurator previously wrote this wrong key)
+		const brokenToolchain = getValue('ProjectManager.TargetToolchain');
+		if (brokenToolchain) {
+			// Remove the broken key line entirely and ensure ToolChain=Makefile is set
+			const brokenIdx = keyIndex.get('ProjectManager.TargetToolchain');
+			if (brokenIdx !== undefined) {
+				lines[brokenIdx] = ''; // blank out the broken key
+				changedKeys.add('ProjectManager.TargetToolchain');
+			}
+			if (!getValue('ProjectManager.ToolChain') || getValue('ProjectManager.ToolChain') !== 'Makefile') {
+				setValue('ProjectManager.ToolChain', 'Makefile');
+			}
+		}
+		// CRITICAL: Remove ProjectPath if set — it causes CubeMX to generate Makefile/Drivers in wrong directory
+		const currentProjectPath = getValue('ProjectManager.ProjectPath');
+		if (currentProjectPath && currentProjectPath !== '.' && currentProjectPath !== '') {
+			const ppIdx = keyIndex.get('ProjectManager.ProjectPath');
+			if (ppIdx !== undefined) {
+				lines[ppIdx] = ''; // remove ProjectPath entirely
+				changedKeys.add('ProjectManager.ProjectPath');
+			}
 		}
 		if (!getValue('ProjectManager.NoMain')) setValue('ProjectManager.NoMain', 'false');
 
@@ -4739,7 +4875,6 @@ function toolCreateIocFromPins(params) {
 		`ProjectManager.ProjectFileName=${projectName}.ioc`,
 		`ProjectManager.ProjectName=${projectName}`,
 		`ProjectManager.ToolChain=Makefile`,
-		`ProjectManager.ProjectPath=Core`,
 		`ProjectManager.NoMain=false`,
 		`ProjectManager.ComputerToolchain=0`,
 		`ProjectManager.LibraryCopySrc=1`,

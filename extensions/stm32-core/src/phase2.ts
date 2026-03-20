@@ -807,7 +807,8 @@ async function runCubeMxGeneration(cubeMxExecutable: string, argsTemplate: strin
 
 	const scriptPath = join(tmpdir(), `stm32-cubemx-${Date.now()}.script`);
 	const scriptContent = [
-		`config load ${iocPath}`,
+		`config load "${iocPath}"`,
+		'project toolchain Makefile',
 		'generate code',
 		'exit',
 	].join('\n');

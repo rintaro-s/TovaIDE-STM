@@ -117,8 +117,10 @@ let cachedMetadata: CubeMetadata | undefined;
 let lastBuildOutput = '';
 let gdbServerProcess: ReturnType<typeof spawn> | undefined;
 let stLinkPollTimer: number | undefined;
+let extensionContext: vscode.ExtensionContext | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+	extensionContext = context;
 	outputChannel = vscode.window.createOutputChannel('STM32', { log: true });
 	outputChannel.appendLine('[STM32] Extension activated.');
 
@@ -134,8 +136,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	stLinkStatusItem.show();
 	context.subscriptions.push(stLinkStatusItem);
 
-	// Auto-diagnose project health on startup
-	setTimeout(() => autoCheckProjectHealth(getWorkspaceRoot(), outputChannel), 2000);
+	// Auto-diagnose project health on startup (skip if recently regenerated)
+	setTimeout(() => {
+		const lastRegenTime = context.globalState.get<number>('lastRegenerateTime', 0);
+		const now = Date.now();
+		if (now - lastRegenTime > 10000) { // Skip if regenerated within last 10 seconds
+			autoCheckProjectHealth(getWorkspaceRoot(), outputChannel);
+		}
+	}, 2000);
 	buildStatusItem.command = 'stm32.buildDebug';
 
 	stLinkStatusItem.name = vscode.l10n.t('STM32 ST-LINK Status');
@@ -543,6 +551,9 @@ async function regenerateWithCubeMX(): Promise<void> {
 	);
 
 	if (choice === vscode.l10n.t('CubeMXを起動')) {
+		// Record regeneration time to skip auto-diagnosis
+		await extensionContext?.globalState.update('lastRegenerateTime', Date.now());
+
 		await openCubeMx();
 		vscode.window.showInformationMessage(
 			vscode.l10n.t('CubeMXでコード生成後、ビルドを実行してください。'),
