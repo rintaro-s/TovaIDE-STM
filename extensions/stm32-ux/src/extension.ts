@@ -86,48 +86,50 @@ const PREFERRED_BOARD_PROFILES: BoardProfile[] = [
 		id: 'nucleo-f446re',
 		name: 'Nucleo-F446RE',
 		mcu: 'STM32F446RETx',
-		description: '汎用評価ボード。初学者向け。',
+		description: vscode.l10n.t('汎用評価ボード。初学者向け。'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }]
 	},
 	{
 		id: 'nucleo-l476rg',
 		name: 'Nucleo-L476RG',
 		mcu: 'STM32L476RGTx',
-		description: '低消費電力向け。',
+		description: vscode.l10n.t('低消費電力向け。'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PB6', mode: 'I2C1_SCL' }, { pin: 'PB7', mode: 'I2C1_SDA' }]
 	},
 	{
 		id: 'nucleo-g071rb',
 		name: 'Nucleo-G071RB',
 		mcu: 'STM32G071RBTx',
-		description: 'コスト重視の量産向け。',
+		description: vscode.l10n.t('コスト重視の量産向け。'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }]
 	},
 	{
 		id: 'bluepill-f103c8',
 		name: 'BluePill-F103C8',
 		mcu: 'STM32F103C8Tx',
-		description: '手軽なF1系評価基板。',
+		description: vscode.l10n.t('手軽なF1系評価基板。'),
 		defaultPins: [{ pin: 'PC13', mode: 'GPIO_Output' }, { pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }]
 	},
 	{
 		id: 'nucleo-h743zi',
 		name: 'Nucleo-H743ZI',
 		mcu: 'STM32H743ZITx',
-		description: '高性能H7向け。',
+		description: vscode.l10n.t('高性能H7向け。'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PB13', mode: 'SPI2_SCK' }, { pin: 'PB14', mode: 'SPI2_MISO' }, { pin: 'PB15', mode: 'SPI2_MOSI' }]
 	}
 ];
 
-const TUTORIAL_STEPS = [
-	'1. MCUを選択: タイトルバーのMCUセレクタで対象デバイスを選びます。',
-	'2. 新規プロジェクト: コマンドパレットから STM32: 新規プロジェクト を実行します。',
-	'3. ピン設定: PA5 を GPIO_Output に設定して LED ピンを割り当てます。',
-	'4. コード再生成: ioc からコード再生成を実行します。',
-	'5. USER CODE にLチカコードを記述します。',
-	'6. Debugビルドを実行してエラーを解消します。',
-	'7. 書込みを実行して LED 点滅を確認します。'
-];
+function getTutorialSteps(): string[] {
+	return [
+		vscode.l10n.t('1. MCUを選択: タイトルバーのMCUセレクタで対象デバイスを選びます。'),
+		vscode.l10n.t('2. 新規プロジェクト: コマンドパレットから STM32: 新規プロジェクト を実行します。'),
+		vscode.l10n.t('3. ピン設定: PA5 を GPIO_Output に設定して LED ピンを割り当てます。'),
+		vscode.l10n.t('4. コード再生成: ioc からコード再生成を実行します。'),
+		vscode.l10n.t('5. USER CODE にLチカコードを記述します。'),
+		vscode.l10n.t('6. Debugビルドを実行してエラーを解消します。'),
+		vscode.l10n.t('7. 書込みを実行して LED 点滅を確認します。'),
+	];
+}
 
 
 const PIN_MODE_GROUPS: Record<string, string[]> = {
@@ -137,7 +139,7 @@ const PIN_MODE_GROUPS: Record<string, string[]> = {
 	'SPI': ['SPI1_SCK', 'SPI1_MISO', 'SPI1_MOSI', 'SPI1_NSS', 'SPI2_SCK', 'SPI2_MISO', 'SPI2_MOSI', 'SPI2_NSS', 'SPI3_SCK', 'SPI3_MISO', 'SPI3_MOSI', 'SPI3_NSS'],
 	'ADC': ['ADC1_IN0', 'ADC1_IN1', 'ADC1_IN2', 'ADC1_IN3', 'ADC1_IN4', 'ADC1_IN5', 'ADC1_IN6', 'ADC1_IN7', 'ADC2_IN0', 'ADC2_IN1'],
 	'TIM/PWM': ['TIM1_CH1', 'TIM1_CH2', 'TIM1_CH3', 'TIM1_CH4', 'TIM2_CH1', 'TIM2_CH2', 'TIM2_CH3', 'TIM2_CH4', 'TIM3_CH1', 'TIM3_CH2', 'TIM3_CH3', 'TIM3_CH4', 'TIM4_CH1', 'TIM4_CH2', 'TIM4_CH3', 'TIM4_CH4'],
-	'その他': ['CAN1_TX', 'CAN1_RX', 'USB_DM', 'USB_DP', 'ETH_MDC', 'ETH_MDIO', 'SDIO_D0', 'SDIO_CLK', 'SDIO_CMD'],
+	[vscode.l10n.t('その他')]: ['CAN1_TX', 'CAN1_RX', 'USB_DM', 'USB_DP', 'ETH_MDC', 'ETH_MDIO', 'SDIO_D0', 'SDIO_CLK', 'SDIO_CMD'],
 };
 
 const COMMON_PIN_ALIASES: Record<string, string[]> = {
@@ -204,12 +206,12 @@ async function openEnvironmentSettingsDialog(): Promise<void> {
 	const cubectlPath = config.get<string>('cubectlPath', '');
 
 	const selectAction = await vscode.window.showQuickPick([
-		{ label: 'Make コマンドのパスを設定', value: 'makePath' },
-		{ label: 'STM32CubeMX のパスを設定', value: 'cubemxPath' },
-		{ label: 'STM32 Programmer CLI のパスを設定', value: 'cubectlPath' },
-		{ label: 'すべてのパス設定をリセット', value: 'reset' },
-		{ label: '設定値を確認/デバッグ', value: 'debug' },
-	], { placeHolder: '設定する項目を選択ください。', title: 'STM32 環境パス設定' });
+		{ label: vscode.l10n.t('Make コマンドのパスを設定'), value: 'makePath' },
+		{ label: vscode.l10n.t('STM32CubeMX のパスを設定'), value: 'cubemxPath' },
+		{ label: vscode.l10n.t('STM32 Programmer CLI のパスを設定'), value: 'cubectlPath' },
+		{ label: vscode.l10n.t('すべてのパス設定をリセット'), value: 'reset' },
+		{ label: vscode.l10n.t('設定値を確認/デバッグ'), value: 'debug' },
+	], { placeHolder: vscode.l10n.t('設定する項目を選択ください。'), title: vscode.l10n.t('STM32 環境パス設定') });
 
 	if (!selectAction) {
 		return;
@@ -219,58 +221,60 @@ async function openEnvironmentSettingsDialog(): Promise<void> {
 
 	if (value === 'makePath') {
 		const newPath = await vscode.window.showInputBox({
-			prompt: 'make コマンドのパスを入力してください。',
+			prompt: vscode.l10n.t('make コマンドのパスを入力してください。'),
 			value: makePath,
 			placeHolder: 'e.g. C:\\ST\\STM32CubeCLT\\GNU_tools_for_STM32\\bin\\make.exe',
 		});
 		if (newPath !== undefined) {
 			await config.update('makePath', newPath, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage(newPath ? `✅ make パスを設定しました: ${newPath}` : '✅ make パスを削除しました。');
+			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ make パスを設定しました: {0}', newPath) : vscode.l10n.t('✅ make パスを削除しました。'));
 		}
 	} else if (value === 'cubemxPath') {
 		const newPath = await vscode.window.showInputBox({
-			prompt: 'STM32CubeMX の実行ファイルパスを入力してください。',
+			prompt: vscode.l10n.t('STM32CubeMX の実行ファイルパスを入力してください。'),
 			value: cubemxPath,
 			placeHolder: 'e.g. C:\\ST\\STM32CubeMX\\STM32CubeMX.exe',
 		});
 		if (newPath !== undefined) {
 			await config.update('cubemxPath', newPath, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage(newPath ? `✅ CubeMX パスを設定しました: ${newPath}` : '✅ CubeMX パスを削除しました。');
+			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ CubeMX パスを設定しました: {0}', newPath) : vscode.l10n.t('✅ CubeMX パスを削除しました。'));
 		}
 	} else if (value === 'cubectlPath') {
 		const newPath = await vscode.window.showInputBox({
-			prompt: 'STM32 Programmer CLI のパスを入力してください。',
+			prompt: vscode.l10n.t('STM32 Programmer CLI のパスを入力してください。'),
 			value: cubectlPath,
 			placeHolder: 'e.g. C:\\ST\\STM32CubeCLT\\STM32_Programmer_CLI.exe',
 		});
 		if (newPath !== undefined) {
 			await config.update('cubectlPath', newPath, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage(newPath ? `✅ Programmer CLI パスを設定しました: ${newPath}` : '✅ Programmer CLI パスを削除しました。');
+			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ Programmer CLI パスを設定しました: {0}', newPath) : vscode.l10n.t('✅ Programmer CLI パスを削除しました。'));
 		}
 	} else if (value === 'reset') {
+		const resetLabel = vscode.l10n.t('削除');
 		const confirm = await vscode.window.showWarningMessage(
-			'すべての環境パス設定 (make, CubeMX, Programmer CLI) を削除してもよろしいですか？',
+			vscode.l10n.t('すべての環境パス設定 (make, CubeMX, Programmer CLI) を削除してもよろしいですか？'),
 			{ modal: true },
-			'削除'
+			resetLabel
 		);
-		if (confirm === '削除') {
+		if (confirm === resetLabel) {
 			await config.update('makePath', undefined, vscode.ConfigurationTarget.Workspace);
 			await config.update('cubemxPath', undefined, vscode.ConfigurationTarget.Workspace);
 			await config.update('cubectlPath', undefined, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage('✅ すべての環境パス設定をリセットしました。');
+			vscode.window.showInformationMessage(vscode.l10n.t('✅ すべての環境パス設定をリセットしました。'));
 		}
 	} else if (value === 'debug') {
+		const notSet = vscode.l10n.t('(未設定)');
 		const debugInfo = [
-			'[STM32 環境パス設定 - デバッグ情報]',
+			vscode.l10n.t('[STM32 環境パス設定 - デバッグ情報]'),
 			'',
-			`Make パス (設定):`,
-			`  ${makePath || '(未設定)'}`,
+			vscode.l10n.t('Make パス (設定):'),
+			`  ${makePath || notSet}`,
 			``,
-			`CubeMX パス (設定):`,
-			`  ${cubemxPath || '(未設定)'}`,
+			vscode.l10n.t('CubeMX パス (設定):'),
+			`  ${cubemxPath || notSet}`,
 			``,
-			`Programmer CLI パス (設定):`,
-			`  ${cubectlPath || '(未設定)'}`,
+			vscode.l10n.t('Programmer CLI パス (設定):'),
+			`  ${cubectlPath || notSet}`,
 		].join('\n');
 		await vscode.window.showInformationMessage(debugInfo, { modal: true });
 	}
@@ -281,10 +285,10 @@ export function deactivate(): void {
 
 async function configureGlobalWallpaper(): Promise<void> {
 	const action = await vscode.window.showQuickPick([
-		{ label: '画像ファイルを選択して適用', value: 'file' },
-		{ label: '画像 URL を入力して適用', value: 'url' },
-		{ label: '壁紙をクリア', value: 'clear' },
-	], { placeHolder: 'IDE 全体の壁紙設定を選択' });
+		{ label: vscode.l10n.t('画像ファイルを選択して適用'), value: 'file' },
+		{ label: vscode.l10n.t('画像 URL を入力して適用'), value: 'url' },
+		{ label: vscode.l10n.t('壁紙をクリア'), value: 'clear' },
+	], { placeHolder: vscode.l10n.t('IDE 全体の壁紙設定を選択') });
 
 	if (!action) {
 		return;
@@ -4437,8 +4441,288 @@ function execFileAsync(command: string, args: string[], cwd: string | undefined)
 	});
 }
 
+function getUxI18n() {
+	return {
+		// Common
+		cancel: vscode.l10n.t('キャンセル'),
+		save: vscode.l10n.t('保存'),
+		open: vscode.l10n.t('開く'),
+		close: vscode.l10n.t('閉じる'),
+		start: vscode.l10n.t('開始'),
+		apply: vscode.l10n.t('適用'),
+		add: vscode.l10n.t('追加'),
+		del: vscode.l10n.t('削除'),
+		none: vscode.l10n.t('なし'),
+		unused: vscode.l10n.t('未使用'),
+		// Onboarding / Dashboard
+		dashboardTitle: vscode.l10n.t('TovaIDE-STM ダッシュボード'),
+		dashboardSub: vscode.l10n.t('CubeIDEの実運用フローに合わせて、作成・設定・ビルド・書込み・MCP操作をここから開始します。'),
+		workflowStudio: vscode.l10n.t('ワークフロースタジオ'),
+		workflowStudioMeta: vscode.l10n.t('作成/コーディング/設定'),
+		boardStudio: vscode.l10n.t('ボード設定スタジオ'),
+		boardStudioMeta: vscode.l10n.t('CubeMX不要の初期作成'),
+		cubemxSync: vscode.l10n.t('CubeMXカタログ同期'),
+		cubemxSyncMeta: vscode.l10n.t('5000+ MCU取り込み'),
+		pinVisualizer: vscode.l10n.t('ピンビジュアライザ'),
+		pinVisualizerMeta: vscode.l10n.t('チップ図とピン編集'),
+		peripheralWorkbench: vscode.l10n.t('ペリフェラルワークベンチ'),
+		peripheralWorkbenchMeta: vscode.l10n.t('PWM/UART/I2C/サーボ'),
+		svdRefresh: vscode.l10n.t('SVDレジスタ表示を更新'),
+		svdRefreshMeta: vscode.l10n.t('フォールバック含め表示'),
+		buildDebug: vscode.l10n.t('Debugビルド'),
+		buildDebugMeta: vscode.l10n.t('エラー位置へ即移動'),
+		flash: vscode.l10n.t('書込み'),
+		flashMeta: vscode.l10n.t('STM32_Programmer_CLI'),
+		debugStart: vscode.l10n.t('デバッグ開始'),
+		debugStartMeta: vscode.l10n.t('ST-LINK GDB Server'),
+		collabPanel: vscode.l10n.t('共同作業パネル'),
+		collabPanelMeta: vscode.l10n.t('LAN/WS/Git共有'),
+		mcpDesk: vscode.l10n.t('MCPオペレーションデスク'),
+		mcpDeskMeta: vscode.l10n.t('全操作のRPC化'),
+		// MCP Desk
+		mcpDeskTitle: vscode.l10n.t('STM32 MCP オペレーションデスク'),
+		mcpDeskSub: vscode.l10n.t('ここから起動する操作は、同じ内容を MCP JSON-RPC でも呼べるように実装されています。'),
+		mcpStatusChecking: vscode.l10n.t('MCP 状態確認中...'),
+		// Workflow Studio
+		workflowStudioTitle: vscode.l10n.t('STM32 ワークフロースタジオ'),
+		workflowStudioSub: vscode.l10n.t('作業内容に合わせてモードを選択してください。'),
+		// Welcome
+		welcomeTitle: vscode.l10n.t('TovaIDE-STM ウェルカム'),
+		welcomeSub: vscode.l10n.t('最初に使う操作をテキスト中心でまとめています。必要な項目を選択して開発を開始してください。'),
+		tutorial: vscode.l10n.t('チュートリアル'),
+		tutorialDesc: vscode.l10n.t('Lチカの手順を順番に実行して、ビルドから書込みまで確認します。'),
+		importCubeIDE: vscode.l10n.t('CubeIDE から移行'),
+		importCubeIDEDesc: vscode.l10n.t('既存の STM32CubeIDE プロジェクトをインポートします。'),
+		templateCreate: vscode.l10n.t('テンプレート作成'),
+		templateCreateDesc: vscode.l10n.t('用途別テンプレートから新規プロジェクトを生成します。'),
+		boardConfig: vscode.l10n.t('基板設定'),
+		boardConfigDesc: vscode.l10n.t('基板を選択し、クロックやデバッグ設定を行ってプロジェクトを作成します。'),
+		workflow: vscode.l10n.t('作業フロー'),
+		workflowDesc: vscode.l10n.t('新規作成 / コーディング / 設定をモード別に起動します。'),
+		openStudio: vscode.l10n.t('スタジオを開く'),
+		syncCatalog: vscode.l10n.t('カタログ同期'),
+		peripheralImpl: vscode.l10n.t('ペリフェラル実装'),
+		peripheralImplDesc: vscode.l10n.t('PWM/UART/I2C/サーボの設定ガイドとコード雛形を生成します。'),
+		envCheck: vscode.l10n.t('環境チェック'),
+		envSettings: vscode.l10n.t('環境設定'),
+		autoErrorExplain: vscode.l10n.t('エラー自動解説'),
+		// Tutorial
+		tutorialTitle: vscode.l10n.t('Lチカ インタラクティブチュートリアル'),
+		tutorialSub: vscode.l10n.t('STM32でLEDを点滅させる基本的な開発フローを学びます'),
+		prevStep: vscode.l10n.t('← 前へ'),
+		nextStep: vscode.l10n.t('次へ →'),
+		done: vscode.l10n.t('完了 ✓'),
+		stepActions: vscode.l10n.t('このステップで使うアクション'),
+		checkPins: vscode.l10n.t('◉ ピンを確認'),
+		runBuild: vscode.l10n.t('▶ ビルド実行'),
+		runFlash: vscode.l10n.t('⬇ 書込み実行'),
+		// Template Gallery
+		templateGalleryTitle: vscode.l10n.t('テンプレートギャラリー'),
+		templateGallerySub: vscode.l10n.t('30種のプロジェクト雛形から選択してプロジェクトを作成します'),
+		searchTemplate: vscode.l10n.t('テンプレートを検索...'),
+		// Pin Visualizer
+		pinVisualizerTitle: vscode.l10n.t('STM32 ピンビジュアライザ'),
+		noIocFile: vscode.l10n.t('.ioc ファイルなし — MCU パッケージ JSON フォールバック'),
+		filterPlaceholder: vscode.l10n.t('ピン名 / モード / LD2 / ラベルで絞込み'),
+		filterAriaLabel: vscode.l10n.t('ピン絞込み'),
+		viewToggleAriaLabel: vscode.l10n.t('表示切替'),
+		listView: vscode.l10n.t('リスト'),
+		chipView: vscode.l10n.t('チップ図'),
+		addPin: vscode.l10n.t('+ ピン追加'),
+		pinCount: vscode.l10n.t('{0} ピン'),
+		pinCountFiltered: vscode.l10n.t('{0} ピン (絞込み中)'),
+		pinClickHint: vscode.l10n.t('ピンをクリックするとモードを変更して .ioc に反映できます'),
+		colorLegend: vscode.l10n.t('カラーレジェンド'),
+		noIocOrPins: vscode.l10n.t('.ioc ファイルが見つからないか、ピン情報を解析できませんでした。'),
+		zoomIn: vscode.l10n.t('拡大 (+)'),
+		zoomOut: vscode.l10n.t('縮小 (-)'),
+		reset: vscode.l10n.t('リセット'),
+		noPins: vscode.l10n.t('ピンなし'),
+		// Pin Visualizer — Settings tabs
+		tabPins: vscode.l10n.t('📌 ピン設定'),
+		tabGpio: vscode.l10n.t('⚡ GPIO設定'),
+		tabNvic: vscode.l10n.t('🔔 NVIC設定'),
+		tabDma: vscode.l10n.t('↔ DMA設定'),
+		tabParam: vscode.l10n.t('⚙ パラメータ設定'),
+		tabConst: vscode.l10n.t('🔑 ユーザー定数'),
+		// GPIO panel
+		gpioDetailTitle: vscode.l10n.t('GPIO 詳細設定'),
+		gpioPin: vscode.l10n.t('ピン'),
+		gpioMode: vscode.l10n.t('割当モード'),
+		gpioUserLabel: vscode.l10n.t('ユーザーラベル'),
+		gpioLabelPlaceholder: vscode.l10n.t('ラベル'),
+		gpioEmpty: vscode.l10n.t('GPIO 設定可能なピンがありません。まずピン設定タブでピンを割り当ててください。'),
+		// NVIC panel
+		nvicTitle: vscode.l10n.t('NVIC 割込み設定'),
+		nvicIrq: vscode.l10n.t('割込み名 (IRQ)'),
+		nvicEnabled: vscode.l10n.t('有効'),
+		nvicEmpty: vscode.l10n.t('.ioc に NVIC 設定がありません。CubeMX でペリフェラルを有効化してから同期してください。'),
+		// DMA panel
+		dmaTitle: vscode.l10n.t('DMA 設定'),
+		dmaKey: vscode.l10n.t('キー'),
+		dmaValue: vscode.l10n.t('値'),
+		dmaEmpty: vscode.l10n.t('DMA 設定はありません。'),
+		// Param panel
+		paramTitle: vscode.l10n.t('パラメータ設定'),
+		paramEmpty: vscode.l10n.t('パラメータ設定はありません。'),
+		// Const panel
+		constTitle: vscode.l10n.t('ユーザー定数 (ProjectManager.UserConstants)'),
+		constName: vscode.l10n.t('定数名'),
+		constValue: vscode.l10n.t('値'),
+		constNamePlaceholder: vscode.l10n.t('定数名'),
+		constValuePlaceholder: vscode.l10n.t('値'),
+		addConst: vscode.l10n.t('+ 定数を追加'),
+		confirmDeleteKey: vscode.l10n.t('キー「{0}」を削除しますか？'),
+		// Add/Edit pin dialogs
+		addPinTitle: vscode.l10n.t('ピンを追加'),
+		addPinLabel: vscode.l10n.t('ピン名 (PA0 — PK15)'),
+		addPinPlaceholder: vscode.l10n.t('例: PA5'),
+		modeLabel: vscode.l10n.t('モード'),
+		enterPinFirst: vscode.l10n.t('ピンを入力してください'),
+		noModesAvailable: vscode.l10n.t('選択可能なモードがありません'),
+		validPinRequired: vscode.l10n.t('有効なピンを入力してください'),
+		pinFormatError: vscode.l10n.t('形式エラー: PA0–PK15 の形式で入力してください'),
+		enterValidPin: vscode.l10n.t('有効なピン名を入力してください。'),
+		selectModeForPin: vscode.l10n.t('このピンで使用可能なモードを選択してください。'),
+		editPinTitle: vscode.l10n.t('ピン編集'),
+		editPinTitleWith: vscode.l10n.t('ピン編集 — {0}'),
+		currentMode: vscode.l10n.t('現在のモード: {0}'),
+		currentModeNone: vscode.l10n.t('現在のモード: —'),
+		modeSearch: vscode.l10n.t('モードを検索...'),
+		modeSearchAriaLabel: vscode.l10n.t('モード検索'),
+		// Peripheral Workbench
+		peripheralWorkbenchTitle: vscode.l10n.t('STM32 ペリフェラルワークベンチ'),
+		peripheralWorkbenchSub: vscode.l10n.t('説明書を読む前提をやめ、シナリオ選択 -> 実行ステップ -> コード生成までを1画面に統合しました。'),
+		pwmPresetTitle: vscode.l10n.t('PWM: 可変Duty'),
+		pwmPresetDesc: vscode.l10n.t('TIMで周波数調整しながらDutyスイープ'),
+		servoPresetTitle: vscode.l10n.t('Servo: 50Hz角度制御'),
+		servoPresetDesc: vscode.l10n.t('0-180度を1本の式で制御'),
+		uartPresetTitle: vscode.l10n.t('UART: 割込み受信'),
+		uartPresetDesc: vscode.l10n.t('受信コールバックと再受信の定型'),
+		i2cPresetTitle: vscode.l10n.t('I2C: MPU6050'),
+		i2cPresetDesc: vscode.l10n.t('初期化・補正・周期取得の最短構成'),
+		execSteps: vscode.l10n.t('実行ステップ'),
+		stepLead: vscode.l10n.t('現在のモードに必要な作業のみ表示します。'),
+		openMcpDesk: vscode.l10n.t('MCP操作デスク'),
+		commandCenter: vscode.l10n.t('コマンドセンター'),
+		designParams: vscode.l10n.t('設計パラメータ'),
+		codeGeneration: vscode.l10n.t('コード生成'),
+		calcWaiting: vscode.l10n.t('計算待ち'),
+		formulaNote: vscode.l10n.t('式: fPWM = fTIM / ((PSC + 1) * (ARR + 1))'),
+		formulaNotNA: vscode.l10n.t('このモードではタイマ周波数式は不要です。'),
+		calcArrBtn: vscode.l10n.t('ARR再計算'),
+		calcFreqBtn: vscode.l10n.t('実周波数を計算'),
+		genCodeBtn: vscode.l10n.t('コード生成'),
+		copyBtn: vscode.l10n.t('コピー'),
+		pinView: vscode.l10n.t('ピンビュー'),
+		boardSettings: vscode.l10n.t('ボード設定'),
+		freqResult: vscode.l10n.t('実PWM周波数: {0} Hz / 周期: {1} ms'),
+		timerCalcNA: vscode.l10n.t('{0} モードではタイマ計算は不要です。'),
+		runStep: vscode.l10n.t('実行'),
+		// Workflow Studio extra
+		wsCard1Title: vscode.l10n.t('1) 新規作成'),
+		wsCard1Desc: vscode.l10n.t('ボード選択、クロック、ミドルウェア、メモリ設定までを1画面で実施します。必要ならCubeMX DBからMCUカタログを同期します。'),
+		wsCard2Title: vscode.l10n.t('2) コーディング'),
+		wsCard2Desc: vscode.l10n.t('ビルド/書き込み/AI支援/ピン編集へ直接アクセスし、実装作業に集中します。'),
+		wsCard3Title: vscode.l10n.t('3) 設定'),
+		wsCard3Desc: vscode.l10n.t('ツール検出、パス確認、環境診断を実行し、開発環境の不整合を即時解決します。'),
+		wsTip: vscode.l10n.t('最初に迷ったら「新規作成」から開始すると、CubeMX相当の初期設定フローへ移動します。'),
+		// MCP desk extra
+		mcpStartServer: vscode.l10n.t('MCPサーバー起動'),
+		mcpStartSseServer: vscode.l10n.t('SSE MCPサーバー起動'),
+		mcpStopServer: vscode.l10n.t('MCPサーバー停止'),
+		mcpExportConfig: vscode.l10n.t('MCP設定JSONを出力'),
+		mcpComposeRpc: vscode.l10n.t('カスタムRPC JSON生成'),
+		regenerateCode: vscode.l10n.t('コード再生成'),
+		// import
+		import: vscode.l10n.t('インポート'),
+		openAction: vscode.l10n.t('開く'),
+		startAction: vscode.l10n.t('開始'),
+		openStudioAction: vscode.l10n.t('スタジオを開く'),
+		syncCatalogAction: vscode.l10n.t('カタログ同期'),
+		buildAction: vscode.l10n.t('ビルド'),
+		flashAction: vscode.l10n.t('書込み'),
+		debugAction: vscode.l10n.t('デバッグ'),
+		// Peripheral Workbench — form labels
+		timClkLabel: vscode.l10n.t('タイマクロック fTIM (Hz)'),
+		targetPwmLabel: vscode.l10n.t('目標周波数 (Hz)'),
+		channelLabel: vscode.l10n.t('チャネル'),
+		timerHandleLabel: vscode.l10n.t('タイマハンドル名'),
+		uartHandleLabel: vscode.l10n.t('UART ハンドル'),
+		i2cHandleLabel: vscode.l10n.t('I2C ハンドル'),
+		slaveAddrLabel: vscode.l10n.t('スレーブアドレス'),
+		dutyMinLabel: vscode.l10n.t('Duty 最小 (%)'),
+		dutyMaxLabel: vscode.l10n.t('Duty 最大 (%)'),
+		dutyStepLabel: vscode.l10n.t('ステップ (%)'),
+		delayMsLabel: vscode.l10n.t('遅延 (ms)'),
+		// Peripheral Workbench — PWM steps
+		pwmStep1T: vscode.l10n.t('ボードを選んでプロジェクト作成'),
+		pwmStep1D: vscode.l10n.t('最初に .ioc を作成'),
+		pwmStep2T: vscode.l10n.t('タイマCHをPWMに設定'),
+		pwmStep2D: vscode.l10n.t('CHxNではなくCHxを優先'),
+		pwmStep3T: vscode.l10n.t('ARR/PSCを入力して周波数確認'),
+		pwmStep3D: vscode.l10n.t('実周波数をUIで即計算'),
+		pwmStep4T: vscode.l10n.t('USER CODEへ貼り付け'),
+		pwmStep4D: vscode.l10n.t('START と SET_COMPARE の最小コード'),
+		pwmStep5T: vscode.l10n.t('ビルドして書込み'),
+		pwmStep5D: vscode.l10n.t('そのまま実機へ反映'),
+		pwmStep6T: vscode.l10n.t('デバッグ開始'),
+		pwmStep6D: vscode.l10n.t('波形/状態確認'),
+		// Peripheral Workbench — Servo steps
+		servoStep1T: vscode.l10n.t('ボード作成'),
+		servoStep1D: vscode.l10n.t('50Hz前提のタイマを使う'),
+		servoStep2T: vscode.l10n.t('PWM周波数を50Hzに固定'),
+		servoStep2D: vscode.l10n.t('ARR=999推奨で角度換算が簡単'),
+		servoStep3T: vscode.l10n.t('角度式コードを生成'),
+		servoStep3D: vscode.l10n.t('0-180度をcompareへ変換'),
+		servoStep4T: vscode.l10n.t('実機書込み'),
+		servoStep4D: vscode.l10n.t('サーボ挙動を確認'),
+		// Peripheral Workbench — UART steps
+		uartStep1T: vscode.l10n.t('USARTをAsynchronousに設定'),
+		uartStep1D: vscode.l10n.t('RX/TXピンを割当'),
+		uartStep2T: vscode.l10n.t('受信割込みを有効化'),
+		uartStep2D: vscode.l10n.t('NVICでUSART IRQ ON'),
+		uartStep3T: vscode.l10n.t('受信コールバックを生成'),
+		uartStep3D: vscode.l10n.t('再受信を必ず再開'),
+		uartStep4T: vscode.l10n.t('ビルドして確認'),
+		uartStep4D: vscode.l10n.t('シリアル通信テスト'),
+		// Peripheral Workbench — I2C steps
+		i2cStep1T: vscode.l10n.t('I2Cを有効化'),
+		i2cStep1D: vscode.l10n.t('SCL/SDA ピン割当'),
+		i2cStep2T: vscode.l10n.t('MPU6050ファイルを配置'),
+		i2cStep2D: vscode.l10n.t('Core/Inc と Core/Src へ追加'),
+		i2cStep3T: vscode.l10n.t('初期化/補正コードを生成'),
+		i2cStep3D: vscode.l10n.t('BEGIN 2 と WHILE に配置'),
+		i2cStep4T: vscode.l10n.t('書込みして値確認'),
+		i2cStep4D: vscode.l10n.t('角度ログを確認'),
+		// Board Configurator
+		boardStudioTitle: vscode.l10n.t('TovaIDE-STM ボード設定スタジオ'),
+		boardStudioSub: vscode.l10n.t('この画面は「プロジェクト作成専用」です。Clock Tree / Parameter Settings / NVIC / DMA / GPIO はプロジェクト生成後に .ioc 編集（ピンビジュアライザまたはCubeMX）で行います。'),
+		boardStudioNotice: vscode.l10n.t('CubeMXと件数を合わせるには、先に <b>CubeMXカタログ同期</b> を実行してください。<br/>この画面は Board DB と MCU DB を別々に読み込みます。'),
+		createMode: vscode.l10n.t('作成モード'),
+		modeFromBoard: vscode.l10n.t('Board から作成'),
+		modeFromMcu: vscode.l10n.t('MCU/MPU Selector から作成'),
+		boardSearchLabel: vscode.l10n.t('Board 検索 (Board 名 / 説明 / CPN)'),
+		boardSearchPlaceholder: vscode.l10n.t('例: NUCLEO / DISCOVERY / STM32F446RE'),
+		mcuSearchLabel: vscode.l10n.t('MCU/MPU Selector 検索 (Commercial Part Number)'),
+		mcuSearchPlaceholder: vscode.l10n.t('例: STM32F446RETX'),
+		projectNameLabel: vscode.l10n.t('プロジェクト名'),
+		openPinGuiLabel: vscode.l10n.t('作成後にピン設定GUIを開く'),
+		createProject: vscode.l10n.t('プロジェクト作成'),
+		noBoardMatch: vscode.l10n.t('一致する Board がありません'),
+		boardDbSuffix: vscode.l10n.t('件 (Board DB)'),
+		mcuDbSuffix: vscode.l10n.t('件 (MCU DB)'),
+		// MCP desk status
+		mcpRunning: vscode.l10n.t('MCP起動中: {0}'),
+		mcpStopped: vscode.l10n.t('MCP停止中: {0}'),
+		mcpNoConnection: vscode.l10n.t('接続不可'),
+	};
+}
+
 function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfile[], mcuNames: string[]): string {
 	const csp = webview.cspSource;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	const boardOptions = profiles.map(profile =>
 		`<option value="${escapeHtml(profile.id)}" data-mcu="${escapeHtml(profile.mcu)}" data-desc="${escapeHtml(profile.description)}">${escapeHtml(profile.name)} (${escapeHtml(profile.mcu)})</option>`
 	).join('');
@@ -4447,7 +4731,7 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 	).join('');
 
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -4476,24 +4760,24 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 	</style>
 </head>
 <body>
-	<h1>TovaIDE-STM ボード設定スタジオ</h1>
-	<p class="sub">この画面は「プロジェクト作成専用」です。Clock Tree / Parameter Settings / NVIC / DMA / GPIO はプロジェクト生成後に .ioc 編集（ピンビジュアライザまたはCubeMX）で行います。</p>
-	<div class="notice">CubeMXと件数を合わせるには、先に <b>CubeMXカタログ同期</b> を実行してください。<br/>この画面は Board DB と MCU DB を別々に読み込みます。</div>
+	<h1 id="bcTitle"></h1>
+	<p class="sub" id="bcSub"></p>
+	<div class="notice" id="bcNotice"></div>
 
-	<div class="mode-row" role="radiogroup" aria-label="作成モード">
-		<label class="mode-chip"><input type="radio" name="selectMode" value="board" checked /> Board から作成</label>
-		<label class="mode-chip"><input type="radio" name="selectMode" value="mcu" /> MCU/MPU Selector から作成</label>
+	<div class="mode-row" role="radiogroup" id="bcModeRow">
+		<label class="mode-chip"><input type="radio" name="selectMode" value="board" checked /> <span id="modeBoard"></span></label>
+		<label class="mode-chip"><input type="radio" name="selectMode" value="mcu" /> <span id="modeMcu"></span></label>
 	</div>
 
 	<div class="card">
 		<div id="boardPanel">
 			<div class="row">
-				<label for="boardSearch">Board 検索 (Board 名 / 説明 / CPN)</label>
-				<input id="boardSearch" type="search" placeholder="例: NUCLEO / DISCOVERY / STM32F446RE" aria-label="Board 検索" />
-				<div class="desc" id="boardSearchMeta">${profiles.length} 件 (Board DB)</div>
+				<label id="boardSearchLabel" for="boardSearch"></label>
+				<input id="boardSearch" type="search" />
+				<div class="desc" id="boardSearchMeta">${profiles.length} </div>
 			</div>
 			<div class="row">
-				<label for="boardId">Board</label>
+				<label id="boardIdLabel" for="boardId">Board</label>
 				<select id="boardId">${boardOptions}</select>
 				<div class="mcu-tag" id="boardMcu">CPN: -</div>
 				<div class="desc" id="boardDesc">-</div>
@@ -4502,30 +4786,53 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 
 		<div id="mcuPanel" class="hidden">
 			<div class="row">
-				<label for="mcuSearch">MCU/MPU Selector 検索 (Commercial Part Number)</label>
-				<input id="mcuSearch" type="search" placeholder="例: STM32F446RETX" aria-label="MCU 検索" />
-				<div class="desc" id="mcuSearchMeta">${mcuNames.length} 件 (MCU DB)</div>
+				<label id="mcuSearchLabel" for="mcuSearch"></label>
+				<input id="mcuSearch" type="search" />
+				<div class="desc" id="mcuSearchMeta">${mcuNames.length} </div>
 			</div>
 			<div class="row">
-				<label for="mcuId">MCU / MPU Selector</label>
+				<label id="mcuIdLabel" for="mcuId">MCU / MPU Selector</label>
 				<select id="mcuId">${mcuOptions}</select>
 				<div class="mcu-tag" id="mcuMetaTag">CPN: -</div>
 			</div>
 		</div>
 
 		<div class="row">
-			<label for="projectName">プロジェクト名</label>
+			<label id="projectNameLabel" for="projectName"></label>
 			<input id="projectName" value="stm32-project" maxlength="64" />
 		</div>
-		<label class="chk"><input id="openPinGui" type="checkbox" checked /> 作成後にピン設定GUIを開く</label>
+		<label class="chk"><input id="openPinGui" type="checkbox" checked /> <span id="openPinGuiLabel"></span></label>
 	</div>
 
 	<div class="btnrow">
-		<button id="createBtn" aria-label="プロジェクトを作成">プロジェクト作成</button>
+		<button id="createBtn"></button>
 	</div>
 
 	<script>
+		const _i18n = ${_i18nJson};
 		const vscode = acquireVsCodeApi();
+		// Apply i18n
+		document.getElementById('bcTitle').textContent = _i18n.boardStudioTitle;
+		document.getElementById('bcSub').textContent = _i18n.boardStudioSub;
+		document.getElementById('bcNotice').innerHTML = _i18n.boardStudioNotice;
+		document.getElementById('bcModeRow').setAttribute('aria-label', _i18n.createMode);
+		document.getElementById('modeBoard').textContent = _i18n.modeFromBoard;
+		document.getElementById('modeMcu').textContent = _i18n.modeFromMcu;
+		document.getElementById('boardSearchLabel').textContent = _i18n.boardSearchLabel;
+		document.getElementById('boardSearch').placeholder = _i18n.boardSearchPlaceholder;
+		document.getElementById('boardSearch').setAttribute('aria-label', _i18n.boardSearchLabel);
+		document.getElementById('mcuSearchLabel').textContent = _i18n.mcuSearchLabel;
+		document.getElementById('mcuSearch').placeholder = _i18n.mcuSearchPlaceholder;
+		document.getElementById('mcuSearch').setAttribute('aria-label', _i18n.mcuSearchLabel);
+		document.getElementById('projectNameLabel').textContent = _i18n.projectNameLabel;
+		document.getElementById('openPinGuiLabel').textContent = _i18n.openPinGuiLabel;
+		document.getElementById('createBtn').textContent = _i18n.createProject;
+		document.getElementById('createBtn').setAttribute('aria-label', _i18n.createProject);
+		// Append suffix to initial count displays
+		const bsmEl = document.getElementById('boardSearchMeta');
+		if (bsmEl) bsmEl.textContent = bsmEl.textContent.trim() + ' ' + _i18n.boardDbSuffix;
+		const msmEl = document.getElementById('mcuSearchMeta');
+		if (msmEl) msmEl.textContent = msmEl.textContent.trim() + ' ' + _i18n.mcuDbSuffix;
 		const boardSearch = document.getElementById('boardSearch');
 		const boardId = document.getElementById('boardId');
 		const boardSearchMeta = document.getElementById('boardSearchMeta');
@@ -4563,7 +4870,7 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 			if (filtered.length === 0) {
 				const empty = document.createElement('option');
 				empty.value = '';
-				empty.textContent = '一致する Board がありません';
+				empty.textContent = _i18n.noBoardMatch;
 				empty.disabled = true;
 				empty.selected = true;
 				boardId.appendChild(empty);
@@ -4574,14 +4881,14 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 					boardId.value = prev;
 				}
 			}
-			boardSearchMeta.textContent = filtered.length + ' / ' + allBoards.length + ' 件 (Board DB)';
+			boardSearchMeta.textContent = filtered.length + ' / ' + allBoards.length + ' ' + _i18n.boardDbSuffix;
 			updateBoardMeta();
 		}
 
 		function updateBoardMeta() {
 			if (boardId.disabled || boardId.selectedIndex < 0) {
 				boardMcu.textContent = 'CPN: -';
-				boardDesc.textContent = '一致する Board がありません。';
+				boardDesc.textContent = _i18n.noBoardMatch;
 				return;
 			}
 			const opt = boardId.options[boardId.selectedIndex];
@@ -4603,7 +4910,7 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 			if (filtered.length > 0 && filtered.includes(prev)) {
 				mcuId.value = prev;
 			}
-			mcuSearchMeta.textContent = filtered.length + ' / ' + allMcu.length + ' 件 (MCU DB)';
+			mcuSearchMeta.textContent = filtered.length + ' / ' + allMcu.length + ' ' + _i18n.mcuDbSuffix;
 			mcuMetaTag.textContent = 'CPN: ' + (mcuId.value || '-');
 		}
 
@@ -4644,8 +4951,10 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 
 function getOnboardingHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -4667,24 +4976,49 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 </head>
 <body>
 	<div class="hero">
-		<h1>TovaIDE-STM ダッシュボード</h1>
-		<p>CubeIDEの実運用フローに合わせて、作成・設定・ビルド・書込み・MCP操作をここから開始します。</p>
+		<h1 id="dashTitle"></h1>
+		<p id="dashSub"></p>
 	</div>
 	<div class="grid">
-		<button class="btn" id="studio"><span class="badge">MODE</span><span class="label">ワークフロースタジオ</span><span class="meta">作成/コーディング/設定</span></button>
-		<button class="btn" id="board"><span class="badge">NEW</span><span class="label">ボード設定スタジオ</span><span class="meta">CubeMX不要の初期作成</span></button>
-		<button class="btn" id="syncCatalog"><span class="badge">MCU</span><span class="label">CubeMXカタログ同期</span><span class="meta">5000+ MCU取り込み</span></button>
-		<button class="btn" id="pin"><span class="badge">PIN</span><span class="label">ピンビジュアライザ</span><span class="meta">チップ図とピン編集</span></button>
-		<button class="btn" id="pwmLab"><span class="badge">LAB</span><span class="label">ペリフェラルワークベンチ</span><span class="meta">PWM/UART/I2C/サーボ</span></button>
-		<button class="btn" id="svd"><span class="badge">DBG</span><span class="label">SVDレジスタ表示を更新</span><span class="meta">フォールバック含め表示</span></button>
-		<button class="btn" id="build"><span class="badge">BUILD</span><span class="label">Debugビルド</span><span class="meta">エラー位置へ即移動</span></button>
-		<button class="btn" id="flash"><span class="badge">FLASH</span><span class="label">書込み</span><span class="meta">STM32_Programmer_CLI</span></button>
-		<button class="btn" id="debug"><span class="badge">GDB</span><span class="label">デバッグ開始</span><span class="meta">ST-LINK GDB Server</span></button>
-		<button class="btn" id="collab"><span class="badge">COLLAB</span><span class="label">共同作業パネル</span><span class="meta">LAN/WS/Git共有</span></button>
-		<button class="btn" id="mcp"><span class="badge">MCP</span><span class="label">MCPオペレーションデスク</span><span class="meta">全操作のRPC化</span></button>
+		<button class="btn" id="studio"><span class="badge">MODE</span><span class="label" id="lStudio"></span><span class="meta" id="mStudio"></span></button>
+		<button class="btn" id="board"><span class="badge">NEW</span><span class="label" id="lBoard"></span><span class="meta" id="mBoard"></span></button>
+		<button class="btn" id="syncCatalog"><span class="badge">MCU</span><span class="label" id="lSync"></span><span class="meta" id="mSync"></span></button>
+		<button class="btn" id="pin"><span class="badge">PIN</span><span class="label" id="lPin"></span><span class="meta" id="mPin"></span></button>
+		<button class="btn" id="pwmLab"><span class="badge">LAB</span><span class="label" id="lPwm"></span><span class="meta" id="mPwm"></span></button>
+		<button class="btn" id="svd"><span class="badge">DBG</span><span class="label" id="lSvd"></span><span class="meta" id="mSvd"></span></button>
+		<button class="btn" id="build"><span class="badge">BUILD</span><span class="label" id="lBuild"></span><span class="meta" id="mBuild"></span></button>
+		<button class="btn" id="flash"><span class="badge">FLASH</span><span class="label" id="lFlash"></span><span class="meta" id="mFlash"></span></button>
+		<button class="btn" id="debug"><span class="badge">GDB</span><span class="label" id="lDebug"></span><span class="meta" id="mDebug"></span></button>
+		<button class="btn" id="collab"><span class="badge">COLLAB</span><span class="label" id="lCollab"></span><span class="meta" id="mCollab"></span></button>
+		<button class="btn" id="mcp"><span class="badge">MCP</span><span class="label" id="lMcp"></span><span class="meta" id="mMcp"></span></button>
 	</div>
 <script>
+	const _i18n = ${_i18nJson};
 	const vscode = acquireVsCodeApi();
+	document.getElementById('dashTitle').textContent = _i18n.dashboardTitle;
+	document.getElementById('dashSub').textContent = _i18n.dashboardSub;
+	document.getElementById('lStudio').textContent = _i18n.workflowStudio;
+	document.getElementById('mStudio').textContent = _i18n.workflowStudioMeta;
+	document.getElementById('lBoard').textContent = _i18n.boardStudio;
+	document.getElementById('mBoard').textContent = _i18n.boardStudioMeta;
+	document.getElementById('lSync').textContent = _i18n.cubemxSync;
+	document.getElementById('mSync').textContent = _i18n.cubemxSyncMeta;
+	document.getElementById('lPin').textContent = _i18n.pinVisualizer;
+	document.getElementById('mPin').textContent = _i18n.pinVisualizerMeta;
+	document.getElementById('lPwm').textContent = _i18n.peripheralWorkbench;
+	document.getElementById('mPwm').textContent = _i18n.peripheralWorkbenchMeta;
+	document.getElementById('lSvd').textContent = _i18n.svdRefresh;
+	document.getElementById('mSvd').textContent = _i18n.svdRefreshMeta;
+	document.getElementById('lBuild').textContent = _i18n.buildDebug;
+	document.getElementById('mBuild').textContent = _i18n.buildDebugMeta;
+	document.getElementById('lFlash').textContent = _i18n.flash;
+	document.getElementById('mFlash').textContent = _i18n.flashMeta;
+	document.getElementById('lDebug').textContent = _i18n.debugStart;
+	document.getElementById('mDebug').textContent = _i18n.debugStartMeta;
+	document.getElementById('lCollab').textContent = _i18n.collabPanel;
+	document.getElementById('mCollab').textContent = _i18n.collabPanelMeta;
+	document.getElementById('lMcp').textContent = _i18n.mcpDesk;
+	document.getElementById('mMcp').textContent = _i18n.mcpDeskMeta;
 	for (const id of ['studio','board','syncCatalog','pin','pwmLab','svd','build','flash','debug','collab','mcp']) {
 		document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 	}
@@ -4695,8 +5029,10 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 
 function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -4718,25 +5054,30 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 	</style>
 </head>
 <body>
-	<h1>STM32 MCP オペレーションデスク</h1>
-	<div class="sub">ここから起動する操作は、同じ内容を MCP JSON-RPC でも呼べるように実装されています。</div>
-	<div id="mcpStatus" class="status off">MCP 状態確認中...</div>
+	<h1 id="mcpDeskTitle"></h1>
+	<div class="sub" id="mcpDeskSub"></div>
+	<div id="mcpStatus" class="status off" data-checking=""></div>
 	<div class="grid">
-		<button id="startMcp"><div class="t">MCPサーバー起動</div><div class="d">stm32ai.startMcpServer</div></button>
-		<button id="startSseMcp"><div class="t">SSE MCPサーバー起動</div><div class="d">http://127.0.0.1:3737/sse</div></button>
-		<button id="stopMcp"><div class="t">MCPサーバー停止</div><div class="d">stm32ai.stopMcpServer</div></button>
-		<button id="envSettings"><div class="t">環境設定</div><div class="d">make / CubeMX パス設定</div></button>
-		<button id="exportConfig"><div class="t">MCP設定JSONを出力</div><div class="d">.vscode/stm32-mcp.config.json</div></button>
-		<button id="composeRpc"><div class="t">カスタムRPC JSON生成</div><div class="d">任意method/paramsで生成</div></button>
-		<button id="build"><div class="t">ビルド</div><div class="d">method: stm32.build</div></button>
-		<button id="flash"><div class="t">書込み</div><div class="d">method: stm32.flash</div></button>
-		<button id="regen"><div class="t">コード再生成</div><div class="d">method: stm32.regenerateCode</div></button>
-		<button id="board"><div class="t">ボード設定</div><div class="d">method: stm32.openBoardConfigurator</div></button>
-		<button id="collab"><div class="t">共同作業</div><div class="d">method: stm32.collab.openPanel</div></button>
-		<button id="svd"><div class="t">SVD更新</div><div class="d">method: stm32.refreshRegisters</div></button>
+		<button id="startMcp"><div class="t" data-i18n="mcpStartServer"></div><div class="d">stm32ai.startMcpServer</div></button>
+		<button id="startSseMcp"><div class="t" data-i18n="mcpStartSseServer"></div><div class="d">http://127.0.0.1:3737/sse</div></button>
+		<button id="stopMcp"><div class="t" data-i18n="mcpStopServer"></div><div class="d">stm32ai.stopMcpServer</div></button>
+		<button id="envSettings"><div class="t" data-i18n="envSettings"></div><div class="d">make / CubeMX パス設定</div></button>
+		<button id="exportConfig"><div class="t" data-i18n="mcpExportConfig"></div><div class="d">.vscode/stm32-mcp.config.json</div></button>
+		<button id="composeRpc"><div class="t" data-i18n="mcpComposeRpc"></div><div class="d">任意method/paramsで生成</div></button>
+		<button id="build"><div class="t" data-i18n="buildDebug"></div><div class="d">method: stm32.build</div></button>
+		<button id="flash"><div class="t" data-i18n="flash"></div><div class="d">method: stm32.flash</div></button>
+		<button id="regen"><div class="t" data-i18n="regenerateCode"></div><div class="d">method: stm32.regenerateCode</div></button>
+		<button id="board"><div class="t" data-i18n="boardConfig"></div><div class="d">method: stm32.openBoardConfigurator</div></button>
+		<button id="collab"><div class="t" data-i18n="collabPanel"></div><div class="d">method: stm32.collab.openPanel</div></button>
+		<button id="svd"><div class="t" data-i18n="svdRefresh"></div><div class="d">method: stm32.refreshRegisters</div></button>
 	</div>
 	<script>
+		const _i18n = ${_i18nJson};
 		const vscode = acquireVsCodeApi();
+		document.getElementById('mcpDeskTitle').textContent = _i18n.mcpDeskTitle;
+		document.getElementById('mcpDeskSub').textContent = _i18n.mcpDeskSub;
+		document.getElementById('mcpStatus').textContent = _i18n.mcpStatusChecking;
+		document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.getAttribute('data-i18n'); if (_i18n[k]) el.textContent = _i18n[k]; });
 		const startBtn = document.getElementById('startMcp');
 		const stopBtn = document.getElementById('stopMcp');
 		const statusNode = document.getElementById('mcpStatus');
@@ -4748,8 +5089,8 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 			statusNode.classList.toggle('off', !running);
 			const endpoint = payload.endpoint ? (' / ' + payload.endpoint) : '';
 			statusNode.textContent = running
-				? ('MCP起動中: ' + (payload.detail || '') + endpoint)
-				: ('MCP停止中: ' + (payload.detail || '接続不可'));
+				? _i18n.mcpRunning.replace('{0}', (payload.detail || '') + endpoint)
+				: _i18n.mcpStopped.replace('{0}', payload.detail || _i18n.mcpNoConnection);
 		}
 
 		window.addEventListener('message', event => {
@@ -4770,8 +5111,10 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 
 function getWorkflowStudioHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -4803,38 +5146,49 @@ function getWorkflowStudioHtml(webview: vscode.Webview): string {
 	</style>
 </head>
 <body>
-	<h1>STM32 ワークフロースタジオ</h1>
-	<p class="sub">作業文脈ごとに画面を分離: 新規作成・コーディング・設定の3モードから開始できます。</p>
+	<h1 id="wsTitle"></h1>
+	<p class="sub" id="wsSub"></p>
 	<div class="grid">
 		<div class="card">
-			<div class="ttl">1) 新規作成 <span class="badge">Create</span></div>
-			<p class="desc">ボード選択、クロック、ミドルウェア、メモリ設定までを1画面で実施します。必要ならCubeMX DBからMCUカタログを同期します。</p>
+			<div class="ttl" id="wsCard1Title"></div>
+			<p class="desc" id="wsCard1Desc"></p>
 			<div class="actions">
-				<button class="primary" id="create">ボード設定スタジオを開く</button>
-				<button id="syncCatalog">CubeMX カタログ同期</button>
-				<button id="tutorial">Lチカチュートリアル</button>
+				<button class="primary" id="create" data-i18n="boardStudio"></button>
+				<button id="syncCatalog" data-i18n="cubemxSync"></button>
+				<button id="tutorial" data-i18n="tutorial"></button>
 			</div>
 		</div>
 		<div class="card">
-			<div class="ttl">2) コーディング <span class="badge">Code</span></div>
-			<p class="desc">ビルド/書き込み/AI支援/ピン編集へ直接アクセスし、実装作業に集中します。</p>
+			<div class="ttl" id="wsCard2Title"></div>
+			<p class="desc" id="wsCard2Desc"></p>
 			<div class="actions">
-				<button class="primary" id="coding">STM32 コマンドセンター</button>
-				<button id="pins">ピンビジュアライザ</button>
-				<button id="pwmLab">ペリフェラルワークベンチ</button>
+				<button class="primary" id="coding" data-i18n="commandCenter"></button>
+				<button id="pins" data-i18n="pinVisualizer"></button>
+				<button id="pwmLab" data-i18n="peripheralWorkbench"></button>
 			</div>
 		</div>
 		<div class="card">
-			<div class="ttl">3) 設定 <span class="badge">Setup</span></div>
-			<p class="desc">ツール検出、パス確認、環境診断を実行し、開発環境の不整合を即時解決します。</p>
+			<div class="ttl" id="wsCard3Title"></div>
+			<p class="desc" id="wsCard3Desc"></p>
 			<div class="actions">
-				<button class="primary" id="settings">環境チェックを実行</button>
+				<button class="primary" id="settings" data-i18n="envCheck"></button>
 			</div>
 		</div>
 	</div>
-	<p class="tip">最初に迷ったら「新規作成」から開始すると、CubeMX相当の初期設定フローへ移動します。</p>
+	<p class="tip" id="wsTip"></p>
 	<script>
+		const _i18n = ${_i18nJson};
 		const vscode = acquireVsCodeApi();
+		document.getElementById('wsTitle').textContent = _i18n.workflowStudioTitle;
+		document.getElementById('wsSub').textContent = _i18n.workflowStudioSub;
+		document.getElementById('wsCard1Title').innerHTML = _i18n.wsCard1Title || ('1) ' + _i18n.templateCreate + ' <span class="badge">Create</span>');
+		document.getElementById('wsCard1Desc').textContent = _i18n.wsCard1Desc || '';
+		document.getElementById('wsCard2Title').innerHTML = _i18n.wsCard2Title || ('2) ' + (_i18n.codingMode || 'Coding') + ' <span class="badge">Code</span>');
+		document.getElementById('wsCard2Desc').textContent = _i18n.wsCard2Desc || '';
+		document.getElementById('wsCard3Title').innerHTML = _i18n.wsCard3Title || ('3) ' + _i18n.envSettings + ' <span class="badge">Setup</span>');
+		document.getElementById('wsCard3Desc').textContent = _i18n.wsCard3Desc || '';
+		document.getElementById('wsTip').textContent = _i18n.wsTip || '';
+		document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.getAttribute('data-i18n'); if (_i18n[k]) el.textContent = _i18n[k]; });
 		for (const id of ['create', 'coding', 'settings', 'tutorial', 'pins', 'pwmLab', 'syncCatalog']) {
 			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 		}
@@ -4845,8 +5199,10 @@ function getWorkflowStudioHtml(webview: vscode.Webview): string {
 
 function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -4887,110 +5243,139 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 	</style>
 </head>
 <body>
-	<h1>STM32 ペリフェラルワークベンチ</h1>
-	<p class="sub">説明書を読む前提をやめ、シナリオ選択 -> 実行ステップ -> コード生成までを1画面に統合しました。</p>
+	<h1 id="pwTitle"></h1>
+	<p class="sub" id="pwSub"></p>
 
 	<div class="preset-grid">
-		<button class="preset" id="presetPwm"><div class="t">PWM: 可変Duty</div><div class="d">TIMで周波数調整しながらDutyスイープ</div></button>
-		<button class="preset" id="presetServo"><div class="t">Servo: 50Hz角度制御</div><div class="d">0-180度を1本の式で制御</div></button>
-		<button class="preset" id="presetUart"><div class="t">UART: 割込み受信</div><div class="d">受信コールバックと再受信の定型</div></button>
-		<button class="preset" id="presetI2c"><div class="t">I2C: MPU6050</div><div class="d">初期化・補正・周期取得の最短構成</div></button>
+		<button class="preset" id="presetPwm"><div class="t" id="pwmT"></div><div class="d" id="pwmD"></div></button>
+		<button class="preset" id="presetServo"><div class="t" id="servoT"></div><div class="d" id="servoD"></div></button>
+		<button class="preset" id="presetUart"><div class="t" id="uartT"></div><div class="d" id="uartD"></div></button>
+		<button class="preset" id="presetI2c"><div class="t" id="i2cT"></div><div class="d" id="i2cD"></div></button>
 	</div>
 
 	<div class="layout">
 		<div class="card">
-			<div class="ttl">実行ステップ</div>
-			<div class="muted" id="stepLead">現在のモードに必要な作業のみ表示します。</div>
+			<div class="ttl" id="execStepsTitle"></div>
+			<div class="muted" id="stepLead"></div>
 			<div class="badge" id="modeBadge">Mode: PWM</div>
 			<div class="step-list" id="stepList"></div>
 			<div class="actions">
-				<button id="openMcp">MCP操作デスク</button>
-				<button id="openCommandCenter">コマンドセンター</button>
+				<button id="openMcp" data-i18n="openMcpDesk"></button>
+				<button id="openCommandCenter" data-i18n="commandCenter"></button>
 			</div>
 		</div>
 
 		<div class="card">
-			<div class="ttl">設計パラメータ</div>
+			<div class="ttl" id="designParamsTitle"></div>
 			<div class="row" id="timingRowA">
-				<div><label>タイマクロック fTIM (Hz)</label><input id="timClk" type="number" value="80000000" min="1" step="1" /></div>
-				<div><label>目標周波数 (Hz)</label><input id="targetPwm" type="number" value="30000" min="1" step="1" /></div>
+				<div><label id="lTimClk"></label><input id="timClk" type="number" value="80000000" min="1" step="1" /></div>
+				<div><label id="lTargetPwm"></label><input id="targetPwm" type="number" value="30000" min="1" step="1" /></div>
 			</div>
 			<div class="row" id="timingRowB">
 				<div><label>Prescaler</label><input id="psc" type="number" value="0" min="0" step="1" /></div>
 				<div><label>Counter Period (ARR)</label><input id="arr" type="number" value="255" min="1" step="1" /></div>
 			</div>
 			<div class="row" id="timingRowC">
-				<div><label>チャネル</label><select id="channel"><option>TIM_CHANNEL_1</option><option>TIM_CHANNEL_2</option><option>TIM_CHANNEL_3</option><option>TIM_CHANNEL_4</option></select></div>
-				<div><label>タイマハンドル名</label><input id="timerHandle" value="htim15" /></div>
+				<div><label id="lChannel"></label><select id="channel"><option>TIM_CHANNEL_1</option><option>TIM_CHANNEL_2</option><option>TIM_CHANNEL_3</option><option>TIM_CHANNEL_4</option></select></div>
+				<div><label id="lTimerHandle"></label><input id="timerHandle" value="htim15" /></div>
 			</div>
 
 			<div class="row hidden" id="uartRow">
-				<div><label>UART ハンドル</label><input id="uartHandle" value="huart1" /></div>
+				<div><label id="lUartHandle"></label><input id="uartHandle" value="huart1" /></div>
 				<div><label>Baudrate</label><input id="baudRate" type="number" value="115200" min="1" step="1" /></div>
 			</div>
 
 			<div class="row hidden" id="i2cRow">
-				<div><label>I2C ハンドル</label><input id="i2cHandle" value="hi2c1" /></div>
-				<div><label>スレーブアドレス(hex)</label><input id="slaveAddr" value="0x68" /></div>
+				<div><label id="lI2cHandle"></label><input id="i2cHandle" value="hi2c1" /></div>
+				<div><label id="lSlaveAddr"></label><input id="slaveAddr" value="0x68" /></div>
 			</div>
 
 			<div class="actions" id="timerActions">
-				<button class="primary" id="calcArr">ARR再計算</button>
-				<button id="calcFreq">実周波数を計算</button>
+				<button class="primary" id="calcArr" data-i18n="calcArrBtn"></button>
+				<button id="calcFreq" data-i18n="calcFreqBtn"></button>
 			</div>
-			<div class="kpi" id="result">計算待ち</div>
-			<div class="muted" id="formulaNote">式: fPWM = fTIM / ((PSC + 1) * (ARR + 1))</div>
+			<div class="kpi" id="result"></div>
+			<div class="muted" id="formulaNote"></div>
 
-			<div class="ttl" style="margin-top:8px">コード生成</div>
+			<div class="ttl" style="margin-top:8px" id="codeGenTitle"></div>
 			<div class="row" id="dutyRow">
-				<div><label>デューティ最小 (%)</label><input id="dutyMin" type="number" value="0" min="0" max="100" step="1" /></div>
-				<div><label>デューティ最大 (%)</label><input id="dutyMax" type="number" value="100" min="0" max="100" step="1" /></div>
+				<div><label data-i18n="dutyMinLabel"></label><input id="dutyMin" type="number" value="0" min="0" max="100" step="1" /></div>
+				<div><label data-i18n="dutyMaxLabel"></label><input id="dutyMax" type="number" value="100" min="0" max="100" step="1" /></div>
 			</div>
 			<div class="row" id="sweepRow">
-				<div><label>ステップ (%)</label><input id="dutyStep" type="number" value="1" min="1" max="100" step="1" /></div>
-				<div><label>遅延 (ms)</label><input id="delayMs" type="number" value="10" min="0" step="1" /></div>
+				<div><label id="lDutyStep"></label><input id="dutyStep" type="number" value="1" min="1" max="100" step="1" /></div>
+				<div><label id="lDelayMs"></label><input id="delayMs" type="number" value="10" min="0" step="1" /></div>
 			</div>
 			<div class="actions">
-				<button class="primary" id="genCode">コード生成</button>
-				<button id="copyCode">コピー</button>
-				<button id="openPins">ピンビュー</button>
-				<button id="openBoard">ボード設定</button>
+				<button class="primary" id="genCode" data-i18n="genCodeBtn"></button>
+				<button id="copyCode" data-i18n="copyBtn"></button>
+				<button id="openPins" data-i18n="pinView"></button>
+				<button id="openBoard" data-i18n="boardSettings"></button>
 			</div>
 			<textarea id="codeOut" readonly></textarea>
 		</div>
 	</div>
 
 	<script>
+		const _i18n = ${_i18nJson};
 		const vscode = acquireVsCodeApi();
 		const el = id => document.getElementById(id);
 		let mode = 'PWM';
+		// Apply i18n
+		el('pwTitle').textContent = _i18n.peripheralWorkbenchTitle;
+		el('pwSub').textContent = _i18n.peripheralWorkbenchSub;
+		el('pwmT').textContent = _i18n.pwmPresetTitle;
+		el('pwmD').textContent = _i18n.pwmPresetDesc;
+		el('servoT').textContent = _i18n.servoPresetTitle;
+		el('servoD').textContent = _i18n.servoPresetDesc;
+		el('uartT').textContent = _i18n.uartPresetTitle;
+		el('uartD').textContent = _i18n.uartPresetDesc;
+		el('i2cT').textContent = _i18n.i2cPresetTitle;
+		el('i2cD').textContent = _i18n.i2cPresetDesc;
+		el('execStepsTitle').textContent = _i18n.execSteps;
+		el('stepLead').textContent = _i18n.stepLead;
+		el('designParamsTitle').textContent = _i18n.designParams;
+		el('result').textContent = _i18n.calcWaiting;
+		el('formulaNote').textContent = _i18n.formulaNote;
+		el('codeGenTitle').textContent = _i18n.codeGeneration;
+		// label assignments
+		if (el('lTimClk')) el('lTimClk').textContent = _i18n.timClkLabel;
+		if (el('lTargetPwm')) el('lTargetPwm').textContent = _i18n.targetPwmLabel;
+		if (el('lChannel')) el('lChannel').textContent = _i18n.channelLabel;
+		if (el('lTimerHandle')) el('lTimerHandle').textContent = _i18n.timerHandleLabel;
+		if (el('lUartHandle')) el('lUartHandle').textContent = _i18n.uartHandleLabel;
+		if (el('lI2cHandle')) el('lI2cHandle').textContent = _i18n.i2cHandleLabel;
+		if (el('lSlaveAddr')) el('lSlaveAddr').textContent = _i18n.slaveAddrLabel;
+		if (el('lDutyStep')) el('lDutyStep').textContent = _i18n.dutyStepLabel;
+		if (el('lDelayMs')) el('lDelayMs').textContent = _i18n.delayMsLabel;
+		document.querySelectorAll('[data-i18n]').forEach(e => { const k = e.getAttribute('data-i18n'); if (_i18n[k]) e.textContent = _i18n[k]; });
 
 		const stepsByMode = {
 			PWM: [
-				{ title: 'ボードを選んでプロジェクト作成', desc: '最初に .ioc を作成', action: 'openBoard', actionLabel: '開く' },
-				{ title: 'タイマCHをPWMに設定', desc: 'CHxNではなくCHxを優先' },
-				{ title: 'ARR/PSCを入力して周波数確認', desc: '実周波数をUIで即計算' },
-				{ title: 'USER CODEへ貼り付け', desc: 'START と SET_COMPARE の最小コード', action: 'copyCode', actionLabel: 'コピー' },
-				{ title: 'ビルドして書込み', desc: 'そのまま実機へ反映', action: 'runBuild', actionLabel: 'ビルド' },
-				{ title: 'デバッグ開始', desc: '波形/状態確認', action: 'runDebug', actionLabel: 'デバッグ' }
+				{ title: _i18n.pwmStep1T, desc: _i18n.pwmStep1D, action: 'openBoard', actionLabel: _i18n.openAction },
+				{ title: _i18n.pwmStep2T, desc: _i18n.pwmStep2D },
+				{ title: _i18n.pwmStep3T, desc: _i18n.pwmStep3D },
+				{ title: _i18n.pwmStep4T, desc: _i18n.pwmStep4D, action: 'copyCode', actionLabel: _i18n.copyBtn },
+				{ title: _i18n.pwmStep5T, desc: _i18n.pwmStep5D, action: 'runBuild', actionLabel: _i18n.buildAction },
+				{ title: _i18n.pwmStep6T, desc: _i18n.pwmStep6D, action: 'runDebug', actionLabel: _i18n.debugAction }
 			],
 			Servo: [
-				{ title: 'ボード作成', desc: '50Hz前提のタイマを使う', action: 'openBoard', actionLabel: '開く' },
-				{ title: 'PWM周波数を50Hzに固定', desc: 'ARR=999推奨で角度換算が簡単' },
-				{ title: '角度式コードを生成', desc: '0-180度をcompareへ変換', action: 'copyCode', actionLabel: 'コピー' },
-				{ title: '実機書込み', desc: 'サーボ挙動を確認', action: 'runFlash', actionLabel: '書込み' }
+				{ title: _i18n.servoStep1T, desc: _i18n.servoStep1D, action: 'openBoard', actionLabel: _i18n.openAction },
+				{ title: _i18n.servoStep2T, desc: _i18n.servoStep2D },
+				{ title: _i18n.servoStep3T, desc: _i18n.servoStep3D, action: 'copyCode', actionLabel: _i18n.copyBtn },
+				{ title: _i18n.servoStep4T, desc: _i18n.servoStep4D, action: 'runFlash', actionLabel: _i18n.flashAction }
 			],
 			UART: [
-				{ title: 'USARTをAsynchronousに設定', desc: 'RX/TXピンを割当', action: 'openPins', actionLabel: '開く' },
-				{ title: '受信割込みを有効化', desc: 'NVICでUSART IRQ ON' },
-				{ title: '受信コールバックを生成', desc: '再受信を必ず再開', action: 'copyCode', actionLabel: 'コピー' },
-				{ title: 'ビルドして確認', desc: 'シリアル通信テスト', action: 'runBuild', actionLabel: 'ビルド' }
+				{ title: _i18n.uartStep1T, desc: _i18n.uartStep1D, action: 'openPins', actionLabel: _i18n.openAction },
+				{ title: _i18n.uartStep2T, desc: _i18n.uartStep2D },
+				{ title: _i18n.uartStep3T, desc: _i18n.uartStep3D, action: 'copyCode', actionLabel: _i18n.copyBtn },
+				{ title: _i18n.uartStep4T, desc: _i18n.uartStep4D, action: 'runBuild', actionLabel: _i18n.buildAction }
 			],
 			I2C: [
-				{ title: 'I2Cを有効化', desc: 'SCL/SDA ピン割当', action: 'openPins', actionLabel: '開く' },
-				{ title: 'MPU6050ファイルを配置', desc: 'Core/Inc と Core/Src へ追加' },
-				{ title: '初期化/補正コードを生成', desc: 'BEGIN 2 と WHILE に配置', action: 'copyCode', actionLabel: 'コピー' },
-				{ title: '書込みして値確認', desc: '角度ログを確認', action: 'runFlash', actionLabel: '書込み' }
+				{ title: _i18n.i2cStep1T, desc: _i18n.i2cStep1D, action: 'openPins', actionLabel: _i18n.openAction },
+				{ title: _i18n.i2cStep2T, desc: _i18n.i2cStep2D },
+				{ title: _i18n.i2cStep3T, desc: _i18n.i2cStep3D, action: 'copyCode', actionLabel: _i18n.copyBtn },
+				{ title: _i18n.i2cStep4T, desc: _i18n.i2cStep4D, action: 'runFlash', actionLabel: _i18n.flashAction }
 			]
 		};
 
@@ -5027,12 +5412,12 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 
 		function calcFreq() {
 			if (mode === 'UART' || mode === 'I2C') {
-				el('result').textContent = mode + ' モードではタイマ計算は不要です。';
+				el('result').textContent = _i18n.timerCalcNA.replace('{0}', mode);
 				return;
 			}
 			const p = currentParams();
 			const freq = p.timClk / ((p.psc + 1) * (p.arr + 1));
-			el('result').textContent = '実PWM周波数: ' + freq.toFixed(2) + ' Hz / 周期: ' + (1000 / freq).toFixed(3) + ' ms';
+			el('result').textContent = _i18n.freqResult.replace('{0}', freq.toFixed(2)).replace('{1}', (1000 / freq).toFixed(3));
 		}
 
 		function calcArr() {
@@ -5061,7 +5446,7 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 				row.appendChild(body);
 				if (item.action) {
 					const btn = document.createElement('button');
-					btn.textContent = item.actionLabel || '実行';
+					btn.textContent = item.actionLabel || _i18n.runStep;
 					btn.addEventListener('click', () => {
 						if (item.action === 'copyCode') {
 							vscode.postMessage({ type: 'copyText', value: el('codeOut').value });
@@ -5182,7 +5567,7 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 			}
 			el('uartRow').classList.toggle('hidden', mode !== 'UART');
 			el('i2cRow').classList.toggle('hidden', mode !== 'I2C');
-			el('formulaNote').textContent = timerVisible ? '式: fPWM = fTIM / ((PSC + 1) * (ARR + 1))' : 'このモードではタイマ周波数式は不要です。';
+			el('formulaNote').textContent = timerVisible ? _i18n.formulaNote : _i18n.formulaNotNA;
 			renderSteps();
 			calcFreq();
 			genCode();
@@ -5219,8 +5604,10 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 
 function getWelcomeHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -5248,56 +5635,83 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	</style>
 </head>
 <body>
-		<h1>TovaIDE-STM ウェルカム</h1>
-<p class="sub">最初に使う操作をテキスト中心でまとめています。必要な項目を選択して開発を開始してください。</p>
+		<h1 id="wlcTitle"></h1>
+<p class="sub" id="wlcSub"></p>
 
 <h2>Quick Start</h2>
-<ul class="action-list" aria-label="クイックスタート操作">
+<ul class="action-list" id="quickStartList">
 	<li class="action-item">
-		<div class="action-name">チュートリアル</div>
-		<div class="action-desc">Lチカの手順を順番に実行して、ビルドから書込みまで確認します。</div>
-		<button class="action-btn" id="tutorial" aria-label="チュートリアルを開始">開始</button>
+		<div class="action-name" id="wlcTutName"></div>
+		<div class="action-desc" id="wlcTutDesc"></div>
+		<button class="action-btn" id="tutorial" id="tutorial"></button>
 	</li>
 	<li class="action-item">
-		<div class="action-name">CubeIDE から移行</div>
-		<div class="action-desc">既存の STM32CubeIDE プロジェクトをインポートします。</div>
-		<button class="action-btn" id="import" aria-label="CubeIDEインポート">インポート</button>
+		<div class="action-name" id="wlcImportName"></div>
+		<div class="action-desc" id="wlcImportDesc"></div>
+		<button class="action-btn" id="import"></button>
 	</li>
 	<li class="action-item">
-		<div class="action-name">テンプレート作成</div>
-		<div class="action-desc">用途別テンプレートから新規プロジェクトを生成します。</div>
-		<button class="action-btn" id="templates" aria-label="テンプレートギャラリー">開く</button>
+		<div class="action-name" id="wlcTplName"></div>
+		<div class="action-desc" id="wlcTplDesc"></div>
+		<button class="action-btn" id="templates"></button>
 	</li>
 	<li class="action-item">
-		<div class="action-name">基板設定</div>
-		<div class="action-desc">基板を選択し、クロックやデバッグ設定を行ってプロジェクトを作成します。</div>
-		<button class="action-btn" id="board" aria-label="ボード設定スタジオ">開く</button>
+		<div class="action-name" id="wlcBoardName"></div>
+		<div class="action-desc" id="wlcBoardDesc"></div>
+		<button class="action-btn" id="board"></button>
 	</li>
 	<li class="action-item">
-		<div class="action-name">作業フロー</div>
-		<div class="action-desc">新規作成 / コーディング / 設定をモード別に起動します。</div>
+		<div class="action-name" id="wlcWfName"></div>
+		<div class="action-desc" id="wlcWfDesc"></div>
 		<div>
-			<button class="action-btn" id="studio" aria-label="ワークフロースタジオ">スタジオを開く</button>
-			<button class="action-btn" id="syncCatalog" aria-label="CubeMXカタログ同期">カタログ同期</button>
+			<button class="action-btn" id="studio"></button>
+			<button class="action-btn" id="syncCatalog"></button>
 		</div>
 	</li>
 	<li class="action-item">
-		<div class="action-name">ペリフェラル実装</div>
-		<div class="action-desc">PWM/UART/I2C/サーボの設定ガイドとコード雛形を生成します。</div>
-		<button class="action-btn" id="periphLab" aria-label="ペリフェラルワークベンチ">開く</button>
+		<div class="action-name" id="wlcPeriName"></div>
+		<div class="action-desc" id="wlcPeriDesc"></div>
+		<button class="action-btn" id="periphLab"></button>
 	</li>
 </ul>
 
 <div class="links">
-	<button class="link-btn" id="env" aria-label="環境チェック">環境チェック</button>
-	<button class="link-btn" id="envSettings" aria-label="環境設定">環境設定</button>
-	<button class="link-btn" id="pin" aria-label="ピンビジュアライザ">ピンビジュアライザ</button>
-	<button class="link-btn" id="pwmLab" aria-label="ペリフェラルワークベンチ">ペリフェラルワークベンチ</button>
-	<button class="link-btn" id="error" aria-label="エラー解説">エラー自動解説</button>
+	<button class="link-btn" id="env"></button>
+	<button class="link-btn" id="envSettings"></button>
+	<button class="link-btn" id="pin"></button>
+	<button class="link-btn" id="pwmLab"></button>
+	<button class="link-btn" id="error"></button>
 </div>
 
 <script>
+	const _i18n = ${_i18nJson};
 	const vscode = acquireVsCodeApi();
+	document.getElementById('wlcTitle').textContent = _i18n.welcomeTitle;
+	document.getElementById('wlcSub').textContent = _i18n.welcomeSub;
+	document.getElementById('wlcTutName').textContent = _i18n.tutorial;
+	document.getElementById('wlcTutDesc').textContent = _i18n.tutorialDesc;
+	document.getElementById('tutorial').textContent = _i18n.startAction;
+	document.getElementById('wlcImportName').textContent = _i18n.importCubeIDE;
+	document.getElementById('wlcImportDesc').textContent = _i18n.importCubeIDEDesc;
+	document.getElementById('import').textContent = _i18n.import;
+	document.getElementById('wlcTplName').textContent = _i18n.templateCreate;
+	document.getElementById('wlcTplDesc').textContent = _i18n.templateCreateDesc;
+	document.getElementById('templates').textContent = _i18n.openAction;
+	document.getElementById('wlcBoardName').textContent = _i18n.boardConfig;
+	document.getElementById('wlcBoardDesc').textContent = _i18n.boardConfigDesc;
+	document.getElementById('board').textContent = _i18n.openAction;
+	document.getElementById('wlcWfName').textContent = _i18n.workflow;
+	document.getElementById('wlcWfDesc').textContent = _i18n.workflowDesc;
+	document.getElementById('studio').textContent = _i18n.openStudioAction;
+	document.getElementById('syncCatalog').textContent = _i18n.syncCatalogAction;
+	document.getElementById('wlcPeriName').textContent = _i18n.peripheralImpl;
+	document.getElementById('wlcPeriDesc').textContent = _i18n.peripheralImplDesc;
+	document.getElementById('periphLab').textContent = _i18n.openAction;
+	document.getElementById('env').textContent = _i18n.envCheck;
+	document.getElementById('envSettings').textContent = _i18n.envSettings;
+	document.getElementById('pin').textContent = _i18n.pinVisualizer;
+	document.getElementById('pwmLab').textContent = _i18n.peripheralWorkbench;
+	document.getElementById('error').textContent = _i18n.autoErrorExplain;
 	document.getElementById('studio').addEventListener('click', () => vscode.postMessage({ type: 'studio' }));
 	document.getElementById('syncCatalog').addEventListener('click', () => vscode.postMessage({ type: 'syncCatalog' }));
 	document.getElementById('tutorial').addEventListener('click', () => vscode.postMessage({ type: 'tutorial' }));
@@ -5317,10 +5731,12 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 
 function getTutorialHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
-	const stepsJson = JSON.stringify(TUTORIAL_STEPS);
-	const stepCount = TUTORIAL_STEPS.length;
+	const stepsJson = JSON.stringify(getTutorialSteps());
+	const stepCount = getTutorialSteps().length;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -5354,8 +5770,8 @@ function getTutorialHtml(webview: vscode.Webview): string {
 	</style>
 </head>
 <body>
-	<h1>Lチカ インタラクティブチュートリアル</h1>
-	<p class="sub">STM32でLEDを点滅させる基本的な開発フローを学びます</p>
+	<h1 id="tutTitle"></h1>
+	<p class="sub" id="tutSub"></p>
 
 	<div class="tracker" id="tracker" aria-label="進捗"></div>
 
@@ -5365,19 +5781,28 @@ function getTutorialHtml(webview: vscode.Webview): string {
 	</div>
 
 	<div class="nav">
-		<button class="btn btn-sec" id="prev" aria-label="前のステップ">← 前へ</button>
-		<button class="btn btn-pri" id="next" aria-label="次のステップ">次へ →</button>
+		<button class="btn btn-sec" id="prev"></button>
+		<button class="btn btn-pri" id="next"></button>
 	</div>
 
-	<div class="actions-title">このステップで使うアクション</div>
+	<div class="actions-title" id="tutActionsTitle"></div>
 	<div class="action-row">
-		<button class="act-btn" id="openPin" aria-label="ピンビジュアライザを開く">◉ ピンを確認</button>
-		<button class="act-btn" id="runBuild" aria-label="ビルドを実行">▶ ビルド実行</button>
-		<button class="act-btn" id="runFlash" aria-label="書込みを実行">⬇ 書込み実行</button>
+		<button class="act-btn" id="openPin"></button>
+		<button class="act-btn" id="runBuild"></button>
+		<button class="act-btn" id="runFlash"></button>
 	</div>
 
 	<script>
+		const _i18n = ${_i18nJson};
 		const vscode = acquireVsCodeApi();
+		document.getElementById('tutTitle').textContent = _i18n.tutorialTitle;
+		document.getElementById('tutSub').textContent = _i18n.tutorialSub;
+		document.getElementById('prev').textContent = _i18n.prevStep;
+		document.getElementById('next').textContent = _i18n.nextStep;
+		document.getElementById('tutActionsTitle').textContent = _i18n.stepActions;
+		document.getElementById('openPin').textContent = _i18n.checkPins;
+		document.getElementById('runBuild').textContent = _i18n.runBuild;
+		document.getElementById('runFlash').textContent = _i18n.runFlash;
 		const steps = ${stepsJson};
 		let idx = 0;
 		const tracker = document.getElementById('tracker');
@@ -5397,7 +5822,7 @@ function getTutorialHtml(webview: vscode.Webview): string {
 			stepNum.textContent = 'Step ' + (idx + 1) + ' / ' + steps.length;
 			stepText.textContent = steps[idx];
 			prevBtn.disabled = idx === 0;
-			nextBtn.textContent = idx === steps.length - 1 ? '完了 ✓' : '次へ →';
+			nextBtn.textContent = idx === steps.length - 1 ? _i18n.done : _i18n.nextStep;
 			for (let i = 0; i < steps.length; i++) {
 				const d = document.getElementById('dot' + i);
 				d.className = 'dot' + (i < idx ? ' done' : i === idx ? ' active' : '');
@@ -5421,6 +5846,8 @@ function getTutorialHtml(webview: vscode.Webview): string {
 
 function getTemplateGalleryHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 
 	const categories: Record<string, { icon: string; items: string[] }> = {
 		'初級 — GPIO / UART': { icon: '🌱', items: ['GPIO Blinky (F4)', 'UART Hello (F4)', 'EXTI Button IRQ', 'ADC Polling', 'DAC Wave Output'] },
@@ -5443,7 +5870,7 @@ function getTemplateGalleryHtml(webview: vscode.Webview): string {
 	}).join('');
 
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -5471,15 +5898,19 @@ function getTemplateGalleryHtml(webview: vscode.Webview): string {
 </head>
 <body>
 	<div class="page-hd">
-		<h1>テンプレートギャラリー</h1>
-		<p class="sub">30種のプロジェクト雛形から選択してプロジェクトを作成します</p>
+		<h1 id="tgTitle"></h1>
+		<p class="sub" id="tgSub"></p>
 	</div>
 	<div class="search-row">
-		<input id="search" type="text" placeholder="テンプレートを検索..." aria-label="テンプレート検索" />
+		<input id="search" type="text" aria-label="template search" />
 	</div>
 	<div id="gallery">${sections}</div>
 	<script>
+		const _i18n = ${_i18nJson};
 		const vscode = acquireVsCodeApi();
+		document.getElementById('tgTitle').textContent = _i18n.templateGalleryTitle;
+		document.getElementById('tgSub').textContent = _i18n.templateGallerySub;
+		document.getElementById('search').placeholder = _i18n.searchTemplate;
 		document.querySelectorAll('.tcard').forEach(node => {
 			node.addEventListener('click', () => vscode.postMessage({ template: node.dataset.template }));
 		});
@@ -5507,7 +5938,7 @@ function buildLqfpSvg(
 	mcuName?: string
 ): string {
 	const n = pins.length;
-	if (n === 0) { return '<text x="10" y="20" fill="#6B7280" font-size="12">ピンなし</text>'; }
+	if (n === 0) { return `<text x="10" y="20" fill="#6B7280" font-size="12">${escapeHtml(getUxI18n().noPins)}</text>`; }
 
 	const basePerSide = Math.floor(n / 4);
 	const remainder = n % 4;
@@ -5708,7 +6139,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		{ color: '#3b1f6e', border: '#a78bfa', label: 'SWD/JTAG' },
 		{ color: '#1a3a2e', border: '#34d399', label: 'RCC/OSC' },
 		{ color: '#3d2800', border: '#fb923c', label: 'CAN' },
-		{ color: '#1a1d2e', border: '#374151', label: '未使用' },
+		{ color: '#1a1d2e', border: '#374151', label: getUxI18n().unused },
 	];
 	const legendHtml = legend.map(l =>
 		`<span class="lg-item"><span class="lg-dot" style="background:${l.color};border-color:${l.border}"></span>${escapeHtml(l.label)}</span>`
@@ -5740,7 +6171,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 				<td>${makeSelect(modeKey, gpioModeOptions, cfg['GPIO_Mode'] ?? '')}</td>
 				<td>${makeSelect(speedKey, gpioSpeedOptions, cfg['GPIO_Speed'] ?? '')}</td>
 				<td>${makeSelect(pupKey, gpioPuPdOptions, cfg['GPIO_PuPd'] ?? '')}</td>
-				<td><input class="s-inp" type="text" data-key="${escapeHtml(labelKey)}" value="${escapeHtml(cfg['GPIO_Label'] ?? '')}" placeholder="ラベル" /></td>
+				<td><input class="s-inp" type="text" data-key="${escapeHtml(labelKey)}" value="${escapeHtml(cfg['GPIO_Label'] ?? '')}" /></td>
 			</tr>`;
 		}).join('');
 
@@ -5759,17 +6190,17 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			<td><input class="s-num" type="number" min="0" max="15" data-key="${escapeHtml(subKey)}" value="${escapeHtml(subPri)}" /></td>
 		</tr>`;
 	}).join('');
-	const nvicEmpty = nvicRows ? '' : '<tr><td colspan="4" class="s-empty">.ioc に NVIC 設定がありません。CubeMX でペリフェラルを有効化してから同期してください。</td></tr>';
+	const nvicEmpty = nvicRows ? '' : '<tr><td colspan="4" class="s-empty" id="nvicEmpty"></td></tr>';
 
 	// DMA Settings tab
 	const dmaRows = iocSettings.dmaLines.map(({ key, value }) =>
 		`<tr>
 			<td><code class="s-code">${escapeHtml(key)}</code></td>
 			<td><input class="s-inp" type="text" data-key="${escapeHtml(key)}" value="${escapeHtml(value)}" /></td>
-			<td><button class="s-del-btn" data-removekey="${escapeHtml(key)}" title="削除">✕</button></td>
+			<td><button class="s-del-btn" data-removekey="${escapeHtml(key)}">✕</button></td>
 		</tr>`
 	).join('');
-	const dmaEmpty = dmaRows ? '' : '<tr><td colspan="3" class="s-empty">DMA 設定はありません。</td></tr>';
+	const dmaEmpty = dmaRows ? '' : '<tr><td colspan="3" class="s-empty" id="dmaEmpty"></td></tr>';
 
 	// Parameter Settings tab
 	const skipParamGroups = new Set(['ProjectManager', 'Mcu', 'File', 'KeepUserPlacement', 'NVIC', 'DMA']);
@@ -5782,7 +6213,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 				return `<tr>
 					<td><code class="s-code">${escapeHtml(prop)}</code></td>
 					<td><input class="s-inp" type="text" data-key="${escapeHtml(key)}" value="${escapeHtml(val)}" /></td>
-					<td><button class="s-del-btn" data-removekey="${escapeHtml(key)}" title="削除">✕</button></td>
+					<td><button class="s-del-btn" data-removekey="${escapeHtml(key)}">✕</button></td>
 				</tr>`;
 			}).join('');
 			return `<div class="s-pgrp">
@@ -5790,20 +6221,22 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 				<table class="s-table"><tbody>${rows}</tbody></table>
 			</div>`;
 		}).join('');
-	const paramEmpty = paramGroupsHtml ? '' : '<p class="s-empty-p">パラメータ設定はありません。</p>';
+	const paramEmpty = paramGroupsHtml ? '' : '<p class="s-empty-p" id="paramEmptyP"></p>';
 
 	// User Constants tab
 	const constRows = iocSettings.userConstants.map((c, i) =>
 		`<tr>
-			<td><input class="s-inp s-const-name" type="text" data-idx="${i}" value="${escapeHtml(c.name)}" placeholder="定数名" /></td>
-			<td><input class="s-inp s-const-val" type="text" data-idx="${i}" value="${escapeHtml(c.value)}" placeholder="値" /></td>
-			<td><button class="s-del-btn s-const-del" data-idx="${i}" title="削除">✕</button></td>
+			<td><input class="s-inp s-const-name" type="text" data-idx="${i}" value="${escapeHtml(c.name)}" /></td>
+			<td><input class="s-inp s-const-val" type="text" data-idx="${i}" value="${escapeHtml(c.value)}" /></td>
+			<td><button class="s-del-btn s-const-del" data-idx="${i}">✕</button></td>
 		</tr>`
 	).join('');
 
 	// Serialize iocSettings for JS usage
+	const _i18nJson = JSON.stringify(getUxI18n());
+	const lang = vscode.env.language.split('-')[0] ?? 'en';
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -5938,41 +6371,41 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 <body>
 	<!-- ===== Settings tab bar ===== -->
 	<div class="stab-bar" role="tablist">
-		<button class="stab-btn active" data-show="tab-pins" role="tab" aria-selected="true">📌 ピン設定</button>
-		<button class="stab-btn" data-show="tab-gpio" role="tab" aria-selected="false">⚡ GPIO設定</button>
-		<button class="stab-btn" data-show="tab-nvic" role="tab" aria-selected="false">🔔 NVIC設定</button>
-		<button class="stab-btn" data-show="tab-dma" role="tab" aria-selected="false">↔ DMA設定</button>
-		<button class="stab-btn" data-show="tab-param" role="tab" aria-selected="false">⚙ パラメータ設定</button>
-		<button class="stab-btn" data-show="tab-const" role="tab" aria-selected="false">🔑 ユーザー定数</button>
+		<button class="stab-btn active" data-show="tab-pins" id="stab-pins" role="tab" aria-selected="true"></button>
+		<button class="stab-btn" data-show="tab-gpio" id="stab-gpio" role="tab" aria-selected="false"></button>
+		<button class="stab-btn" data-show="tab-nvic" id="stab-nvic" role="tab" aria-selected="false"></button>
+		<button class="stab-btn" data-show="tab-dma" id="stab-dma" role="tab" aria-selected="false"></button>
+		<button class="stab-btn" data-show="tab-param" id="stab-param" role="tab" aria-selected="false"></button>
+		<button class="stab-btn" data-show="tab-const" id="stab-const" role="tab" aria-selected="false"></button>
 	</div>
 
 	<!-- ===== Pin Visualizer Panel ===== -->
 	<div id="tab-pins" class="stab-panel active">
 		<div class="toolbar">
 			<div class="chip-hdr">
-				<h1>STM32 ピンビジュアライザ</h1>
-				<div class="path">${iocPath ? escapeHtml(iocPath) : '.ioc ファイルなし — MCU パッケージ JSON フォールバック'}</div>
+				<h1 id="pvTitle"></h1>
+			<div class="path" id="pvPath">${iocPath ? escapeHtml(iocPath) : ''}</div>
 			</div>
 			<div class="search-wrap">
 				<span class="ic">🔍</span>
-				<input id="filterInput" type="search" placeholder="ピン名 / モード / LD2 / ラベルで絞込み" aria-label="ピン絞込み" />
+				<input id="filterInput" type="search" />
 			</div>
-			<div class="view-toggle" role="group" aria-label="表示切替">
-				<button id="btnList" class="vtbtn" aria-pressed="false">リスト</button>
-				<button id="btnChip" class="vtbtn active" aria-pressed="true">チップ図</button>
-			</div>
-			<button id="btnAddPin" class="vtbtn" style="border-color:rgba(15,118,110,.45)" aria-label="ピンを追加">+ ピン追加</button>
-			<span class="pin-count" id="pinCount">${sorted.length} ピン</span>
+			<div class="view-toggle" role="group">
+			<button id="btnList" class="vtbtn" aria-pressed="false"></button>
+			<button id="btnChip" class="vtbtn active" aria-pressed="true"></button>
 		</div>
-		<div class="hint">ピンをクリックするとモードを変更して .ioc に反映できます</div>
-		<div class="legend" aria-label="カラーレジェンド">${legendHtml}</div>
-		<div id="groupsView">${cardHtml || '<p class="empty-msg">.ioc ファイルが見つからないか、ピン情報を解析できませんでした。</p>'}</div>
+		<button id="btnAddPin" class="vtbtn" style="border-color:rgba(15,118,110,.45)"></button>
+		<span class="pin-count" id="pinCount">${sorted.length}</span>
+		</div>
+		<div class="hint" id="pvHint"></div>
+		<div class="legend" id="pvLegend">${legendHtml}</div>
+		<div id="groupsView">${cardHtml || '<p class="empty-msg" id="pvEmpty"></p>'}</div>
 		<div id="chipView">
 			<div class="zoom-row">
-				<button class="zbtn" id="zoomIn" title="拡大 (+)" aria-label="拡大">+</button>
-				<span class="zoom-label" id="zoomLabel">100%</span>
-				<button class="zbtn" id="zoomOut" title="縮小 (-)" aria-label="縮小">−</button>
-				<button class="zbtn" id="zoomReset" title="リセット" aria-label="リセット" style="width:auto;padding:0 8px;font-size:11px">リセット</button>
+				<button class="zbtn" id="zoomIn">+</button>
+			<span class="zoom-label" id="zoomLabel">100%</span>
+			<button class="zbtn" id="zoomOut">−</button>
+			<button class="zbtn" id="zoomReset" style="width:auto;padding:0 8px;font-size:11px"></button>
 			</div>
 			<div id="chipWrap"><div id="chipSvg">${chipSvg}</div></div>
 		</div>
@@ -5982,23 +6415,23 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<!-- ===== GPIO Settings Panel ===== -->
 	<div id="tab-gpio" class="stab-panel">
 		<div class="s-panel-hd">
-			<span class="s-panel-title">GPIO 詳細設定</span>
-			<button class="s-save-btn" id="saveGpio">💾 保存</button>
+			<span class="s-panel-title" id="gpioTitle"></span>
+			<button class="s-save-btn" id="saveGpio"></button>
 		</div>
 		<table class="s-table">
-			<thead><tr><th>ピン</th><th>割当モード</th><th>GPIO Mode</th><th>Speed</th><th>Pull</th><th>ユーザーラベル</th></tr></thead>
-			<tbody>${gpioRows || '<tr><td colspan="6" class="s-empty">GPIO 設定可能なピンがありません。まずピン設定タブでピンを割り当ててください。</td></tr>'}</tbody>
+			<thead><tr><th id="thGpioPin"></th><th id="thGpioMode"></th><th>GPIO Mode</th><th>Speed</th><th>Pull</th><th id="thGpioLabel"></th></tr></thead>
+			<tbody>${gpioRows || '<tr><td colspan="6" class="s-empty" id="gpioEmpty"></td></tr>'}</tbody>
 		</table>
 	</div>
 
 	<!-- ===== NVIC Settings Panel ===== -->
 	<div id="tab-nvic" class="stab-panel">
 		<div class="s-panel-hd">
-			<span class="s-panel-title">NVIC 割込み設定</span>
-			<button class="s-save-btn" id="saveNvic">💾 保存</button>
+			<span class="s-panel-title" id="nvicTitle"></span>
+			<button class="s-save-btn" id="saveNvic"></button>
 		</div>
 		<table class="s-table">
-			<thead><tr><th>割込み名 (IRQ)</th><th>有効</th><th>PreemptPriority</th><th>SubPriority</th></tr></thead>
+			<thead><tr><th id="thNvicIrq"></th><th id="thNvicEnabled"></th><th>PreemptPriority</th><th>SubPriority</th></tr></thead>
 			<tbody>${nvicRows}${nvicEmpty}</tbody>
 		</table>
 	</div>
@@ -6006,11 +6439,11 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<!-- ===== DMA Settings Panel ===== -->
 	<div id="tab-dma" class="stab-panel">
 		<div class="s-panel-hd">
-			<span class="s-panel-title">DMA 設定</span>
-			<button class="s-save-btn" id="saveDma">💾 保存</button>
+			<span class="s-panel-title" id="dmaTitle"></span>
+			<button class="s-save-btn" id="saveDma"></button>
 		</div>
 		<table class="s-table">
-			<thead><tr><th>キー</th><th>値</th><th></th></tr></thead>
+			<thead><tr><th id="thDmaKey"></th><th id="thDmaValue"></th><th></th></tr></thead>
 			<tbody>${dmaRows}${dmaEmpty}</tbody>
 		</table>
 	</div>
@@ -6018,8 +6451,8 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<!-- ===== Parameter Settings Panel ===== -->
 	<div id="tab-param" class="stab-panel">
 		<div class="s-panel-hd">
-			<span class="s-panel-title">パラメータ設定</span>
-			<button class="s-save-btn" id="saveParam">💾 保存</button>
+			<span class="s-panel-title" id="paramTitle"></span>
+			<button class="s-save-btn" id="saveParam"></button>
 		</div>
 		${paramGroupsHtml}${paramEmpty}
 	</div>
@@ -6027,52 +6460,128 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 	<!-- ===== User Constants Panel ===== -->
 	<div id="tab-const" class="stab-panel">
 		<div class="s-panel-hd">
-			<span class="s-panel-title">ユーザー定数 (ProjectManager.UserConstants)</span>
-			<button class="s-save-btn" id="saveConst">💾 保存</button>
+			<span class="s-panel-title" id="constTitle"></span>
+			<button class="s-save-btn" id="saveConst"></button>
 		</div>
 		<table class="s-table">
-			<thead><tr><th>定数名</th><th>値</th><th></th></tr></thead>
+			<thead><tr><th id="thConstName"></th><th id="thConstValue"></th><th></th></tr></thead>
 			<tbody id="constBody">${constRows}</tbody>
 		</table>
-		<button class="s-add-btn" id="addConst">+ 定数を追加</button>
+		<button class="s-add-btn" id="addConst"></button>
 	</div>
 
 	<!-- ===== Dialogs ===== -->
 	<div id="addDlgBackdrop" role="dialog" aria-modal="true" aria-labelledby="addDlgTitle">
 		<div id="addDlgBox">
-			<div id="addDlgTitle">ピンを追加</div>
-			<div class="add-row">
-				<label class="add-lbl" for="addPinInput">ピン名 (PA0 — PK15)</label>
-				<input id="addPinInput" type="text" placeholder="例: PA5" autocomplete="off" spellcheck="false" />
-				<div id="addPinErr"></div>
-			</div>
-			<div class="add-row">
-				<label class="add-lbl" for="addModeSelect">モード</label>
-				<select id="addModeSelect" disabled><option value="">ピンを入力してください</option></select>
-			</div>
-			<div id="addDlgActions">
-				<button id="addDlgCancel" class="dlg-btn" style="background:transparent;border-color:#374151;color:#9ca3af">キャンセル</button>
-				<button id="addDlgApply" class="dlg-btn" style="background:#0f766e;border-color:#0f766e;color:#fff">追加</button>
-			</div>
+			<div id="addDlgTitle"></div>
+		<div class="add-row">
+			<label class="add-lbl" id="addPinLabel" for="addPinInput"></label>
+			<input id="addPinInput" type="text" autocomplete="off" spellcheck="false" />
+			<div id="addPinErr"></div>
+		</div>
+		<div class="add-row">
+			<label class="add-lbl" id="addModeLabel" for="addModeSelect"></label>
+			<select id="addModeSelect" disabled><option value="" id="addModeEnterPin"></option></select>
+		</div>
+		<div id="addDlgActions">
+			<button id="addDlgCancel" class="dlg-btn" style="background:transparent;border-color:#374151;color:#9ca3af"></button>
+			<button id="addDlgApply" class="dlg-btn" style="background:#0f766e;border-color:#0f766e;color:#fff"></button>
+		</div>
 		</div>
 	</div>
 
 	<div id="dlgBackdrop" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
 		<div id="dlgBox">
-			<div id="dlgTitle">ピン編集</div>
-			<div id="dlgCur">現在のモード: —</div>
-			<input id="dlgSearch" type="search" placeholder="モードを検索..." aria-label="モード検索" />
-			<div id="dlgGroups"></div>
-			<div id="dlgActions">
-				<button id="dlgCancel" class="dlg-btn">キャンセル</button>
-				<button id="dlgApply" class="dlg-btn" disabled>適用</button>
-			</div>
+			<div id="dlgTitle"></div>
+		<div id="dlgCur"></div>
+		<input id="dlgSearch" type="search" />
+		<div id="dlgGroups"></div>
+		<div id="dlgActions">
+			<button id="dlgCancel" class="dlg-btn"></button>
+			<button id="dlgApply" class="dlg-btn" disabled></button>
+		</div>
 		</div>
 	</div>
 
 	<script>
+		const _i18n = ${_i18nJson};
 		const vscode = acquireVsCodeApi();
 		const modeGroupsByPin = ${JSON.stringify(modeGroupsByPin)};
+		// Apply i18n to static elements
+		document.getElementById('stab-pins').textContent = _i18n.tabPins;
+		document.getElementById('stab-gpio').textContent = _i18n.tabGpio;
+		document.getElementById('stab-nvic').textContent = _i18n.tabNvic;
+		document.getElementById('stab-dma').textContent = _i18n.tabDma;
+		document.getElementById('stab-param').textContent = _i18n.tabParam;
+		document.getElementById('stab-const').textContent = _i18n.tabConst;
+		document.getElementById('pvTitle').textContent = _i18n.pinVisualizerTitle;
+		const pvPath = document.getElementById('pvPath');
+		if (!pvPath.textContent) pvPath.textContent = _i18n.noIocFile;
+		document.getElementById('filterInput').placeholder = _i18n.filterPlaceholder;
+		document.getElementById('filterInput').setAttribute('aria-label', _i18n.filterAriaLabel);
+		document.getElementById('btnList').textContent = _i18n.listView;
+		document.getElementById('btnChip').textContent = _i18n.chipView;
+		document.getElementById('btnAddPin').textContent = _i18n.addPin;
+		document.getElementById('btnList').setAttribute('aria-label', _i18n.listView);
+		document.getElementById('btnChip').setAttribute('aria-label', _i18n.chipView);
+		document.getElementById('btnAddPin').setAttribute('aria-label', _i18n.addPin);
+		const pvLegend = document.getElementById('pvLegend');
+		if (pvLegend) pvLegend.setAttribute('aria-label', _i18n.colorLegend);
+		document.getElementById('pvHint').textContent = _i18n.pinClickHint;
+		const pvEmpty = document.getElementById('pvEmpty');
+		if (pvEmpty) pvEmpty.textContent = _i18n.noIocOrPins;
+		document.getElementById('zoomIn').title = _i18n.zoomIn;
+		document.getElementById('zoomIn').setAttribute('aria-label', _i18n.zoomIn);
+		document.getElementById('zoomOut').title = _i18n.zoomOut;
+		document.getElementById('zoomOut').setAttribute('aria-label', _i18n.zoomOut);
+		document.getElementById('zoomReset').textContent = _i18n.reset;
+		document.getElementById('zoomReset').title = _i18n.reset;
+		document.getElementById('zoomReset').setAttribute('aria-label', _i18n.reset);
+		// GPIO tab
+		document.getElementById('gpioTitle').textContent = _i18n.gpioDetailTitle;
+		const thGpioPin = document.getElementById('thGpioPin'); if(thGpioPin) thGpioPin.textContent = _i18n.gpioPin;
+		const thGpioMode = document.getElementById('thGpioMode'); if(thGpioMode) thGpioMode.textContent = _i18n.gpioMode;
+		const thGpioLabel = document.getElementById('thGpioLabel'); if(thGpioLabel) thGpioLabel.textContent = _i18n.gpioUserLabel;
+		const gpioEmpty = document.getElementById('gpioEmpty'); if(gpioEmpty) gpioEmpty.textContent = _i18n.gpioEmpty;
+		// NVIC tab
+		document.getElementById('nvicTitle').textContent = _i18n.nvicTitle;
+		const thNvicIrq = document.getElementById('thNvicIrq'); if(thNvicIrq) thNvicIrq.textContent = _i18n.nvicIrq;
+		const thNvicEnabled = document.getElementById('thNvicEnabled'); if(thNvicEnabled) thNvicEnabled.textContent = _i18n.nvicEnabled;
+		const nvicEmptyEl = document.getElementById('nvicEmpty'); if(nvicEmptyEl) nvicEmptyEl.textContent = _i18n.nvicEmpty;
+		// DMA tab
+		document.getElementById('dmaTitle').textContent = _i18n.dmaTitle;
+		const thDmaKey = document.getElementById('thDmaKey'); if(thDmaKey) thDmaKey.textContent = _i18n.dmaKey;
+		const thDmaValue = document.getElementById('thDmaValue'); if(thDmaValue) thDmaValue.textContent = _i18n.dmaValue;
+		const dmaEmptyEl = document.getElementById('dmaEmpty'); if(dmaEmptyEl) dmaEmptyEl.textContent = _i18n.dmaEmpty;
+		// Param tab
+		document.getElementById('paramTitle').textContent = _i18n.paramTitle;
+		const paramEmptyEl = document.getElementById('paramEmptyP'); if(paramEmptyEl) paramEmptyEl.textContent = _i18n.paramEmpty;
+		// Const tab
+		document.getElementById('constTitle').textContent = _i18n.constTitle;
+		const thConstName = document.getElementById('thConstName'); if(thConstName) thConstName.textContent = _i18n.constName;
+		const thConstValue = document.getElementById('thConstValue'); if(thConstValue) thConstValue.textContent = _i18n.constValue;
+		document.getElementById('addConst').textContent = _i18n.addConst;
+		// Save button labels
+		for (const id of ['saveGpio','saveNvic','saveDma','saveParam','saveConst']) {
+			const btn = document.getElementById(id); if (btn) btn.textContent = '💾 ' + _i18n.save;
+		}
+		// Add/Edit pin dialogs
+		document.getElementById('addDlgTitle').textContent = _i18n.addPinTitle;
+		document.getElementById('addPinLabel').textContent = _i18n.addPinLabel;
+		document.getElementById('addPinInput').placeholder = _i18n.addPinPlaceholder;
+		document.getElementById('addModeLabel').textContent = _i18n.modeLabel;
+		document.getElementById('addModeEnterPin').textContent = _i18n.enterPinFirst;
+		document.getElementById('addDlgCancel').textContent = _i18n.cancel;
+		document.getElementById('addDlgApply').textContent = _i18n.add;
+		document.getElementById('dlgTitle').textContent = _i18n.editPinTitle;
+		document.getElementById('dlgCur').textContent = _i18n.currentModeNone;
+		document.getElementById('dlgSearch').placeholder = _i18n.modeSearch;
+		document.getElementById('dlgSearch').setAttribute('aria-label', _i18n.modeSearchAriaLabel);
+		document.getElementById('dlgCancel').textContent = _i18n.cancel;
+		document.getElementById('dlgApply').textContent = _i18n.apply;
+		// Update pin count display
+		const pinCountEl = document.getElementById('pinCount');
+		if (pinCountEl) pinCountEl.textContent = pinCountEl.textContent.trim() + ' ' + _i18n.pinCount.replace('{0}', '').trim();
 
 		// ---- Settings tab switching ----
 		const stabBtns = document.querySelectorAll('.stab-btn');
@@ -6100,7 +6609,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			return lines;
 		}
 		function removeIocKey(key) {
-			if (confirm('キー「' + key + '」を削除しますか？')) {
+			if (confirm(_i18n.confirmDeleteKey.replace('{0}', key))) {
 				vscode.postMessage({ type: 'removeIocKey', key });
 			}
 		}
@@ -6147,9 +6656,9 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			if (!tbody) { return; }
 			const tr = document.createElement('tr');
 			const idx = constRowIdx++;
-			tr.innerHTML = '<td><input class="s-inp s-const-name" type="text" value="' + (name || '').replace(/"/g, '&quot;') + '" placeholder="定数名" /></td>' +
-				'<td><input class="s-inp s-const-val" type="text" value="' + (value || '').replace(/"/g, '&quot;') + '" placeholder="値" /></td>' +
-				'<td><button class="s-del-btn s-const-del" title="削除">✕</button></td>';
+			tr.innerHTML = '<td><input class="s-inp s-const-name" type="text" value="' + (name || '').replace(/"/g, '&quot;') + '" placeholder="' + (_i18n.constNamePlaceholder || '') + '" /></td>' +
+				'<td><input class="s-inp s-const-val" type="text" value="' + (value || '').replace(/"/g, '&quot;') + '" placeholder="' + (_i18n.constValuePlaceholder || '') + '" /></td>' +
+				'<td><button class="s-del-btn s-const-del">✕</button></td>';
 			tr.querySelector('.s-const-del').addEventListener('click', () => tbody.removeChild(tr));
 			tbody.appendChild(tr);
 		}

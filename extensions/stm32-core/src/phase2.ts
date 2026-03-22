@@ -202,9 +202,26 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 	private getHtml(webview: vscode.Webview): string {
 		const noneLabel = vscode.l10n.t('なし');
 		const csp = webview.cspSource;
+		const i18n = {
+			openCubeMx: vscode.l10n.t('CubeMXを起動'),
+			regenerateCode: vscode.l10n.t('コード再生成'),
+			previewDiff: vscode.l10n.t('差分プレビュー'),
+			unsavedChanges: vscode.l10n.t('未保存の変更あり'),
+			save: vscode.l10n.t('保存'),
+			projectOverview: vscode.l10n.t('プロジェクト概要'),
+			projectInfo: vscode.l10n.t('プロジェクト情報'),
+			board: vscode.l10n.t('ボード'),
+			project: vscode.l10n.t('プロジェクト'),
+			enabledPeripherals: vscode.l10n.t('有効ペリフェラル'),
+			clockSettings: vscode.l10n.t('クロック設定'),
+			iocContent: vscode.l10n.t('IOCファイルの内容'),
+			lines: vscode.l10n.t('{0} 行'),
+		};
+		const i18nJson = JSON.stringify(i18n);
+		const lang = vscode.env.language.split('-')[0] ?? 'en';
 
 		return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${lang}">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -263,24 +280,24 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 	<span class="topbar-title">IOC Editor</span>
 	<span class="topbar-mcu" id="topMcu">—</span>
 	<span class="spacer"></span>
-	<button class="btn btn-sec" id="openCubeMx" aria-label="CubeMXを起動">⬡ CubeMXを起動</button>
-	<button class="btn btn-sec" id="regenerateCode" aria-label="コード再生成">↻ コード再生成</button>
-	<button class="btn btn-sec" id="previewDiff" aria-label="差分プレビュー">≠ 差分プレビュー</button>
-	<span class="dirty-dot" id="dirtyDot" title="未保存の変更あり"></span>
-	<button class="btn btn-ok" id="save" aria-label="保存">✓ 保存</button>
+	<button class="btn btn-sec" id="openCubeMx">⬡ </button>
+	<button class="btn btn-sec" id="regenerateCode">↻ </button>
+	<button class="btn btn-sec" id="previewDiff">≠ </button>
+	<span class="dirty-dot" id="dirtyDot"></span>
+	<button class="btn btn-ok" id="save">✓ </button>
 </div>
 
 <div class="layout">
-	<div class="sidebar" role="complementary" aria-label="プロジェクト概要">
-		<div class="sec-hd">プロジェクト情報</div>
+	<div class="sidebar" role="complementary" id="sidebar">
+		<div class="sec-hd" id="secProjectInfo"></div>
 		<div class="info-row"><span class="info-key">MCU</span><span id="mcu" class="info-val">—</span></div>
-		<div class="info-row"><span class="info-key">ボード</span><span id="board" class="info-val">—</span></div>
-		<div class="info-row"><span class="info-key">プロジェクト</span><span id="project" class="info-val">—</span></div>
+		<div class="info-row"><span class="info-key" id="keyBoard"></span><span id="board" class="info-val">—</span></div>
+		<div class="info-row"><span class="info-key" id="keyProject"></span><span id="project" class="info-val">—</span></div>
 
-		<div class="sec-hd">有効ペリフェラル</div>
+		<div class="sec-hd" id="secPeripherals"></div>
 		<div class="badge-list" id="peripherals"></div>
 
-		<div class="sec-hd">クロック設定</div>
+		<div class="sec-hd" id="secClock"></div>
 		<div class="badge-list" id="clockHints"></div>
 	</div>
 
@@ -290,11 +307,12 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 			<span class="editor-spacer"></span>
 			<span style="font-size:11px;color:var(--mt)" id="lineCount"></span>
 		</div>
-		<textarea id="iocText" spellcheck="false" aria-label="IOCファイルの内容"></textarea>
+		<textarea id="iocText" spellcheck="false" id="iocTextArea"></textarea>
 	</div>
 </div>
 
 <script>
+	const _i18n = ${i18nJson};
 	const vscode = acquireVsCodeApi();
 	const mcuEl = document.getElementById('mcu');
 	const boardEl = document.getElementById('board');
@@ -306,6 +324,24 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 	const lineCountEl = document.getElementById('lineCount');
 	const dirtyDot = document.getElementById('dirtyDot');
 	let dirty = false;
+
+	// Apply i18n strings to DOM
+	document.getElementById('openCubeMx').append(_i18n.openCubeMx);
+	document.getElementById('openCubeMx').setAttribute('aria-label', _i18n.openCubeMx);
+	document.getElementById('regenerateCode').append(_i18n.regenerateCode);
+	document.getElementById('regenerateCode').setAttribute('aria-label', _i18n.regenerateCode);
+	document.getElementById('previewDiff').append(_i18n.previewDiff);
+	document.getElementById('previewDiff').setAttribute('aria-label', _i18n.previewDiff);
+	document.getElementById('dirtyDot').setAttribute('title', _i18n.unsavedChanges);
+	document.getElementById('save').append(_i18n.save);
+	document.getElementById('save').setAttribute('aria-label', _i18n.save);
+	document.getElementById('sidebar').setAttribute('aria-label', _i18n.projectOverview);
+	document.getElementById('secProjectInfo').textContent = _i18n.projectInfo;
+	document.getElementById('keyBoard').textContent = _i18n.board;
+	document.getElementById('keyProject').textContent = _i18n.project;
+	document.getElementById('secPeripherals').textContent = _i18n.enabledPeripherals;
+	document.getElementById('secClock').textContent = _i18n.clockSettings;
+	iocTextEl.setAttribute('aria-label', _i18n.iocContent);
 
 	function renderBadges(el, items, cls) {
 		el.innerHTML = '';
@@ -323,7 +359,7 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 
 	function updateLineCount() {
 		const lines = iocTextEl.value.split('\\n').length;
-		lineCountEl.textContent = lines + ' 行';
+		lineCountEl.textContent = _i18n.lines.replace('{0}', lines);
 	}
 
 	iocTextEl.addEventListener('input', () => {
@@ -1293,7 +1329,7 @@ function templateToTreeElement(template: FallbackPeripheralTemplate): RegisterTr
 	return {
 		kind: 'peripheral',
 		label: template.name,
-		description: 'SVD未検出時のフォールバック表示',
+		description: vscode.l10n.t('SVD未検出時のフォールバック表示'),
 		children: template.registers.map((registerName, index) => {
 			const address = template.baseAddress + index * 4;
 			const addressHex = toHex(address >>> 0, 8);
@@ -1551,23 +1587,23 @@ function renderCodeSizeHtml(mapPath: string, sections: MapSectionSummary[], symb
 
 function decodeCfsr(cfsr: number): string[] {
 	const flags: Array<{ bit: number; label: string }> = [
-		{ bit: 0, label: 'IACCVIOL: 命令アクセス違反' },
-		{ bit: 1, label: 'DACCVIOL: データアクセス違反' },
-		{ bit: 3, label: 'MUNSTKERR: 例外復帰時のメモリ管理エラー' },
-		{ bit: 4, label: 'MSTKERR: 例外突入時のメモリ管理エラー' },
-		{ bit: 7, label: 'MMARVALID: MMFARが有効' },
-		{ bit: 8, label: 'IBUSERR: 命令バスエラー' },
-		{ bit: 9, label: 'PRECISERR: 正確なデータバスエラー' },
-		{ bit: 10, label: 'IMPRECISERR: 不正確なデータバスエラー' },
-		{ bit: 11, label: 'UNSTKERR: バスFault(スタック復帰)' },
-		{ bit: 12, label: 'STKERR: バスFault(スタック保存)' },
-		{ bit: 15, label: 'BFARVALID: BFARが有効' },
-		{ bit: 16, label: 'UNDEFINSTR: 未定義命令' },
-		{ bit: 17, label: 'INVSTATE: 不正な状態遷移' },
-		{ bit: 18, label: 'INVPC: 不正なPCロード' },
-		{ bit: 19, label: 'NOCP: FPU未許可命令' },
-		{ bit: 24, label: 'UNALIGNED: 非アラインアクセス' },
-		{ bit: 25, label: 'DIVBYZERO: 0除算' },
+		{ bit: 0, label: vscode.l10n.t('IACCVIOL: 命令アクセス違反') },
+		{ bit: 1, label: vscode.l10n.t('DACCVIOL: データアクセス違反') },
+		{ bit: 3, label: vscode.l10n.t('MUNSTKERR: 例外復帰時のメモリ管理エラー') },
+		{ bit: 4, label: vscode.l10n.t('MSTKERR: 例外突入時のメモリ管理エラー') },
+		{ bit: 7, label: vscode.l10n.t('MMARVALID: MMFARが有効') },
+		{ bit: 8, label: vscode.l10n.t('IBUSERR: 命令バスエラー') },
+		{ bit: 9, label: vscode.l10n.t('PRECISERR: 正確なデータバスエラー') },
+		{ bit: 10, label: vscode.l10n.t('IMPRECISERR: 不正確なデータバスエラー') },
+		{ bit: 11, label: vscode.l10n.t('UNSTKERR: バスFault(スタック復帰)') },
+		{ bit: 12, label: vscode.l10n.t('STKERR: バスFault(スタック保存)') },
+		{ bit: 15, label: vscode.l10n.t('BFARVALID: BFARが有効') },
+		{ bit: 16, label: vscode.l10n.t('UNDEFINSTR: 未定義命令') },
+		{ bit: 17, label: vscode.l10n.t('INVSTATE: 不正な状態遷移') },
+		{ bit: 18, label: vscode.l10n.t('INVPC: 不正なPCロード') },
+		{ bit: 19, label: vscode.l10n.t('NOCP: FPU未許可命令') },
+		{ bit: 24, label: vscode.l10n.t('UNALIGNED: 非アラインアクセス') },
+		{ bit: 25, label: vscode.l10n.t('DIVBYZERO: 0除算') },
 	];
 	const active = flags.filter(flag => (cfsr & (1 << flag.bit)) !== 0).map(flag => flag.label);
 	return active.length > 0 ? active : [vscode.l10n.t('有効なFaultフラグはありません。')];
@@ -1575,9 +1611,9 @@ function decodeCfsr(cfsr: number): string[] {
 
 function decodeHfsr(hfsr: number): string[] {
 	const flags: Array<{ bit: number; label: string }> = [
-		{ bit: 1, label: 'VECTTBL: ベクタテーブル読み込みFault' },
-		{ bit: 30, label: 'FORCED: Configurable FaultからHardFaultへ昇格' },
-		{ bit: 31, label: 'DEBUGEVT: デバッグイベント発生' },
+		{ bit: 1, label: vscode.l10n.t('VECTTBL: ベクタテーブル読み込みFault') },
+		{ bit: 30, label: vscode.l10n.t('FORCED: Configurable FaultからHardFaultへ昇格') },
+		{ bit: 31, label: vscode.l10n.t('DEBUGEVT: デバッグイベント発生') },
 	];
 	const active = flags.filter(flag => (hfsr & (1 << flag.bit)) !== 0).map(flag => flag.label);
 	return active.length > 0 ? active : [vscode.l10n.t('有効なHardFaultフラグはありません。')];

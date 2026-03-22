@@ -126,13 +126,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	buildStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 	buildStatusItem.command = 'stm32.buildDebug';
-	buildStatusItem.text = '$(tools) STM32: ビルド';
+	buildStatusItem.text = vscode.l10n.t('$(tools) STM32: ビルド');
 	buildStatusItem.show();
 	context.subscriptions.push(buildStatusItem);
 
 	stLinkStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
 	stLinkStatusItem.command = 'stm32.checkStLink';
-	stLinkStatusItem.text = '$(plug) ST-LINK: 確認中';
+	stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: 確認中');
 	stLinkStatusItem.show();
 	context.subscriptions.push(stLinkStatusItem);
 
@@ -147,12 +147,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	buildStatusItem.command = 'stm32.buildDebug';
 
 	stLinkStatusItem.name = vscode.l10n.t('STM32 ST-LINK Status');
-	stLinkStatusItem.text = '$(debug-disconnect) ST-LINK: 未確認';
+	stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: 未確認');
 	stLinkStatusItem.tooltip = vscode.l10n.t('Run ST-LINK connection check');
 
 	branchStatusItem = vscode.window.createStatusBarItem('status.stm32.branch', vscode.StatusBarAlignment.Left, 198);
 	branchStatusItem.name = vscode.l10n.t('STM32 Branch Status');
-	branchStatusItem.text = '$(git-branch) ブランチ: -';
+	branchStatusItem.text = vscode.l10n.t('$(git-branch) ブランチ: -');
 	branchStatusItem.tooltip = vscode.l10n.t('Current branch from SCM');
 	branchStatusItem.show();
 
@@ -332,13 +332,13 @@ async function buildDebug(): Promise<boolean> {
 	const makeExecutable = await resolveMakeExecutable(metadata);
 	const buildDir = await resolveBuildDirectory(workspaceRoot);
 	if (!buildDir) {
-		buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
+		buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
 		buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 		vscode.window.showErrorMessage(vscode.l10n.t('ビルド先を解決できませんでした。`stm32.workspacePath` を確認してください。'));
 		return false;
 	}
 
-	buildStatusItem.text = '$(loading~spin) STM32: Debugビルド中';
+	buildStatusItem.text = vscode.l10n.t('$(loading~spin) STM32: Debugビルド中');
 	buildStatusItem.backgroundColor = undefined;
 	outputChannel.appendLine(`[STM32] Build backend: ${backend}`);
 	outputChannel.appendLine(`[STM32] Using build directory: ${buildDir === workspaceRoot ? '.' : buildDir}`);
@@ -354,7 +354,7 @@ async function buildDebug(): Promise<boolean> {
 	}
 
 	if (backend === 'make' && !makefileInBuildDir) {
-		buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
+		buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
 		buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 		vscode.window.showErrorMessage(vscode.l10n.t('make backend が指定されていますが Makefile が見つかりません。`stm32.build.backend` を auto または mcp に変更してください。'));
 		return false;
@@ -380,7 +380,7 @@ async function buildDebug(): Promise<boolean> {
 	lastBuildOutput = `${result.stdout}\n${result.stderr}`;
 
 	if (result.exitCode === 0) {
-		buildStatusItem.text = '$(check) STM32: Debugビルド成功';
+		buildStatusItem.text = vscode.l10n.t('$(check) STM32: Debugビルド成功');
 		buildStatusItem.backgroundColor = undefined;
 
 		// CRITICAL: Verify ELF file was actually generated
@@ -410,7 +410,7 @@ async function buildDebug(): Promise<boolean> {
 		}
 	}
 
-	buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
+	buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
 	buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 	const hint = getJapaneseErrorHint(lastBuildOutput);
 	if (hint) {
@@ -431,7 +431,7 @@ async function flashLatestBuild(): Promise<boolean> {
 	}
 	const stLinkConnected = await isStLinkConnected(workspaceRoot);
 	if (!stLinkConnected) {
-		stLinkStatusItem.text = '$(debug-disconnect) ST-LINK: 未接続';
+		stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: 未接続');
 		stLinkStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 		vscode.window.showErrorMessage(vscode.l10n.t('ST-LINKが未接続です。接続状態を確認してください。'));
 		return false;
@@ -498,12 +498,12 @@ async function checkStLink(): Promise<void> {
 
 	const hasLink = await isStLinkConnected(workspaceRoot);
 	if (hasLink) {
-		stLinkStatusItem.text = '$(plug) ST-LINK: 接続中';
+		stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: 接続中');
 		stLinkStatusItem.backgroundColor = undefined;
 		return;
 	}
 
-	stLinkStatusItem.text = '$(debug-disconnect) ST-LINK: 未接続';
+	stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: 未接続');
 	stLinkStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 }
 
@@ -856,13 +856,13 @@ function shouldRetryMakeWithoutExplicitTarget(output: string): boolean {
 async function runMcpBuildAndReport(workspaceRoot: string, reason: string): Promise<boolean> {
 	const fallback = await tryMcpBuildFallback(workspaceRoot);
 	if (fallback.success) {
-		buildStatusItem.text = '$(check) STM32: Debugビルド成功 (MCP)';
+		buildStatusItem.text = vscode.l10n.t('$(check) STM32: Debugビルド成功 (MCP)');
 		buildStatusItem.backgroundColor = undefined;
 		vscode.window.showInformationMessage(vscode.l10n.t('Debugビルドが成功しました。(MCP: {0})', reason));
 		return true;
 	}
 
-	buildStatusItem.text = '$(error) STM32: Debugビルド失敗';
+	buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
 	buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 	outputChannel.appendLine(`[STM32] MCP build failed (${reason}): ${fallback.message}`);
 	return false;
@@ -1055,12 +1055,12 @@ function parseBuildIssues(output: string): BuildIssue[] {
 
 function getJapaneseErrorHint(output: string): string | undefined {
 	const hints: Array<{ pattern: RegExp; hint: string }> = [
-		{ pattern: /undeclared/i, hint: '未宣言の識別子です。ioc設定で対象ペリフェラルが有効か確認してください。' },
-		{ pattern: /No such file or directory/i, hint: 'ヘッダまたはソースが見つかりません。インクルードパスと生成コードを確認してください。' },
-		{ pattern: /undefined reference/i, hint: 'リンカエラーです。ソース未追加、または関数シグネチャ不一致の可能性があります。' },
-		{ pattern: /multiple definition/i, hint: '同一シンボルが複数定義されています。重複実装や重複リンクを確認してください。' },
-		{ pattern: /collect2: error/i, hint: 'リンク工程で失敗しました。直前のエラー行を確認してください。' },
-		{ pattern: /region .* overflowed/i, hint: 'メモリ領域を超過しました。不要機能の削減や最適化を検討してください。' }
+		{ pattern: /undeclared/i, hint: vscode.l10n.t('未宣言の識別子です。ioc設定で対象ペリフェラルが有効か確認してください。') },
+		{ pattern: /No such file or directory/i, hint: vscode.l10n.t('ヘッダまたはソースが見つかりません。インクルードパスと生成コードを確認してください。') },
+		{ pattern: /undefined reference/i, hint: vscode.l10n.t('リンカエラーです。ソース未追加、または関数シグネチャ不一致の可能性があります。') },
+		{ pattern: /multiple definition/i, hint: vscode.l10n.t('同一シンボルが複数定義されています。重複実装や重複リンクを確認してください。') },
+		{ pattern: /collect2: error/i, hint: vscode.l10n.t('リンク工程で失敗しました。直前のエラー行を確認してください。') },
+		{ pattern: /region .* overflowed/i, hint: vscode.l10n.t('メモリ領域を超過しました。不要機能の削減や最適化を検討してください。') }
 	];
 
 	for (const { pattern, hint } of hints) {
