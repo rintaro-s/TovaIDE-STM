@@ -12,23 +12,7 @@
     "Other"
   ],
   "main": "./out/extension",
-  "activationEvents": [
-    "onStartupFinished",
-    "onCommand:stm32collab.startSession",
-    "onCommand:stm32collab.joinSession",
-    "onCommand:stm32collab.discoverSessions",
-    "onCommand:stm32collab.startRealtimeSync",
-    "onCommand:stm32collab.stopRealtimeSync",
-    "onCommand:stm32collab.startLanShare",
-    "onCommand:stm32collab.stopLanShare",
-    "onCommand:stm32collab.startGitDaemon",
-    "onCommand:stm32collab.stopGitDaemon",
-    "onCommand:stm32collab.shareDebugSnapshot",
-    "onCommand:stm32collab.runQualityAudit",
-    "onCommand:stm32collab.exportProjectZip",
-    "onCommand:stm32collab.openPanel",
-    "onView:stm32-collab.panel"
-  ],
+  "activationEvents": [],
   "capabilities": {
     "virtualWorkspaces": false,
     "untrustedWorkspaces": {
@@ -127,7 +111,7 @@
         {
           "id": "stm32-collab.panel",
           "type": "webview",
-          "name": "共同作業",
+          "name": "Collaboration (Removed)",
           "icon": "../stm32-core/media/icons/stm32-collab.svg"
         }
       ]

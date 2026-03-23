@@ -192,30 +192,30 @@ class IocCustomEditorProvider implements vscode.CustomTextEditorProvider {
 		edit.replace(document.uri, fullRange, newText);
 		const applied = await vscode.workspace.applyEdit(edit);
 		if (!applied) {
-			vscode.window.showErrorMessage(vscode.l10n.t('IOCエディタからの保存に失敗しました。'));
+			vscode.window.showErrorMessage(vscode.l10n.t('Failed to save from IOC Editor.'));
 			return;
 		}
 		await document.save();
-		vscode.window.setStatusBarMessage(vscode.l10n.t('IOCファイルを保存しました。'), 2000);
+		vscode.window.setStatusBarMessage(vscode.l10n.t('IOC file saved.'), 2000);
 	}
 
 	private getHtml(webview: vscode.Webview): string {
-		const noneLabel = vscode.l10n.t('なし');
+		const noneLabel = vscode.l10n.t('None');
 		const csp = webview.cspSource;
 		const i18n = {
-			openCubeMx: vscode.l10n.t('CubeMXを起動'),
-			regenerateCode: vscode.l10n.t('コード再生成'),
-			previewDiff: vscode.l10n.t('差分プレビュー'),
-			unsavedChanges: vscode.l10n.t('未保存の変更あり'),
-			save: vscode.l10n.t('保存'),
-			projectOverview: vscode.l10n.t('プロジェクト概要'),
-			projectInfo: vscode.l10n.t('プロジェクト情報'),
-			board: vscode.l10n.t('ボード'),
-			project: vscode.l10n.t('プロジェクト'),
-			enabledPeripherals: vscode.l10n.t('有効ペリフェラル'),
-			clockSettings: vscode.l10n.t('クロック設定'),
-			iocContent: vscode.l10n.t('IOCファイルの内容'),
-			lines: vscode.l10n.t('{0} 行'),
+			openCubeMx: vscode.l10n.t('Launch CubeMX'),
+			regenerateCode: vscode.l10n.t('Regenerate Code'),
+			previewDiff: vscode.l10n.t('Preview Diff'),
+			unsavedChanges: vscode.l10n.t('Unsaved changes'),
+			save: vscode.l10n.t('Save'),
+			projectOverview: vscode.l10n.t('Project Overview'),
+			projectInfo: vscode.l10n.t('Project Info'),
+			board: vscode.l10n.t('Board'),
+			project: vscode.l10n.t('Project'),
+			enabledPeripherals: vscode.l10n.t('Enabled Peripherals'),
+			clockSettings: vscode.l10n.t('Clock Settings'),
+			iocContent: vscode.l10n.t('IOC file content'),
+			lines: vscode.l10n.t('{0} lines'),
 		};
 		const i18nJson = JSON.stringify(i18n);
 		const lang = vscode.env.language.split('-')[0] ?? 'en';
@@ -483,7 +483,7 @@ class LiveExpressionsProvider implements vscode.TreeDataProvider<LiveExpressionE
 	public async getTreeItem(element: LiveExpressionElement): Promise<vscode.TreeItem> {
 		const item = new vscode.TreeItem(element.expression, vscode.TreeItemCollapsibleState.None);
 		const value = await evaluateExpression(element.expression);
-		item.description = value ?? vscode.l10n.t('評価待ち');
+		item.description = value ?? vscode.l10n.t('Pending evaluation');
 		item.tooltip = `${element.expression}${value ? `\n= ${value}` : ''}`;
 		item.contextValue = 'stm32.liveExpression';
 		return item;
@@ -521,24 +521,22 @@ export function registerPhase2Features(context: vscode.ExtensionContext, depende
 	context.subscriptions.push(swvChannel);
 
 	const pinQuickActions = new QuickActionsProvider([
-		{ label: vscode.l10n.t('ピンビジュアライザを開く'), command: 'stm32ux.openPinVisualizer', icon: 'symbol-color' },
-		{ label: vscode.l10n.t('.ioc エディタを開く'), command: 'stm32.openIocEditor', icon: 'edit' },
+		{ label: vscode.l10n.t('Open Pin Visualizer'), command: 'stm32ux.openPinVisualizer', icon: 'symbol-color' },
+		{ label: vscode.l10n.t('Open IOC Editor'), command: 'stm32.openIocEditor', icon: 'edit' },
 	]);
 	const commandCenterQuickActions = new QuickActionsProvider([
-		{ label: vscode.l10n.t('STM32 ワークフロースタジオを開く'), command: 'stm32ux.openWorkflowStudio', icon: 'layout' },
-		{ label: vscode.l10n.t('CubeMX からMCUカタログを同期'), command: 'stm32ux.syncMcuCatalogFromCubeMX', icon: 'cloud-download' },
-		{ label: vscode.l10n.t('新規STM32プロジェクトを作成'), command: 'stm32.newProject', icon: 'new-file' },
-		{ label: vscode.l10n.t('ボード設定スタジオを開く'), command: 'stm32ux.openBoardConfigurator', icon: 'settings-gear' },
-		{ label: vscode.l10n.t('STM32 テンプレートギャラリーを開く'), command: 'stm32ux.openTemplateGallery', icon: 'library' },
-		{ label: vscode.l10n.t('STM32 ツール環境チェックを実行'), command: 'stm32ux.runEnvironmentCheck', icon: 'check-all' },
-		{ label: vscode.l10n.t('CubeCLT メタデータを検出'), command: 'stm32.detectCubeCLT', icon: 'search' },
-		{ label: vscode.l10n.t('Debugビルドを実行'), command: 'stm32.buildDebug', icon: 'tools' },
-		{ label: vscode.l10n.t('ビルドして書き込み'), command: 'stm32.buildAndFlash', icon: 'rocket' },
+		{ label: vscode.l10n.t('New STM32 Project'), command: 'stm32.newProject', icon: 'new-file' },
+		{ label: vscode.l10n.t('Open Board Config Studio'), command: 'stm32ux.openBoardConfigurator', icon: 'settings-gear' },
+		{ label: vscode.l10n.t('Sync MCU Catalog from CubeMX'), command: 'stm32ux.syncMcuCatalogFromCubeMX', icon: 'cloud-download' },
+		{ label: vscode.l10n.t('Run Environment Check'), command: 'stm32ux.runEnvironmentCheck', icon: 'check-all' },
+		{ label: vscode.l10n.t('Detect CubeCLT Metadata'), command: 'stm32.detectCubeCLT', icon: 'search' },
+		{ label: vscode.l10n.t('Build Debug'), command: 'stm32.buildDebug', icon: 'tools' },
+		{ label: vscode.l10n.t('Build and Flash'), command: 'stm32.buildAndFlash', icon: 'rocket' },
 	]);
 	const buildQuickActions = new QuickActionsProvider([
-		{ label: vscode.l10n.t('ビルド (Debug)'), command: 'stm32.buildDebug', icon: 'tools' },
-		{ label: vscode.l10n.t('書き込み'), command: 'stm32.flash', icon: 'zap' },
-		{ label: vscode.l10n.t('ビルド + 書き込み'), command: 'stm32.buildAndFlash', icon: 'rocket' },
+		{ label: vscode.l10n.t('Build (Debug)'), command: 'stm32.buildDebug', icon: 'tools' },
+		{ label: vscode.l10n.t('Flash'), command: 'stm32.flash', icon: 'zap' },
+		{ label: vscode.l10n.t('Build + Flash'), command: 'stm32.buildAndFlash', icon: 'rocket' },
 	]);
 
 	context.subscriptions.push(vscode.window.registerCustomEditorProvider(IOC_EDITOR_VIEW_TYPE, iocProvider, {
@@ -594,19 +592,19 @@ function getSwvOutputChannel(): vscode.OutputChannel {
 async function startSwvTrace(): Promise<void> {
 	const session = vscode.debug.activeDebugSession;
 	if (!session) {
-		vscode.window.showErrorMessage(vscode.l10n.t('SWV開始にはアクティブなデバッグセッションが必要です。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('An active debug session is required to start SWV.'));
 		return;
 	}
 
 	const commands = vscode.workspace.getConfiguration('stm32').get<string[]>('debug.swv.startCommands', []);
 	if (commands.length === 0) {
-		vscode.window.showWarningMessage(vscode.l10n.t('SWV開始コマンドが設定されていません。設定 `stm32.debug.swv.startCommands` を確認してください。'));
+		vscode.window.showWarningMessage(vscode.l10n.t('No SWV start commands configured. Check setting `stm32.debug.swv.startCommands`.'));
 		return;
 	}
 
 	const channel = getSwvOutputChannel();
 	channel.show(true);
-	appendSwvLog(vscode.l10n.t('[SWV] 開始コマンドを実行します。'));
+	appendSwvLog(vscode.l10n.t('[SWV] Executing start commands.'));
 	for (const command of commands) {
 		const result = await executeMonitorCommand(session, command);
 		appendSwvLog(formatSwvCommandLog(command, result));
@@ -614,7 +612,7 @@ async function startSwvTrace(): Promise<void> {
 
 	swvState.running = true;
 	swvState.lastSessionId = session.id;
-	vscode.window.showInformationMessage(vscode.l10n.t('SWV/ITMトレースを開始しました。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('SWV/ITM trace started.'));
 }
 
 async function stopSwvTrace(options?: { silent?: boolean }): Promise<void> {
@@ -623,7 +621,7 @@ async function stopSwvTrace(options?: { silent?: boolean }): Promise<void> {
 		swvState.running = false;
 		swvState.lastSessionId = '';
 		if (!options?.silent) {
-			vscode.window.showInformationMessage(vscode.l10n.t('デバッグセッションが存在しないため、SWV状態を停止にしました。'));
+			vscode.window.showInformationMessage(vscode.l10n.t('No active debug session. SWV state reset to stopped.'));
 		}
 		return;
 	}
@@ -631,7 +629,7 @@ async function stopSwvTrace(options?: { silent?: boolean }): Promise<void> {
 	const commands = vscode.workspace.getConfiguration('stm32').get<string[]>('debug.swv.stopCommands', []);
 	const channel = getSwvOutputChannel();
 	channel.show(true);
-	appendSwvLog(vscode.l10n.t('[SWV] 停止コマンドを実行します。'));
+	appendSwvLog(vscode.l10n.t('[SWV] Executing stop commands.'));
 	for (const command of commands) {
 		const result = await executeMonitorCommand(session, command);
 		appendSwvLog(formatSwvCommandLog(command, result));
@@ -640,7 +638,7 @@ async function stopSwvTrace(options?: { silent?: boolean }): Promise<void> {
 	swvState.running = false;
 	swvState.lastSessionId = '';
 	if (!options?.silent) {
-		vscode.window.showInformationMessage(vscode.l10n.t('SWV/ITMトレースを停止しました。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('SWV/ITM trace stopped.'));
 	}
 }
 
@@ -650,12 +648,12 @@ async function showSwvLog(): Promise<void> {
 
 	const session = vscode.debug.activeDebugSession;
 	if (!session) {
-		appendSwvLog(vscode.l10n.t('[SWV] デバッグセッション未接続。ログ表示のみ実行。'));
+		appendSwvLog(vscode.l10n.t('[SWV] No debug session. Showing log only.'));
 		return;
 	}
 
-	const status = swvState.running ? vscode.l10n.t('実行中') : vscode.l10n.t('停止');
-	appendSwvLog(vscode.l10n.t('[SWV] 状態: {0}', status));
+	const status = swvState.running ? vscode.l10n.t('Running') : vscode.l10n.t('Stopped');
+	appendSwvLog(vscode.l10n.t('[SWV] Status: {0}', status));
 	const statusResult = await executeMonitorCommand(session, 'monitor SWV status');
 	appendSwvLog(formatSwvCommandLog('monitor SWV status', statusResult));
 
@@ -665,11 +663,11 @@ async function showSwvLog(): Promise<void> {
 	}
 
 	const picks = [
-		{ label: vscode.l10n.t('全チャンネル'), value: 'all' },
+		{ label: vscode.l10n.t('All channels'), value: 'all' },
 		...channels.map(ch => ({ label: `CH${ch}`, value: ch })),
 	];
 	const selected = await vscode.window.showQuickPick(picks, {
-		placeHolder: vscode.l10n.t('SWVログの表示チャンネルを選択'),
+		placeHolder: vscode.l10n.t('Select SWV log channel to display'),
 	});
 	if (!selected || selected.value === 'all') {
 		return;
@@ -677,10 +675,10 @@ async function showSwvLog(): Promise<void> {
 
 	const filtered = filterSwvLinesByChannel(swvState.lines, Number(selected.value));
 	if (filtered.length === 0) {
-		appendSwvLog(vscode.l10n.t('[SWV] CH{0} のログはまだありません。', selected.value));
+		appendSwvLog(vscode.l10n.t('[SWV] No log entries yet for CH{0}.', selected.value));
 		return;
 	}
-	appendSwvLog(vscode.l10n.t('[SWV] CH{0} のログ表示', selected.value));
+	appendSwvLog(vscode.l10n.t('[SWV] Displaying log for CH{0}', selected.value));
 	for (const line of filtered.slice(-200)) {
 		channel.appendLine(line);
 	}
@@ -749,7 +747,7 @@ function findChannelNumbers(line: string): number[] {
 async function openIocEditor(uri: vscode.Uri | undefined, dependencies: Phase2Dependencies): Promise<void> {
 	const iocUri = await resolveIocUri(uri, dependencies);
 	if (!iocUri) {
-		vscode.window.showErrorMessage(vscode.l10n.t('IOCファイルが見つかりません。先にプロジェクトを作成またはインポートしてください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('IOC file not found. Create or import a project first.'));
 		return;
 	}
 
@@ -761,7 +759,7 @@ async function importCubeIdeProject(dependencies: Phase2Dependencies): Promise<v
 		canSelectFiles: false,
 		canSelectFolders: true,
 		canSelectMany: false,
-		openLabel: vscode.l10n.t('CubeIDEプロジェクトを選択'),
+		openLabel: vscode.l10n.t('Select CubeIDE Project Folder'),
 	});
 	const projectFolderUri = selected?.[0];
 	if (!projectFolderUri) {
@@ -774,17 +772,17 @@ async function importCubeIdeProject(dependencies: Phase2Dependencies): Promise<v
 	const hasProject = await pathExists(projectFile);
 	const hasCproject = await pathExists(cprojectFile);
 	if (!hasProject || !hasCproject) {
-		vscode.window.showErrorMessage(vscode.l10n.t('選択フォルダに .project / .cproject が見つかりません。CubeIDEプロジェクトを選択してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Selected folder does not contain .project / .cproject. Please select a CubeIDE project.'));
 		return;
 	}
 
 	const projectName = await readCubeIdeProjectName(projectFile) ?? basename(projectPath);
 	await ensureStm32Scaffold(projectPath);
 
-	const openCurrent = vscode.l10n.t('このフォルダを開く');
-	const addWorkspace = vscode.l10n.t('ワークスペースに追加');
+	const openCurrent = vscode.l10n.t('Open Folder');
+	const addWorkspace = vscode.l10n.t('Add to Workspace');
 	const choice = await vscode.window.showInformationMessage(
-		vscode.l10n.t('CubeIDEプロジェクト「{0}」を検出しました。次の操作を選択してください。', projectName),
+		vscode.l10n.t('CubeIDE project "{0}" detected. What would you like to do?', projectName),
 		openCurrent,
 		addWorkspace,
 	);
@@ -799,20 +797,20 @@ async function importCubeIdeProject(dependencies: Phase2Dependencies): Promise<v
 		vscode.workspace.updateWorkspaceFolders(insertIndex, 0, { uri: projectFolderUri, name: projectName });
 	}
 
-	vscode.window.showInformationMessage(vscode.l10n.t('CubeIDEプロジェクトのインポート準備が完了しました。STM32: ビルド (Debug) を実行できます。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('CubeIDE project import ready. You can now run STM32: Build (Debug).'));
 	dependencies.outputChannel.appendLine(`[STM32] CubeIDE import prepared: ${projectPath}`);
 }
 
 async function regenerateCodeFromIoc(uri: vscode.Uri | undefined, dependencies: Phase2Dependencies): Promise<void> {
 	const workspaceRoot = dependencies.getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace folder before running this command.'));
 		return;
 	}
 
 	const iocUri = await resolveIocUri(uri, dependencies);
 	if (!iocUri) {
-		vscode.window.showErrorMessage(vscode.l10n.t('IOCファイルが見つかりません。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('IOC file not found.'));
 		return;
 	}
 
@@ -823,19 +821,19 @@ async function regenerateCodeFromIoc(uri: vscode.Uri | undefined, dependencies: 
 
 	const generationResult = await runCubeMxGeneration(cubeMxExecutable, argsTemplate, iocPath, workspaceRoot, dependencies);
 	if (generationResult.exitCode !== 0) {
-		vscode.window.showErrorMessage(vscode.l10n.t('CubeMXコード再生成に失敗しました。出力を確認してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('CubeMX code generation failed. Check the output log.'));
 		return;
 	}
 
 	const restoredSections = await restoreUserCodeSnapshot(workspaceRoot, snapshot);
-	vscode.window.showInformationMessage(vscode.l10n.t('コード再生成が完了しました。USER CODEセクション {0} 箇所を復元しました。', String(restoredSections)));
+	vscode.window.showInformationMessage(vscode.l10n.t('Code generation complete. Restored {0} USER CODE section(s).', String(restoredSections)));
 	dependencies.outputChannel.appendLine(`[STM32] Code generation completed for ${iocPath}. Restored user sections: ${restoredSections}`);
 }
 
 async function runCubeMxGeneration(cubeMxExecutable: string, argsTemplate: string, iocPath: string, workspaceRoot: string, dependencies: Phase2Dependencies): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	const directArgs = splitCliArgs(argsTemplate.replace(/\{ioc\}/g, iocPath));
 	if (directArgs.length > 0) {
-		const directResult = await dependencies.runCli(cubeMxExecutable, directArgs, workspaceRoot, vscode.l10n.t('CubeMXコード再生成'));
+		const directResult = await dependencies.runCli(cubeMxExecutable, directArgs, workspaceRoot, vscode.l10n.t('CubeMX code generation'));
 		if (directResult.exitCode === 0) {
 			return directResult;
 		}
@@ -850,7 +848,7 @@ async function runCubeMxGeneration(cubeMxExecutable: string, argsTemplate: strin
 	].join('\n');
 	await fs.writeFile(scriptPath, scriptContent, 'utf8');
 	try {
-		return await dependencies.runCli(cubeMxExecutable, ['-script', scriptPath], workspaceRoot, vscode.l10n.t('CubeMXコード再生成(スクリプト)'));
+		return await dependencies.runCli(cubeMxExecutable, ['-script', scriptPath], workspaceRoot, vscode.l10n.t('CubeMX code regeneration (script)'));
 	} finally {
 		await fs.unlink(scriptPath).catch(() => undefined);
 	}
@@ -859,19 +857,19 @@ async function runCubeMxGeneration(cubeMxExecutable: string, argsTemplate: strin
 async function showCodeSizeAnalysis(dependencies: Phase2Dependencies): Promise<void> {
 	const workspaceRoot = dependencies.getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace folder before running this command.'));
 		return;
 	}
 
 	const mapPath = await findFirstMatch(workspaceRoot, filePath => extname(filePath).toLowerCase() === '.map', ['Debug', 'Release']);
 	if (!mapPath) {
-		vscode.window.showErrorMessage(vscode.l10n.t('MAPファイルが見つかりません。先にビルドしてください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('MAP file not found. Build the project first.'));
 		return;
 	}
 
 	const mapText = await fs.readFile(mapPath, 'utf8').catch(() => '');
 	if (!mapText) {
-		vscode.window.showErrorMessage(vscode.l10n.t('MAPファイルの読み込みに失敗しました。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Failed to read MAP file.'));
 		return;
 	}
 
@@ -879,7 +877,7 @@ async function showCodeSizeAnalysis(dependencies: Phase2Dependencies): Promise<v
 	const symbolSummary = parseMapSymbols(mapText).slice(0, 20);
 	const panel = vscode.window.createWebviewPanel(
 		'stm32.codeSizeAnalysis',
-		vscode.l10n.t('STM32 コードサイズ分析'),
+		vscode.l10n.t('STM32 Code Size Analysis'),
 		vscode.ViewColumn.Beside,
 		{ enableScripts: false }
 	);
@@ -891,7 +889,7 @@ async function showCodeSizeAnalysis(dependencies: Phase2Dependencies): Promise<v
 
 async function showFaultAnalyzer(): Promise<void> {
 	const cfsrInput = await vscode.window.showInputBox({
-		prompt: vscode.l10n.t('CFSRレジスタ値を16進で入力してください (例: 0x00008200)'),
+		prompt: vscode.l10n.t('Enter CFSR register value in hex (e.g. 0x00008200)'),
 		value: '0x00000000',
 	});
 	if (cfsrInput === undefined) {
@@ -899,7 +897,7 @@ async function showFaultAnalyzer(): Promise<void> {
 	}
 
 	const hfsrInput = await vscode.window.showInputBox({
-		prompt: vscode.l10n.t('HFSRレジスタ値を16進で入力してください (例: 0x40000000)'),
+		prompt: vscode.l10n.t('Enter HFSR register value in hex (e.g. 0x40000000)'),
 		value: '0x00000000',
 	});
 	if (hfsrInput === undefined) {
@@ -909,7 +907,7 @@ async function showFaultAnalyzer(): Promise<void> {
 	const cfsr = parseHexNumber(cfsrInput);
 	const hfsr = parseHexNumber(hfsrInput);
 	if (cfsr === undefined || hfsr === undefined) {
-		vscode.window.showErrorMessage(vscode.l10n.t('16進数の形式が正しくありません。0x 形式で入力してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Invalid hex format. Please use 0x notation.'));
 		return;
 	}
 
@@ -921,10 +919,12 @@ async function showFaultAnalyzer(): Promise<void> {
 		`- CFSR: \`${toHex(cfsr, 8)}\``,
 		`- HFSR: \`${toHex(hfsr, 8)}\``,
 		'',
-		`## ${vscode.l10n.t('CFSR内訳')}`,
+		`## ${vscode.l10n.t('CFSR Breakdown')}`,
+
 		...toListLines(cfsrDetails),
 		'',
-		`## ${vscode.l10n.t('HFSR内訳')}`,
+		`## ${vscode.l10n.t('HFSR Breakdown')}`,
+
 		...toListLines(hfsrDetails),
 	].join('\n');
 
@@ -934,7 +934,7 @@ async function showFaultAnalyzer(): Promise<void> {
 
 async function addLiveExpression(provider: LiveExpressionsProvider): Promise<void> {
 	const expression = await vscode.window.showInputBox({
-		prompt: vscode.l10n.t('Live Expressionsに追加する式を入力してください。'),
+		prompt: vscode.l10n.t('Enter an expression to add to Live Expressions.'),
 		placeHolder: '*((uint32_t*)0x40021000)',
 	});
 	if (!expression) {
@@ -945,7 +945,7 @@ async function addLiveExpression(provider: LiveExpressionsProvider): Promise<voi
 	const current = config.get<string[]>('debug.liveExpressions', []);
 	const alreadyExists = current.some(item => item === expression);
 	if (alreadyExists) {
-		vscode.window.showInformationMessage(vscode.l10n.t('同じ式はすでに登録されています。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('This expression is already registered.'));
 		return;
 	}
 
@@ -955,19 +955,19 @@ async function addLiveExpression(provider: LiveExpressionsProvider): Promise<voi
 
 async function refreshLiveExpressions(provider: LiveExpressionsProvider): Promise<void> {
 	provider.refresh();
-	vscode.window.setStatusBarMessage(vscode.l10n.t('Live Expressionsを更新しました。'), 1500);
+	vscode.window.setStatusBarMessage(vscode.l10n.t('Live Expressions refreshed.'), 1500);
 }
 
 async function removeLiveExpression(provider: LiveExpressionsProvider): Promise<void> {
 	const config = vscode.workspace.getConfiguration('stm32');
 	const current = config.get<string[]>('debug.liveExpressions', []);
 	if (current.length === 0) {
-		vscode.window.showInformationMessage(vscode.l10n.t('削除できるLive Expressionがありません。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('No Live Expressions to remove.'));
 		return;
 	}
 
 	const selected = await vscode.window.showQuickPick(current, {
-		placeHolder: vscode.l10n.t('削除するLive Expressionを選択'),
+		placeHolder: vscode.l10n.t('Select a Live Expression to remove'),
 	});
 	if (!selected) {
 		return;
@@ -981,12 +981,12 @@ async function moveLiveExpression(provider: LiveExpressionsProvider, direction: 
 	const config = vscode.workspace.getConfiguration('stm32');
 	const current = config.get<string[]>('debug.liveExpressions', []);
 	if (current.length < 2) {
-		vscode.window.showInformationMessage(vscode.l10n.t('並び替えるには2件以上のLive Expressionが必要です。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('Need at least 2 Live Expressions to reorder.'));
 		return;
 	}
 
 	const selected = await vscode.window.showQuickPick(current, {
-		placeHolder: vscode.l10n.t('移動するLive Expressionを選択'),
+		placeHolder: vscode.l10n.t('Select a Live Expression to move'),
 	});
 	if (!selected) {
 		return;
@@ -998,7 +998,7 @@ async function moveLiveExpression(provider: LiveExpressionsProvider, direction: 
 	}
 	const target = index + direction;
 	if (target < 0 || target >= current.length) {
-		vscode.window.showInformationMessage(vscode.l10n.t('これ以上移動できません。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('Cannot move further in that direction.'));
 		return;
 	}
 
@@ -1012,7 +1012,7 @@ async function moveLiveExpression(provider: LiveExpressionsProvider, direction: 
 async function previewIocDiff(uri: vscode.Uri | undefined, dependencies: Phase2Dependencies): Promise<void> {
 	const iocUri = await resolveIocUri(uri, dependencies);
 	if (!iocUri) {
-		vscode.window.showErrorMessage(vscode.l10n.t('IOCファイルが見つかりません。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('IOC file not found.'));
 		return;
 	}
 
@@ -1024,7 +1024,7 @@ async function previewIocDiff(uri: vscode.Uri | undefined, dependencies: Phase2D
 		content: savedText,
 	});
 
-	const title = vscode.l10n.t('IOC差分プレビュー: 保存済み ↔ 編集中');
+	const title = vscode.l10n.t('IOC Diff Preview: Saved ↔ Edited');
 	await vscode.commands.executeCommand('vscode.diff', savedDocument.uri, document.uri, title);
 }
 
@@ -1032,9 +1032,9 @@ async function refreshSvdRegisters(provider: SvdRegisterProvider): Promise<void>
 	await provider.refresh();
 	const currentPath = provider.getCurrentSvdPath();
 	if (currentPath.length > 0) {
-		vscode.window.setStatusBarMessage(vscode.l10n.t('SVDレジスタを更新しました。'), 1500);
+		vscode.window.setStatusBarMessage(vscode.l10n.t('SVD registers refreshed.'), 1500);
 	} else {
-		vscode.window.showWarningMessage(vscode.l10n.t('SVDファイルが見つかりません。フォールバックレジスタを表示中です。設定 `stm32.debug.svdPath` を確認してください。'));
+		vscode.window.showWarningMessage(vscode.l10n.t('SVD file not found. Showing fallback registers. Check setting `stm32.debug.svdPath`.'));
 	}
 }
 
@@ -1329,7 +1329,7 @@ function templateToTreeElement(template: FallbackPeripheralTemplate): RegisterTr
 	return {
 		kind: 'peripheral',
 		label: template.name,
-		description: vscode.l10n.t('SVD未検出時のフォールバック表示'),
+		description: vscode.l10n.t('Fallback display — SVD not found'),
 		children: template.registers.map((registerName, index) => {
 			const address = template.baseAddress + index * 4;
 			const addressHex = toHex(address >>> 0, 8);
@@ -1539,11 +1539,11 @@ function renderCodeSizeHtml(mapPath: string, sections: MapSectionSummary[], symb
 	const symbolRows = symbols.map(symbol => `<tr><td>${escapeHtml(symbol.name)}</td><td>${symbol.size.toLocaleString()}</td></tr>`).join('');
 
 	return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<title>${escapeHtml(vscode.l10n.t('STM32 コードサイズ分析'))}</title>
+	<title>${escapeHtml(vscode.l10n.t('STM32 Code Size Analysis'))}</title>
 	<style>
 		body {
 			font: 13px/1.5 var(--vscode-font-family);
@@ -1568,18 +1568,18 @@ function renderCodeSizeHtml(mapPath: string, sections: MapSectionSummary[], symb
 	</style>
 </head>
 <body>
-	<h1>${escapeHtml(vscode.l10n.t('コードサイズ詳細分析'))}</h1>
-	<p>${escapeHtml(vscode.l10n.t('解析対象: {0}', mapPath))}</p>
-	<p class="small">${escapeHtml(vscode.l10n.t('総計: {0} bytes', total.toLocaleString()))}</p>
-	<h2>${escapeHtml(vscode.l10n.t('セクション別'))}</h2>
+	<h1>${escapeHtml(vscode.l10n.t('Code Size Analysis'))}</h1>
+	<p>${escapeHtml(vscode.l10n.t('Target: {0}', mapPath))}</p>
+	<p class="small">${escapeHtml(vscode.l10n.t('Total: {0} bytes', total.toLocaleString()))}</p>
+	<h2>${escapeHtml(vscode.l10n.t('By Section'))}</h2>
 	<table>
-		<thead><tr><th>${escapeHtml(vscode.l10n.t('セクション'))}</th><th>${escapeHtml(vscode.l10n.t('サイズ(bytes)'))}</th><th>${escapeHtml(vscode.l10n.t('比率'))}</th></tr></thead>
-		<tbody>${sectionRows || `<tr><td colspan="3">${escapeHtml(vscode.l10n.t('データなし'))}</td></tr>`}</tbody>
+		<thead><tr><th>${escapeHtml(vscode.l10n.t('Section'))}</th><th>${escapeHtml(vscode.l10n.t('Size (bytes)'))}</th><th>${escapeHtml(vscode.l10n.t('Ratio'))}</th></tr></thead>
+		<tbody>${sectionRows || `<tr><td colspan="3">${escapeHtml(vscode.l10n.t('No data'))}</td></tr>`}</tbody>
 	</table>
-	<h2>${escapeHtml(vscode.l10n.t('上位シンボル'))}</h2>
+	<h2>${escapeHtml(vscode.l10n.t('Top Symbols'))}</h2>
 	<table>
-		<thead><tr><th>${escapeHtml(vscode.l10n.t('シンボル'))}</th><th>${escapeHtml(vscode.l10n.t('サイズ(bytes)'))}</th></tr></thead>
-		<tbody>${symbolRows || `<tr><td colspan="2">${escapeHtml(vscode.l10n.t('データなし'))}</td></tr>`}</tbody>
+		<thead><tr><th>${escapeHtml(vscode.l10n.t('Symbol'))}</th><th>${escapeHtml(vscode.l10n.t('Size (bytes)'))}</th></tr></thead>
+		<tbody>${symbolRows || `<tr><td colspan="2">${escapeHtml(vscode.l10n.t('No data'))}</td></tr>`}</tbody>
 	</table>
 </body>
 </html>`;
@@ -1587,36 +1587,36 @@ function renderCodeSizeHtml(mapPath: string, sections: MapSectionSummary[], symb
 
 function decodeCfsr(cfsr: number): string[] {
 	const flags: Array<{ bit: number; label: string }> = [
-		{ bit: 0, label: vscode.l10n.t('IACCVIOL: 命令アクセス違反') },
-		{ bit: 1, label: vscode.l10n.t('DACCVIOL: データアクセス違反') },
-		{ bit: 3, label: vscode.l10n.t('MUNSTKERR: 例外復帰時のメモリ管理エラー') },
-		{ bit: 4, label: vscode.l10n.t('MSTKERR: 例外突入時のメモリ管理エラー') },
-		{ bit: 7, label: vscode.l10n.t('MMARVALID: MMFARが有効') },
-		{ bit: 8, label: vscode.l10n.t('IBUSERR: 命令バスエラー') },
-		{ bit: 9, label: vscode.l10n.t('PRECISERR: 正確なデータバスエラー') },
-		{ bit: 10, label: vscode.l10n.t('IMPRECISERR: 不正確なデータバスエラー') },
-		{ bit: 11, label: vscode.l10n.t('UNSTKERR: バスFault(スタック復帰)') },
-		{ bit: 12, label: vscode.l10n.t('STKERR: バスFault(スタック保存)') },
-		{ bit: 15, label: vscode.l10n.t('BFARVALID: BFARが有効') },
-		{ bit: 16, label: vscode.l10n.t('UNDEFINSTR: 未定義命令') },
-		{ bit: 17, label: vscode.l10n.t('INVSTATE: 不正な状態遷移') },
-		{ bit: 18, label: vscode.l10n.t('INVPC: 不正なPCロード') },
-		{ bit: 19, label: vscode.l10n.t('NOCP: FPU未許可命令') },
-		{ bit: 24, label: vscode.l10n.t('UNALIGNED: 非アラインアクセス') },
-		{ bit: 25, label: vscode.l10n.t('DIVBYZERO: 0除算') },
+		{ bit: 0, label: vscode.l10n.t('IACCVIOL: Instruction access violation') },
+		{ bit: 1, label: vscode.l10n.t('DACCVIOL: Data access violation') },
+		{ bit: 3, label: vscode.l10n.t('MUNSTKERR: Memory management fault on exception return') },
+		{ bit: 4, label: vscode.l10n.t('MSTKERR: Memory management fault on exception entry') },
+		{ bit: 7, label: vscode.l10n.t('MMARVALID: MMFAR holds valid address') },
+		{ bit: 8, label: vscode.l10n.t('IBUSERR: Instruction bus error') },
+		{ bit: 9, label: vscode.l10n.t('PRECISERR: Precise data bus error') },
+		{ bit: 10, label: vscode.l10n.t('IMPRECISERR: Imprecise data bus error') },
+		{ bit: 11, label: vscode.l10n.t('UNSTKERR: Bus fault on exception return stack') },
+		{ bit: 12, label: vscode.l10n.t('STKERR: Bus fault on exception entry stack') },
+		{ bit: 15, label: vscode.l10n.t('BFARVALID: BFAR holds valid address') },
+		{ bit: 16, label: vscode.l10n.t('UNDEFINSTR: Undefined instruction') },
+		{ bit: 17, label: vscode.l10n.t('INVSTATE: Invalid state transition') },
+		{ bit: 18, label: vscode.l10n.t('INVPC: Invalid PC load') },
+		{ bit: 19, label: vscode.l10n.t('NOCP: No coprocessor / FPU not enabled') },
+		{ bit: 24, label: vscode.l10n.t('UNALIGNED: Unaligned access') },
+		{ bit: 25, label: vscode.l10n.t('DIVBYZERO: Divide by zero') },
 	];
 	const active = flags.filter(flag => (cfsr & (1 << flag.bit)) !== 0).map(flag => flag.label);
-	return active.length > 0 ? active : [vscode.l10n.t('有効なFaultフラグはありません。')];
+	return active.length > 0 ? active : [vscode.l10n.t('No active fault flags.')];
 }
 
 function decodeHfsr(hfsr: number): string[] {
 	const flags: Array<{ bit: number; label: string }> = [
-		{ bit: 1, label: vscode.l10n.t('VECTTBL: ベクタテーブル読み込みFault') },
-		{ bit: 30, label: vscode.l10n.t('FORCED: Configurable FaultからHardFaultへ昇格') },
-		{ bit: 31, label: vscode.l10n.t('DEBUGEVT: デバッグイベント発生') },
+		{ bit: 1, label: vscode.l10n.t('VECTTBL: Vector table read fault') },
+		{ bit: 30, label: vscode.l10n.t('FORCED: Escalated from configurable fault to HardFault') },
+		{ bit: 31, label: vscode.l10n.t('DEBUGEVT: Debug event occurred') },
 	];
 	const active = flags.filter(flag => (hfsr & (1 << flag.bit)) !== 0).map(flag => flag.label);
-	return active.length > 0 ? active : [vscode.l10n.t('有効なHardFaultフラグはありません。')];
+	return active.length > 0 ? active : [vscode.l10n.t('No active HardFault flags.')];
 }
 
 function toListLines(lines: string[]): string[] {

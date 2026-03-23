@@ -46,14 +46,6 @@ interface ManagedMcpStartResult {
 	detail: string;
 }
 
-interface TemplateDefinition {
-	name: string;
-	category: string;
-	mcu: string;
-	pinModes: Array<{ pin: string; mode: string }>;
-	userCodeLines: string[];
-}
-
 interface BoardProfile {
 	id: string;
 	name: string;
@@ -123,17 +115,6 @@ const PREFERRED_BOARD_PROFILES: BoardProfile[] = [
 	}
 ];
 
-function getTutorialSteps(): string[] {
-	return [
-		vscode.l10n.t('1. Select MCU: Choose the target device from the MCU selector in the title bar.'),
-		vscode.l10n.t('2. New Project: Run STM32: New Project from the Command Palette.'),
-		vscode.l10n.t('3. Pin Config: Set PA5 to GPIO_Output to assign the LED pin.'),
-		vscode.l10n.t('4. Regenerate Code: Regenerate code from the .ioc file.'),
-		vscode.l10n.t('5. Write LED blink code in the USER CODE section.'),
-		vscode.l10n.t('6. Run Debug Build and fix any errors.'),
-		vscode.l10n.t('7. Flash the firmware and confirm LED blink.'),
-	];
-}
 
 
 const PIN_MODE_GROUPS: Record<string, string[]> = {
@@ -187,18 +168,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	installGlobalErrorGuard();
 
 	context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ux.onboardingView', new OnboardingViewProvider()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWorkflowStudio', () => openWorkflowStudio()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWelcomeWizard', () => openWelcomeWizard()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openMcpOperationDesk', () => openMcpOperationDesk()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.syncMcuCatalogFromCubeMX', () => syncMcuCatalogFromCubeMX()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.startBlinkTutorial', () => openBlinkTutorial()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openTemplateGallery', () => openTemplateGallery()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openBoardConfigurator', () => openBoardConfigurator()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.runEnvironmentCheck', () => runEnvironmentCheck()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.explainLatestError', () => explainLatestError()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPinVisualizer', () => openPinVisualizer()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPeripheralWorkbench', () => openPeripheralWorkbench()));
-	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openPwmWorkbench', () => openPwmWorkbench()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.configureGlobalWallpaper', () => configureGlobalWallpaper()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.generateMcpConfigJson', () => generateMcpConfigJson()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.composeMcpRequestJson', () => composeMcpRequestJson()));
@@ -413,14 +389,8 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 					return;
 				}
 				switch (message.type) {
-					case 'studio':
-						await openWorkflowStudio();
-						break;
 					case 'mcp':
 						await openMcpOperationDesk();
-						break;
-					case 'collab':
-						await vscode.commands.executeCommand('stm32collab.openPanel');
 						break;
 					case 'svd':
 						await vscode.commands.executeCommand('workbench.view.extension.stm32-debug');
@@ -438,17 +408,8 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 					case 'syncCatalog':
 						await syncMcuCatalogFromCubeMX();
 						break;
-					case 'welcome':
-						await openWelcomeWizard();
-						break;
 					case 'board':
 						await openBoardConfigurator();
-						break;
-					case 'tutorial':
-						await openBlinkTutorial();
-						break;
-					case 'templates':
-						await openTemplateGallery();
 						break;
 					case 'env':
 						await runEnvironmentCheck();
@@ -456,14 +417,11 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 					case 'pin':
 						await openPinVisualizer();
 						break;
-					case 'pwmLab':
-						await openPwmWorkbench();
-						break;
-					case 'periphLab':
-						await openPeripheralWorkbench();
-						break;
 					case 'error':
 						await explainLatestError();
+						break;
+					case 'envSettings':
+						await openEnvironmentSettingsDialog();
 						break;
 				}
 			} catch (error) {
@@ -473,89 +431,8 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 	}
 }
 
-async function openWorkflowStudio(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.workflowStudio', 'STM32 Workflow Studio', vscode.ViewColumn.Active, { enableScripts: true });
-	panel.webview.html = getWorkflowStudioHtml(panel.webview);
-	panel.webview.onDidReceiveMessage(async message => {
-		if (!isRecord(message) || typeof message.type !== 'string') {
-			return;
-		}
 
-		switch (message.type) {
-			case 'create':
-				await openBoardConfigurator();
-				break;
-			case 'syncCatalog':
-				await syncMcuCatalogFromCubeMX();
-				break;
-			case 'coding':
-				await vscode.commands.executeCommand('stm32.openCommandCenter');
-				break;
-			case 'settings':
-				await runEnvironmentCheck();
-				break;
-			case 'tutorial':
-				await openBlinkTutorial();
-				break;
-			case 'pins':
-				await openPinVisualizer();
-				break;
-			case 'pwmLab':
-				await openPwmWorkbench();
-				break;
-			case 'periphLab':
-				await openPeripheralWorkbench();
-				break;
-		}
-	});
-}
 
-async function openPwmWorkbench(): Promise<void> {
-	await openPeripheralWorkbench();
-}
-
-async function openPeripheralWorkbench(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.peripheralWorkbench', 'STM32 Peripheral Workbench', vscode.ViewColumn.Active, { enableScripts: true });
-	panel.webview.html = getPeripheralWorkbenchHtml(panel.webview);
-	panel.webview.onDidReceiveMessage(async message => {
-		if (!isRecord(message) || typeof message.type !== 'string') {
-			return;
-		}
-
-		switch (message.type) {
-			case 'copyText': {
-				const value = typeof message.value === 'string' ? message.value : '';
-				if (!value) {
-					return;
-				}
-				await vscode.env.clipboard.writeText(value);
-				vscode.window.showInformationMessage(vscode.l10n.t('Code copied to clipboard.'));
-				break;
-			}
-			case 'openPins':
-				await openPinVisualizer();
-				break;
-			case 'openBoard':
-				await openBoardConfigurator();
-				break;
-			case 'openMcp':
-				await openMcpOperationDesk();
-				break;
-			case 'openCommandCenter':
-				await vscode.commands.executeCommand('stm32.openCommandCenter');
-				break;
-			case 'runBuild':
-				await vscode.commands.executeCommand('stm32.buildDebug');
-				break;
-			case 'runFlash':
-				await vscode.commands.executeCommand('stm32.flash');
-				break;
-			case 'runDebug':
-				await vscode.commands.executeCommand('stm32.startDebug');
-				break;
-		}
-	});
-}
 
 async function openMcpOperationDesk(): Promise<void> {
 	const panel = vscode.window.createWebviewPanel('stm32ux.mcpDesk', 'STM32 MCP Operation Desk', vscode.ViewColumn.Active, { enableScripts: true });
@@ -672,10 +549,6 @@ async function openMcpOperationDesk(): Promise<void> {
 			case 'board':
 				await run('stm32.openBoardConfigurator');
 				await openBoardConfigurator();
-				break;
-			case 'collab':
-				await run('stm32.collab.openPanel');
-				await vscode.commands.executeCommand('stm32collab.openPanel');
 				break;
 			case 'svd':
 				await run('stm32.refreshRegisters');
@@ -1168,7 +1041,6 @@ function getMcpMethodCatalog(): Array<{ method: string; description: string; com
 		{ method: 'stm32.flash', description: 'Flash firmware', command: 'stm32.flash' },
 		{ method: 'stm32.regenerateCode', description: 'Regenerate code from .ioc', command: 'stm32.regenerateCode' },
 		{ method: 'stm32.openBoardConfigurator', description: 'Open board config screen', command: 'stm32ux.openBoardConfigurator' },
-		{ method: 'stm32.collab.openPanel', description: 'Open collaboration panel', command: 'stm32collab.openPanel' },
 		{ method: 'stm32.refreshRegisters', description: 'Refresh SVD register view', command: 'stm32.debug.refreshRegisters' },
 		{ method: 'stm32.openPinVisualizer', description: 'Open pin visualizer', command: 'stm32ux.openPinVisualizer' },
 		{ method: 'stm32.syncCatalog', description: 'Sync CubeMX catalog', command: 'stm32ux.syncMcuCatalogFromCubeMX' },
@@ -1592,23 +1464,14 @@ async function openWelcomeWizard(): Promise<void> {
 			return;
 		}
 		switch (message.type) {
-			case 'studio':
-				await openWorkflowStudio();
-				break;
 			case 'syncCatalog':
 				await syncMcuCatalogFromCubeMX();
 				break;
 			case 'board':
 				await openBoardConfigurator();
 				break;
-			case 'tutorial':
-				await openBlinkTutorial();
-				break;
 			case 'import':
 				await vscode.commands.executeCommand('stm32.importCubeIDE');
-				break;
-			case 'templates':
-				await openTemplateGallery();
 				break;
 			case 'env':
 				await runEnvironmentCheck();
@@ -1619,12 +1482,6 @@ async function openWelcomeWizard(): Promise<void> {
 			case 'pin':
 				await openPinVisualizer();
 				break;
-			case 'pwmLab':
-				await openPwmWorkbench();
-				break;
-			case 'periphLab':
-				await openPeripheralWorkbench();
-				break;
 			case 'error':
 				await explainLatestError();
 				break;
@@ -1632,52 +1489,7 @@ async function openWelcomeWizard(): Promise<void> {
 	});
 }
 
-async function openBlinkTutorial(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.tutorial', 'STM32 LED Blink Tutorial', vscode.ViewColumn.Active, { enableScripts: true });
-	panel.webview.html = getTutorialHtml(panel.webview);
-	panel.webview.onDidReceiveMessage(async message => {
-		if (!isRecord(message) || typeof message.type !== 'string') {
-			return;
-		}
-		if (message.type === 'runBuild') {
-			await vscode.commands.executeCommand('stm32.buildDebug');
-		}
-		if (message.type === 'runFlash') {
-			await vscode.commands.executeCommand('stm32.flash');
-		}
-		if (message.type === 'openPin') {
-			await openPinVisualizer();
-		}
-		if (message.type === 'complete') {
-			panel.dispose();
-			vscode.window.showInformationMessage(
-				vscode.l10n.t('🎉 Tutorial complete! You have mastered STM32 LED blink.'),
-				vscode.l10n.t('Browse Templates')
-			).then(choice => {
-				if (choice === vscode.l10n.t('Browse Templates')) {
-					void openTemplateGallery().catch(error => {
-						logUxError('openTemplateGallery from tutorial', error);
-					});
-				}
-			});
-		}
-	});
-}
 
-async function openTemplateGallery(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.templates', 'STM32 Template Gallery', vscode.ViewColumn.Active, { enableScripts: true });
-	panel.webview.html = getTemplateGalleryHtml(panel.webview);
-	panel.webview.onDidReceiveMessage(async message => {
-		if (!isRecord(message) || typeof message.template !== 'string') {
-			return;
-		}
-		const selected = message.template;
-		const action = await vscode.window.showInformationMessage(vscode.l10n.t('Template selected: {0}', selected), vscode.l10n.t('Create New Project'));
-		if (action === vscode.l10n.t('Create New Project')) {
-			await createProjectFromTemplate(selected);
-		}
-	});
-}
 
 async function openBoardConfigurator(): Promise<void> {
 	const profiles = await getBoardProfilesFromCatalog();
@@ -3134,66 +2946,6 @@ async function openPinVisualizer(): Promise<void> {
 	await render();
 }
 
-async function createProjectFromTemplate(templateName: string): Promise<void> {
-	const template = getTemplateDefinition(templateName);
-	const folderPick = await vscode.window.showOpenDialog({
-		canSelectMany: false,
-		canSelectFiles: false,
-		canSelectFolders: true,
-		openLabel: vscode.l10n.t('Select destination folder')
-	});
-	if (!folderPick || folderPick.length === 0) {
-		return;
-	}
-
-	const suggested = sanitizeProjectName(template.name);
-	const projectName = (await vscode.window.showInputBox({
-		title: vscode.l10n.t('Project Name'),
-		value: suggested,
-		prompt: vscode.l10n.t('Alphanumerics, hyphens, and underscores recommended')
-	}))?.trim();
-	if (!projectName) {
-		return;
-	}
-
-	const projectUri = vscode.Uri.joinPath(folderPick[0], projectName);
-	const allowOverwrite = await confirmCreateProject(projectUri);
-	if (!allowOverwrite) {
-		return;
-	}
-
-	await vscode.workspace.fs.createDirectory(projectUri);
-	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, 'Core'));
-	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, 'Core', 'Inc'));
-	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, 'Core', 'Src'));
-	await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, '.vscode'));
-
-	const iocText = generateIocText(projectName, template);
-	const mainText = generateMainSource(template);
-	const headerText = generateMainHeader();
-	const readmeText = generateReadme(projectName, template);
-	const extJson = '{\n  "recommendations": [\n    "ms-vscode.cpptools"\n  ]\n}\n';
-	const tasksJson = generateTasksJson();
-	const launchJson = generateLaunchJson(projectName);
-	const cPropertiesJson = generateCProperties(template);
-
-	await writeTextFile(vscode.Uri.joinPath(projectUri, `${projectName}.ioc`), iocText);
-	await writeTextFile(vscode.Uri.joinPath(projectUri, 'Core', 'Src', 'main.c'), mainText);
-	await writeTextFile(vscode.Uri.joinPath(projectUri, 'Core', 'Inc', 'main.h'), headerText);
-	await writeTextFile(vscode.Uri.joinPath(projectUri, 'README.md'), readmeText);
-	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'extensions.json'), extJson);
-	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'tasks.json'), tasksJson);
-	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'launch.json'), launchJson);
-	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'c_cpp_properties.json'), cPropertiesJson);
-
-	const openAction = await vscode.window.showInformationMessage(
-		vscode.l10n.t('Project generated from template: {0}', projectName),
-		vscode.l10n.t('Open Folder')
-	);
-	if (openAction === vscode.l10n.t('Open Folder')) {
-		await vscode.commands.executeCommand('vscode.openFolder', projectUri, false);
-	}
-}
 
 async function createProjectFromBoardConfigurator(profile: BoardProfile, config: BoardConfiguratorPayload): Promise<void> {
 	const folderPick = await vscode.window.showOpenDialog({
@@ -3221,25 +2973,17 @@ async function createProjectFromBoardConfigurator(profile: BoardProfile, config:
 
 	const mcuPins = await loadMcuPackagePins(profile.mcu);
 	const mergedPins = mergePins(mcuPins, profile.defaultPins);
-	const template: TemplateDefinition = {
-		name: profile.name,
-		category: 'Board Config Studio',
-		mcu: profile.mcu,
-		pinModes: mergedPins,
-		userCodeLines: [
-			'/* Generated by TovaIDE-STM Board Config Studio */',
-			'HAL_Delay(100);'
-		]
-	};
+	const projectMcu = profile.mcu;
+	const projectPins = mergedPins;
 
-	const iocText = generateIocTextFromBoardConfig(projectName, template, config);
-	const mainText = generateMainSource(template);
+	const iocText = generateIocTextFromBoardConfig(projectName, projectMcu, projectPins, config);
+	const mainText = generateMainSource(projectMcu);
 	const headerText = generateMainHeader();
-	const readmeText = generateReadme(projectName, template);
+	const readmeText = generateReadme(projectName, profile.name, projectMcu, projectPins);
 	const extJson = '{\n  "recommendations": [\n    "ms-vscode.cpptools"\n  ]\n}\n';
 	const tasksJson = generateTasksJson();
 	const launchJson = generateLaunchJson(projectName);
-	const cPropertiesJson = generateCProperties(template);
+	const cPropertiesJson = generateCProperties(projectMcu);
 
 	await writeTextFile(vscode.Uri.joinPath(projectUri, `${projectName}.ioc`), iocText);
 	await writeTextFile(vscode.Uri.joinPath(projectUri, 'Core', 'Src', 'main.c'), mainText);
@@ -3277,15 +3021,13 @@ function mergePins(basePins: Array<{ pin: string; mode: string }>, preferredPins
 	return Array.from(map.entries()).map(([pin, mode]) => ({ pin, mode }));
 }
 
-function generateIocTextFromBoardConfig(projectName: string, template: TemplateDefinition, _config: BoardConfiguratorPayload): string {
-	const mcuName = template.mcu;
-
+function generateIocTextFromBoardConfig(projectName: string, mcuName: string, pinModes: Array<{ pin: string; mode: string }>, _config: BoardConfiguratorPayload): string {
 	// Infer MCU family from name (e.g. STM32F303K8 → STM32F3)
 	const familyMatch = mcuName.match(/^(STM32[A-Z]\d)/i);
 	const mcuFamily = familyMatch ? familyMatch[1] : 'STM32F3';
 
 	// Separate configured pins from default/reset-state pins
-	const configuredPins = template.pinModes.filter(p =>
+	const configuredPins = pinModes.filter(p =>
 		p.mode && p.mode !== 'Reset_State' && p.mode !== 'Analog' && !p.mode.startsWith('__')
 	);
 
@@ -3373,497 +3115,11 @@ async function directoryExists(uri: vscode.Uri): Promise<boolean> {
 	}
 }
 
-const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
-	'GPIO Blinky (F4)': {
-		name: 'GPIO Blinky (F4)', category: 'Beginner', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
-		userCodeLines: ['HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);', 'HAL_Delay(500);']
-	},
-	'UART Hello (F4)': {
-		name: 'UART Hello (F4)', category: 'Beginner', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }],
-		userCodeLines: [
-			'uint8_t msg[] = "Hello STM32\\r\\n";',
-			'HAL_UART_Transmit(&huart2, msg, sizeof(msg)-1, 100);',
-			'HAL_Delay(1000);'
-		]
-	},
-	'EXTI Button IRQ': {
-		name: 'EXTI Button IRQ', category: 'Beginner', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PC13', mode: 'GPIO_EXTI13' }],
-		userCodeLines: [
-			'/* PA5 LED toggled in HAL_GPIO_EXTI_Callback */',
-			'HAL_Delay(10);'
-		]
-	},
-	'ADC Polling': {
-		name: 'ADC Polling', category: 'Beginner', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA0', mode: 'ADC1_IN0' }],
-		userCodeLines: [
-			'HAL_ADC_Start(&hadc1);',
-			'if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK) {',
-			'  uint32_t val = HAL_ADC_GetValue(&hadc1);',
-			'  (void)val;',
-			'}',
-			'HAL_ADC_Stop(&hadc1);',
-			'HAL_Delay(100);'
-		]
-	},
-	'DAC Wave Output': {
-		name: 'DAC Wave Output', category: 'Beginner', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA4', mode: 'DAC1_OUT1' }],
-		userCodeLines: [
-			'static uint16_t sine[64] = { 2048,2248,2446,2637,2820,2991,3147,3285,',
-			'  3401,3495,3563,3604,3615,3598,3552,3479,',
-			'  3381,3260,3117,2955,2778,2587,2388,2182,',
-			'  1975,1769,1570,1379,1200,1036, 893, 772,',
-			'   674, 601, 555, 538, 549, 590, 658, 752,',
-			'   868,1004,1156,1321,1498,1682,1872,2064,',
-			'  2048 };',
-			'HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sine[0]);',
-			'HAL_Delay(1);'
-		]
-	},
-	'I2C Sensor Read (F4)': {
-		name: 'I2C Sensor Read (F4)', category: 'Intermediate', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PB6', mode: 'I2C1_SCL' }, { pin: 'PB7', mode: 'I2C1_SDA' }],
-		userCodeLines: [
-			'uint8_t buf[2];',
-			'uint16_t addr = 0x68 << 1;',
-			'HAL_I2C_Master_Receive(&hi2c1, addr, buf, 2, 10);',
-			'HAL_Delay(50);'
-		]
-	},
-	'SPI IMU (F4)': {
-		name: 'SPI IMU (F4)', category: 'Intermediate', mcu: 'STM32F446RETx',
-		pinModes: [
-			{ pin: 'PA5', mode: 'SPI1_SCK' }, { pin: 'PA6', mode: 'SPI1_MISO' },
-			{ pin: 'PA7', mode: 'SPI1_MOSI' }, { pin: 'PB6', mode: 'GPIO_Output' }
-		],
-		userCodeLines: [
-			'uint8_t tx[2] = { 0x75 | 0x80, 0x00 };',
-			'uint8_t rx[2] = { 0 };',
-			'HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);',
-			'HAL_SPI_TransmitReceive(&hspi1, tx, rx, 2, 10);',
-			'HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);',
-			'HAL_Delay(10);'
-		]
-	},
-	'Timer PWM Basic': {
-		name: 'Timer PWM Basic', category: 'Intermediate', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA8', mode: 'TIM1_CH1' }],
-		userCodeLines: [
-			'HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);',
-			'__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 500);',
-			'HAL_Delay(1000);',
-			'__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 250);',
-			'HAL_Delay(1000);'
-		]
-	},
-	'ADC + DMA': {
-		name: 'ADC + DMA', category: 'Intermediate', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA0', mode: 'ADC1_IN0' }, { pin: 'PA1', mode: 'ADC1_IN1' }],
-		userCodeLines: [
-			'uint32_t adcBuf[2];',
-			'HAL_ADC_Start_DMA(&hadc1, adcBuf, 2);',
-			'HAL_Delay(10);',
-			'(void)adcBuf;'
-		]
-	},
-	'CAN Loopback': {
-		name: 'CAN Loopback', category: 'Intermediate', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA11', mode: 'CAN1_RX' }, { pin: 'PA12', mode: 'CAN1_TX' }],
-		userCodeLines: [
-			'CAN_TxHeaderTypeDef txHdr = { .StdId=0x7FF, .DLC=1, .RTR=CAN_RTR_DATA, .IDE=CAN_ID_STD };',
-			'uint8_t data[1] = { 0xAB };',
-			'uint32_t txMbox;',
-			'HAL_CAN_AddTxMessage(&hcan1, &txHdr, data, &txMbox);',
-			'HAL_Delay(100);'
-		]
-	},
-	'RTC Calendar': {
-		name: 'RTC Calendar', category: 'Intermediate', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'RTC_TimeTypeDef t;',
-			'RTC_DateTypeDef d;',
-			'HAL_RTC_GetTime(&hrtc, &t, RTC_FORMAT_BIN);',
-			'HAL_RTC_GetDate(&hrtc, &d, RTC_FORMAT_BIN);',
-			'(void)t; (void)d;',
-			'HAL_Delay(1000);'
-		]
-	},
-	'USB CDC Device': {
-		name: 'USB CDC Device', category: 'Advanced', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'extern USBD_HandleTypeDef hUsbDeviceFS;',
-			'uint8_t msg[] = "USB CDC\\r\\n";',
-			'CDC_Transmit_FS(msg, sizeof(msg)-1);',
-			'HAL_Delay(1000);'
-		]
-	},
-	'USB HID Device': {
-		name: 'USB HID Device', category: 'Advanced', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'extern USBD_HandleTypeDef hUsbDeviceFS;',
-			'uint8_t report[4] = { 0 };',
-			'USBD_HID_SendReport(&hUsbDeviceFS, report, 4);',
-			'HAL_Delay(10);'
-		]
-	},
-	'FreeRTOS 2 Tasks': {
-		name: 'FreeRTOS 2 Tasks', category: 'Advanced', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
-		userCodeLines: [
-			'/* Tasks defined in freertos.c — see Task1 / Task2 */',
-			'HAL_Delay(1);'
-		]
-	},
-	'FreeRTOS Queue': {
-		name: 'FreeRTOS Queue', category: 'Advanced', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'/* Producer/consumer pattern via osMessageQueuePut / Get */',
-			'HAL_Delay(1);'
-		]
-	},
-	'FreeRTOS Mutex': {
-		name: 'FreeRTOS Mutex', category: 'Advanced', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'/* Shared resource protected via osMutexAcquire / Release */',
-			'HAL_Delay(1);'
-		]
-	},
-	'LwIP TCP Echo': {
-		name: 'LwIP TCP Echo', category: 'Advanced', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'/* LwIP raw TCP echo server — see tcp_echoserver.c */',
-			'MX_LWIP_Process();',
-			'HAL_Delay(1);'
-		]
-	},
-	'LwIP HTTP Basic': {
-		name: 'LwIP HTTP Basic', category: 'Advanced', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'/* Basic HTTP/1.0 server using LwIP httpd — see httpd.c */',
-			'MX_LWIP_Process();',
-			'HAL_Delay(1);'
-		]
-	},
-	'FatFS SD Card': {
-		name: 'FatFS SD Card', category: 'Storage', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'FATFS fs; FIL fil; FRESULT res;',
-			'f_mount(&fs, "", 1);',
-			'res = f_open(&fil, "test.txt", FA_CREATE_ALWAYS | FA_WRITE);',
-			'if (res == FR_OK) { f_printf(&fil, "Hello\\n"); f_close(&fil); }',
-			'f_mount(NULL, "", 0);',
-			'HAL_Delay(100);'
-		]
-	},
-	'QSPI External Flash': {
-		name: 'QSPI External Flash', category: 'Storage', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'/* Read ID via QSPI — configure QSPI peripheral in CubeMX */',
-			'QSPI_CommandTypeDef cmd = { .Instruction=0x9F, .InstructionMode=QSPI_INSTRUCTION_1_LINE,',
-			'  .DataMode=QSPI_DATA_1_LINE, .NbData=3 };',
-			'uint8_t id[3];',
-			'HAL_QSPI_Command(&hqspi, &cmd, 100);',
-			'HAL_QSPI_Receive(&hqspi, id, 100);',
-			'HAL_Delay(10);'
-		]
-	},
-	'Bootloader UART': {
-		name: 'Bootloader UART', category: 'Storage', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }],
-		userCodeLines: [
-			'/* Simple UART bootloader stub — jumps to app at 0x08008000 */',
-			'void (*app)(void) = (void (*)(void))(*(uint32_t *)(0x08008004));',
-			'__set_MSP(*(uint32_t *)0x08008000);',
-			'app();'
-		]
-	},
-	'Low Power STOP Mode': {
-		name: 'Low Power STOP Mode', category: 'Power', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'HAL_SuspendTick();',
-			'HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);',
-			'SystemClock_Config();',
-			'HAL_ResumeTick();'
-		]
-	},
-	'Watchdog IWDG': {
-		name: 'Watchdog IWDG', category: 'Power', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'HAL_IWDG_Refresh(&hiwdg);',
-			'HAL_Delay(50);'
-		]
-	},
-	'Crypto AES (L5)': {
-		name: 'Crypto AES (L5)', category: 'Power', mcu: 'STM32L552ZETx',
-		pinModes: [],
-		userCodeLines: [
-			'uint8_t key[16] = { 0x00 };',
-			'uint8_t plain[16] = { 0x01 };',
-			'uint8_t cipher[16];',
-			'CRYP_ConfigTypeDef cfg = { .DataType=CRYP_DATATYPE_8B, .KeySize=CRYP_KEYSIZE_128B };',
-			'HAL_CRYP_Encrypt(&hcryp, (uint32_t *)plain, 4, (uint32_t *)cipher, 100);',
-			'(void)cipher;',
-			'HAL_Delay(10);'
-		]
-	},
-	'CMSIS-DSP FIR': {
-		name: 'CMSIS-DSP FIR', category: 'Power', mcu: 'STM32F446RETx',
-		pinModes: [],
-		userCodeLines: [
-			'#include "arm_math.h"',
-			'static float32_t fir_state[32+16-1];',
-			'arm_fir_instance_f32 fir;',
-			'/* arm_fir_init_f32 / arm_fir_f32 — see CMSIS-DSP docs */',
-			'HAL_Delay(1);'
-		]
-	},
-	'Modbus RTU Slave': {
-		name: 'Modbus RTU Slave', category: 'Industrial', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }],
-		userCodeLines: [
-			'/* Modbus RTU via RS-485 — add freemodbus or similar library */',
-			'eMBPoll();',
-			'HAL_Delay(1);'
-		]
-	},
-	'Motor PWM + Encoder': {
-		name: 'Motor PWM + Encoder', category: 'Industrial', mcu: 'STM32F446RETx',
-		pinModes: [
-			{ pin: 'PA8', mode: 'TIM1_CH1' }, { pin: 'PB4', mode: 'TIM3_CH1' }, { pin: 'PB5', mode: 'TIM3_CH2' }
-		],
-		userCodeLines: [
-			'HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);',
-			'HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);',
-			'int32_t pos = (int16_t)__HAL_TIM_GET_COUNTER(&htim3);',
-			'(void)pos;',
-			'HAL_Delay(10);'
-		]
-	},
-	'Hall Sensor Capture': {
-		name: 'Hall Sensor Capture', category: 'Industrial', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA8', mode: 'TIM1_CH1' }],
-		userCodeLines: [
-			'HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_1);',
-			'/* Period measured in HAL_TIM_IC_CaptureCallback */',
-			'HAL_Delay(1);'
-		]
-	},
-	'BLE UART Bridge (WB)': {
-		name: 'BLE UART Bridge (WB)', category: 'Wireless', mcu: 'STM32WB55RGVx',
-		pinModes: [{ pin: 'PA2', mode: 'USART1_TX' }, { pin: 'PA3', mode: 'USART1_RX' }],
-		userCodeLines: [
-			'/* BLE UART transparent bridge — see STM32WB BLE UART example */',
-			'MX_APPE_Process();',
-			'HAL_Delay(1);'
-		]
-	},
-	'Multi-board Workspace Sample': {
-		name: 'Multi-board Workspace Sample', category: 'Wireless', mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
-		userCodeLines: ['/* Multi-board sample — add second board folder to workspace */', 'HAL_Delay(100);']
-	},
-	'Ethernet TCP (H7)': {
-		name: 'Ethernet TCP (H7)', category: 'H7', mcu: 'STM32H743ZITx',
-		pinModes: [],
-		userCodeLines: [
-			'/* LwIP TCP client on STM32H743 — see tcp_client.c */',
-			'MX_LWIP_Process();',
-			'HAL_Delay(1);'
-		]
-	},
-	'FMC SDRAM (H7)': {
-		name: 'FMC SDRAM (H7)', category: 'H7', mcu: 'STM32H743ZITx',
-		pinModes: [],
-		userCodeLines: [
-			'/* SDRAM at 0xC0000000 via FMC — initialized in MX_FMC_Init */',
-			'uint32_t *sdram = (uint32_t *)0xC0000000UL;',
-			'sdram[0] = 0xDEADBEEF;',
-			'HAL_Delay(1);'
-		]
-	},
-	'Low Power LPUART (L4)': {
-		name: 'Low Power LPUART (L4)', category: 'L4', mcu: 'STM32L476RGTx',
-		pinModes: [{ pin: 'PB10', mode: 'LPUART1_TX' }, { pin: 'PB11', mode: 'LPUART1_RX' }],
-		userCodeLines: [
-			'uint8_t msg[] = "L4 Low Power UART\\r\\n";',
-			'HAL_UART_Transmit(&hlpuart1, msg, sizeof(msg)-1, 100);',
-			'HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);'
-		]
-	},
-	'Touch Sense (L4)': {
-		name: 'Touch Sense (L4)', category: 'L4', mcu: 'STM32L476RGTx',
-		pinModes: [],
-		userCodeLines: [
-			'/* TSC group acquisition — configure TSC in CubeMX */',
-			'HAL_TSC_Start(&htsc);',
-			'if (HAL_TSC_PollForAcquisition(&htsc) == HAL_OK) {',
-			'  uint32_t val = HAL_TSC_GroupGetValue(&htsc, TSC_GROUP1_IDX);',
-			'  (void)val;',
-			'}',
-			'HAL_Delay(10);'
-		]
-	},
-	'BLE Custom Profile (WB)': {
-		name: 'BLE Custom Profile (WB)', category: 'WB', mcu: 'STM32WB55RGVx',
-		pinModes: [],
-		userCodeLines: [
-			'/* Custom BLE GATT service — see custom_app.c generated by STM32CubeMX */',
-			'Custom_App_Process();',
-			'MX_APPE_Process();',
-			'HAL_Delay(1);'
-		]
-	},
-	'Blue Pill Blinky (F1)': {
-		name: 'Blue Pill Blinky (F1)', category: 'F1', mcu: 'STM32F103C8Tx',
-		pinModes: [{ pin: 'PC13', mode: 'GPIO_Output' }],
-		userCodeLines: ['HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);', 'HAL_Delay(500);']
-	},
-	'Blue Pill UART (F1)': {
-		name: 'Blue Pill UART (F1)', category: 'F1', mcu: 'STM32F103C8Tx',
-		pinModes: [{ pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }],
-		userCodeLines: [
-			'uint8_t msg[] = "Blue Pill STM32F1\\r\\n";',
-			'HAL_UART_Transmit(&huart1, msg, sizeof(msg)-1, 100);',
-			'HAL_Delay(1000);'
-		]
-	},
-	'G0 Nucleo Blinky': {
-		name: 'G0 Nucleo Blinky', category: 'G0', mcu: 'STM32G071RBTx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
-		userCodeLines: ['HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);', 'HAL_Delay(500);']
-	},
-	'G0 Low Power': {
-		name: 'G0 Low Power', category: 'G0', mcu: 'STM32G071RBTx',
-		pinModes: [],
-		userCodeLines: [
-			'HAL_SuspendTick();',
-			'HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);',
-			'SystemClock_Config();',
-			'HAL_ResumeTick();'
-		]
-	},
-	'U5 TrustZone Blinky': {
-		name: 'U5 TrustZone Blinky', category: 'U5', mcu: 'STM32U575RITx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
-		userCodeLines: [
-			'/* Secure world LED blink on Nucleo-U575ZI-Q */',
-			'HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);',
-			'HAL_Delay(500);'
-		]
-	},
-	'U5 Low Power LPUART': {
-		name: 'U5 Low Power LPUART', category: 'U5', mcu: 'STM32U575RITx',
-		pinModes: [{ pin: 'PA2', mode: 'LPUART1_TX' }, { pin: 'PA3', mode: 'LPUART1_RX' }],
-		userCodeLines: [
-			'uint8_t msg[] = "U5 Low Power UART\\r\\n";',
-			'HAL_UART_Transmit(&hlpuart1, msg, sizeof(msg)-1, 100);',
-			'HAL_PWREx_EnterSTOP1Mode(PWR_STOPENTRY_WFI);',
-			'SystemClock_Config();'
-		]
-	},
-	'C0 Minimal Blinky': {
-		name: 'C0 Minimal Blinky', category: 'C0', mcu: 'STM32C031C6Tx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
-		userCodeLines: ['HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);', 'HAL_Delay(500);']
-	},
-	'C0 UART Echo': {
-		name: 'C0 UART Echo', category: 'C0', mcu: 'STM32C031C6Tx',
-		pinModes: [{ pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }],
-		userCodeLines: [
-			'uint8_t buf[1];',
-			'if (HAL_UART_Receive(&huart1, buf, 1, 1) == HAL_OK) {',
-			'  HAL_UART_Transmit(&huart1, buf, 1, 10);',
-			'}'
-		]
-	},
-};
-
-function getTemplateDefinition(templateName: string): TemplateDefinition {
-	return TEMPLATE_DEFINITIONS[templateName] ?? {
-		name: templateName,
-		category: 'Standard',
-		mcu: 'STM32F446RETx',
-		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
-		userCodeLines: ['/* TODO: template logic */', 'HAL_Delay(100);']
-	};
-}
-
 function sanitizeProjectName(value: string): string {
 	const replaced = value.replace(/\s+/g, '-').replace(/[^A-Za-z0-9_-]/g, '');
 	return replaced.length > 0 ? replaced : 'stm32-project';
 }
 
-function generateIocText(projectName: string, template: TemplateDefinition): string {
-	const mcuName = template.mcu;
-	const familyMatch = mcuName.match(/^(STM32[A-Z]\d)/i);
-	const mcuFamily = familyMatch ? familyMatch[1] : 'STM32F4';
-
-	const configuredPins = template.pinModes.filter(p =>
-		p.mode && p.mode !== 'Reset_State' && p.mode !== 'Analog' && !p.mode.startsWith('__')
-	);
-
-	const pinEntries = configuredPins.map((p, i) => `Mcu.Pin${i}=${p.pin}`);
-	const pinSignalLines: string[] = [];
-	const pinGpioLabelLines: string[] = [];
-	for (const p of configuredPins) {
-		pinSignalLines.push(`${p.pin}.Signal=${p.mode}`);
-		if (p.mode === 'GPIO_Output' || p.mode === 'GPIO_Input') {
-			pinGpioLabelLines.push(`${p.pin}.GPIO_Label=`);
-		}
-	}
-
-	const ipSet = new Set<string>(['GPIO', 'RCC', 'SYS']);
-	for (const p of configuredPins) {
-		const prefix = p.mode.split('_')[0];
-		if (/^(USART|SPI|I2C|TIM|ADC|DAC)/.test(prefix)) { ipSet.add(prefix); }
-	}
-	const ipList = Array.from(ipSet).sort();
-	const ipLines = ipList.map((ip, i) => `Mcu.IP${i}=${ip}`);
-
-	const lines = [
-		'#MicroXplorer Configuration settings - do not modify',
-		'File.Version=6',
-		'KeepUserPlacement=true',
-		'LibraryCopySrc=1',
-		`Mcu.CPN=${mcuName}`,
-		`Mcu.Family=${mcuFamily}`,
-		`Mcu.Name=${mcuName}`,
-		...ipLines,
-		`Mcu.IPNb=${ipList.length}`,
-		'Mcu.ThirdPartyNb=0',
-		...pinEntries,
-		`Mcu.PinsNb=${configuredPins.length}`,
-		`Mcu.UserName=${mcuName}`,
-		'MxCube.Version=6.10.0',
-		'MxDb.Version=DB.6.0.110',
-		...pinSignalLines,
-		...pinGpioLabelLines,
-		`ProjectManager.ProjectBaudRate=115200`,
-		`ProjectManager.ProjectFileName=${projectName}.ioc`,
-		`ProjectManager.ProjectName=${projectName}`,
-		'ProjectManager.ToolChain=Makefile',
-		'ProjectManager.NoMain=false',
-		'ProjectManager.ComputerToolchain=0',
-		'ProjectManager.LibraryCopySrc=1',
-	];
-
-	return `${lines.join('\n')}\n`;
-}
 
 function generateMainHeader(): string {
 	return [
@@ -3886,8 +3142,11 @@ function generateMainHeader(): string {
 	].join('\n');
 }
 
-function generateMainSource(template: TemplateDefinition): string {
-	const userCode = template.userCodeLines.map(line => `  ${line}`).join('\n');
+function generateMainSource(_mcuName: string): string {
+	const userCode = [
+		'/* Generated by TovaIDE-STM Board Config Studio */',
+		'HAL_Delay(100);'
+	].map(line => `  ${line}`).join('\n');
 	return [
 		'/* Auto-generated minimal source */',
 		'#include "main.h"',
@@ -3908,14 +3167,16 @@ function generateMainSource(template: TemplateDefinition): string {
 	].join('\n');
 }
 
-function generateReadme(projectName: string, template: TemplateDefinition): string {
-	const pinRows = template.pinModes.map(pin => `- ${pin.pin}: ${pin.mode}`).join('\n');
+function generateReadme(projectName: string, boardName: string, mcuName: string, pinModes: Array<{ pin: string; mode: string }>): string {
+	const pinRows = pinModes.map(pin => `- ${pin.pin}: ${pin.mode}`).join('\n');
 	return [
 		`# ${projectName}`,
 		'',
-		`Template: ${template.name}`,
-		`Category: ${template.category}`,
-		`MCU: ${template.mcu}`,
+		`Board: ${boardName}`,
+		`MCU: ${mcuName}`,
+		`Created by: TovaIDE-STM Board Config Studio`,
+		`Category: Board Config Studio`,
+		`MCU: ${mcuName}`,
 		'',
 		'## Pin Preset',
 		pinRows,
@@ -4011,8 +3272,8 @@ function getMcuFamilyProfile(mcuName: string): McuFamilyProfile {
 	return { halFolder: 'STM32F4xx_HAL_Driver', cmsisDev: 'STM32F4xx', partDefine: 'STM32F446xx' };
 }
 
-function generateCProperties(template: TemplateDefinition): string {
-	const { halFolder, cmsisDev, partDefine } = getMcuFamilyProfile(template.mcu);
+function generateCProperties(mcuName: string): string {
+	const { halFolder, cmsisDev, partDefine } = getMcuFamilyProfile(mcuName);
 	return JSON.stringify({
 		configurations: [
 			{
@@ -4493,16 +3754,12 @@ function getUxI18n() {
 		// Onboarding / Dashboard
 		dashboardTitle: vscode.l10n.t('TovaIDE-STM Dashboard'),
 		dashboardSub: vscode.l10n.t('Start here to create, configure, build, flash, and control via MCP.'),
-		workflowStudio: vscode.l10n.t('Workflow Studio'),
-		workflowStudioMeta: vscode.l10n.t('Create / Code / Configure'),
 		boardStudio: vscode.l10n.t('Board Config Studio'),
 		boardStudioMeta: vscode.l10n.t('Initial setup without CubeMX'),
 		cubemxSync: vscode.l10n.t('CubeMX Catalog Sync'),
 		cubemxSyncMeta: vscode.l10n.t('Import 5000+ MCUs'),
 		pinVisualizer: vscode.l10n.t('Pin Visualizer'),
 		pinVisualizerMeta: vscode.l10n.t('Chip diagram and pin editor'),
-		peripheralWorkbench: vscode.l10n.t('Peripheral Workbench'),
-		peripheralWorkbenchMeta: vscode.l10n.t('PWM / UART / I2C / Servo'),
 		svdRefresh: vscode.l10n.t('Refresh SVD Register View'),
 		svdRefreshMeta: vscode.l10n.t('Show with fallback'),
 		buildDebug: vscode.l10n.t('Debug Build'),
@@ -4511,51 +3768,22 @@ function getUxI18n() {
 		flashMeta: vscode.l10n.t('STM32_Programmer_CLI'),
 		debugStart: vscode.l10n.t('Start Debug'),
 		debugStartMeta: vscode.l10n.t('ST-LINK GDB Server'),
-		collabPanel: vscode.l10n.t('Collaboration Panel'),
-		collabPanelMeta: vscode.l10n.t('LAN / WS / Git sharing'),
 		mcpDesk: vscode.l10n.t('MCP Operation Desk'),
 		mcpDeskMeta: vscode.l10n.t('All operations as RPC'),
 		// MCP Desk
 		mcpDeskTitle: vscode.l10n.t('STM32 MCP Operation Desk'),
 		mcpDeskSub: vscode.l10n.t('Operations here are also callable as MCP JSON-RPC.'),
 		mcpStatusChecking: vscode.l10n.t('Checking MCP status...'),
-		// Workflow Studio
-		workflowStudioTitle: vscode.l10n.t('STM32 Workflow Studio'),
-		workflowStudioSub: vscode.l10n.t('Select a mode to match your current task.'),
 		// Welcome
 		welcomeTitle: vscode.l10n.t('TovaIDE-STM Welcome'),
 		welcomeSub: vscode.l10n.t('Quick access to common operations. Select an item to start.'),
-		tutorial: vscode.l10n.t('Tutorial'),
-		tutorialDesc: vscode.l10n.t('Step through LED blink to confirm build and flash.'),
 		importCubeIDE: vscode.l10n.t('Import from CubeIDE'),
 		importCubeIDEDesc: vscode.l10n.t('Import an existing STM32CubeIDE project.'),
-		templateCreate: vscode.l10n.t('Create from Template'),
-		templateCreateDesc: vscode.l10n.t('Generate a new project from a use-case template.'),
 		boardConfig: vscode.l10n.t('Board Configuration'),
 		boardConfigDesc: vscode.l10n.t('Select a board, configure clock and debug settings, then create a project.'),
-		workflow: vscode.l10n.t('Workflow'),
-		workflowDesc: vscode.l10n.t('Launch Create / Coding / Settings modes.'),
-		openStudio: vscode.l10n.t('Open Studio'),
-		syncCatalog: vscode.l10n.t('Sync Catalog'),
-		peripheralImpl: vscode.l10n.t('Peripheral Implementation'),
-		peripheralImplDesc: vscode.l10n.t('Generate setup guides and code templates for PWM/UART/I2C/Servo.'),
 		envCheck: vscode.l10n.t('Environment Check'),
 		envSettings: vscode.l10n.t('Environment Settings'),
 		autoErrorExplain: vscode.l10n.t('Auto Error Explanation'),
-		// Tutorial
-		tutorialTitle: vscode.l10n.t('LED Blink Interactive Tutorial'),
-		tutorialSub: vscode.l10n.t('Learn the basic STM32 development flow by blinking an LED.'),
-		prevStep: vscode.l10n.t('← Prev'),
-		nextStep: vscode.l10n.t('Next →'),
-		done: vscode.l10n.t('Done ✓'),
-		stepActions: vscode.l10n.t('Actions for this step'),
-		checkPins: vscode.l10n.t('◉ Check Pins'),
-		runBuild: vscode.l10n.t('▶ Run Build'),
-		runFlash: vscode.l10n.t('⬇ Run Flash'),
-		// Template Gallery
-		templateGalleryTitle: vscode.l10n.t('Template Gallery'),
-		templateGallerySub: vscode.l10n.t('Create a project by selecting from 30+ templates.'),
-		searchTemplate: vscode.l10n.t('Search templates...'),
 		// Pin Visualizer
 		pinVisualizerTitle: vscode.l10n.t('STM32 Pin Visualizer'),
 		noIocFile: vscode.l10n.t('No .ioc file — using MCU package JSON fallback.'),
@@ -4626,43 +3854,6 @@ function getUxI18n() {
 		currentModeNone: vscode.l10n.t('Current mode: —'),
 		modeSearch: vscode.l10n.t('Search modes...'),
 		modeSearchAriaLabel: vscode.l10n.t('Search modes'),
-		// Peripheral Workbench
-		peripheralWorkbenchTitle: vscode.l10n.t('STM32 Peripheral Workbench'),
-		peripheralWorkbenchSub: vscode.l10n.t('Scenario selection, execution steps, and code generation in one screen.'),
-		pwmPresetTitle: vscode.l10n.t('PWM: Variable Duty'),
-		pwmPresetDesc: vscode.l10n.t('Sweep duty cycle while adjusting frequency via TIM'),
-		servoPresetTitle: vscode.l10n.t('Servo: 50Hz Angle Control'),
-		servoPresetDesc: vscode.l10n.t('Control 0-180 degrees with a single formula'),
-		uartPresetTitle: vscode.l10n.t('UART: Interrupt RX'),
-		uartPresetDesc: vscode.l10n.t('RX callback template with auto-restart'),
-		i2cPresetTitle: vscode.l10n.t('I2C: MPU6050'),
-		i2cPresetDesc: vscode.l10n.t('Minimal init/calibration/periodic read setup'),
-		execSteps: vscode.l10n.t('Execution Steps'),
-		stepLead: vscode.l10n.t('Shows only the steps required for the current mode.'),
-		openMcpDesk: vscode.l10n.t('MCP Operation Desk'),
-		commandCenter: vscode.l10n.t('Command Center'),
-		designParams: vscode.l10n.t('Design Parameters'),
-		codeGeneration: vscode.l10n.t('Code Generation'),
-		calcWaiting: vscode.l10n.t('Waiting for input'),
-		formulaNote: vscode.l10n.t('Formula: fPWM = fTIM / ((PSC + 1) * (ARR + 1))'),
-		formulaNotNA: vscode.l10n.t('Timer frequency formula not needed for this mode.'),
-		calcArrBtn: vscode.l10n.t('Recalculate ARR'),
-		calcFreqBtn: vscode.l10n.t('Calculate Actual Frequency'),
-		genCodeBtn: vscode.l10n.t('Generate Code'),
-		copyBtn: vscode.l10n.t('Copy'),
-		pinView: vscode.l10n.t('Pin View'),
-		boardSettings: vscode.l10n.t('Board Settings'),
-		freqResult: vscode.l10n.t('Actual PWM: {0} Hz / Period: {1} ms'),
-		timerCalcNA: vscode.l10n.t('Timer calculation not needed for {0} mode.'),
-		runStep: vscode.l10n.t('Run'),
-		// Workflow Studio extra
-		wsCard1Title: vscode.l10n.t('1) Create New'),
-		wsCard1Desc: vscode.l10n.t('Board selection, clock, middleware, and memory settings in one screen. Sync MCU catalog from CubeMX DB if needed.'),
-		wsCard2Title: vscode.l10n.t('2) Coding'),
-		wsCard2Desc: vscode.l10n.t('Direct access to build, flash, AI assist, and pin editor to focus on implementation.'),
-		wsCard3Title: vscode.l10n.t('3) Settings'),
-		wsCard3Desc: vscode.l10n.t('Run tool detection, path verification, and environment diagnostics to resolve toolchain issues.'),
-		wsTip: vscode.l10n.t('If unsure, start with "Create New" to enter the CubeMX-equivalent initial setup flow.'),
 		// MCP desk extra
 		mcpStartServer: vscode.l10n.t('Start MCP Server'),
 		mcpStartSseServer: vscode.l10n.t('Start SSE MCP Server'),
@@ -4673,64 +3864,7 @@ function getUxI18n() {
 		// import
 		import: vscode.l10n.t('Import'),
 		openAction: vscode.l10n.t('Open'),
-		startAction: vscode.l10n.t('Start'),
-		openStudioAction: vscode.l10n.t('Open Studio'),
 		syncCatalogAction: vscode.l10n.t('Sync Catalog'),
-		buildAction: vscode.l10n.t('Build'),
-		flashAction: vscode.l10n.t('Flash'),
-		debugAction: vscode.l10n.t('Debug'),
-		// Peripheral Workbench — form labels
-		timClkLabel: vscode.l10n.t('Timer Clock fTIM (Hz)'),
-		targetPwmLabel: vscode.l10n.t('Target Frequency (Hz)'),
-		channelLabel: vscode.l10n.t('Channel'),
-		timerHandleLabel: vscode.l10n.t('Timer Handle Name'),
-		uartHandleLabel: vscode.l10n.t('UART Handle'),
-		i2cHandleLabel: vscode.l10n.t('I2C Handle'),
-		slaveAddrLabel: vscode.l10n.t('Slave Address'),
-		dutyMinLabel: vscode.l10n.t('Duty Min (%)'),
-		dutyMaxLabel: vscode.l10n.t('Duty Max (%)'),
-		dutyStepLabel: vscode.l10n.t('Step (%)'),
-		delayMsLabel: vscode.l10n.t('Delay (ms)'),
-		// Peripheral Workbench — PWM steps
-		pwmStep1T: vscode.l10n.t('Select board and create project'),
-		pwmStep1D: vscode.l10n.t('Create .ioc first'),
-		pwmStep2T: vscode.l10n.t('Set timer CH to PWM mode'),
-		pwmStep2D: vscode.l10n.t('Prefer CHx over CHxN'),
-		pwmStep3T: vscode.l10n.t('Enter ARR/PSC and verify frequency'),
-		pwmStep3D: vscode.l10n.t('Calculate actual frequency in UI'),
-		pwmStep4T: vscode.l10n.t('Paste into USER CODE section'),
-		pwmStep4D: vscode.l10n.t('Minimal START and SET_COMPARE code'),
-		pwmStep5T: vscode.l10n.t('Build and flash'),
-		pwmStep5D: vscode.l10n.t('Deploy to hardware'),
-		pwmStep6T: vscode.l10n.t('Start debug'),
-		pwmStep6D: vscode.l10n.t('Check waveform/state'),
-		// Peripheral Workbench — Servo steps
-		servoStep1T: vscode.l10n.t('Create project'),
-		servoStep1D: vscode.l10n.t('Use a timer suited for 50Hz'),
-		servoStep2T: vscode.l10n.t('Set PWM frequency to 50Hz'),
-		servoStep2D: vscode.l10n.t('ARR=999 recommended for easy angle conversion'),
-		servoStep3T: vscode.l10n.t('Generate angle formula code'),
-		servoStep3D: vscode.l10n.t('Map 0-180 degrees to compare value'),
-		servoStep4T: vscode.l10n.t('Flash to hardware'),
-		servoStep4D: vscode.l10n.t('Verify servo movement'),
-		// Peripheral Workbench — UART steps
-		uartStep1T: vscode.l10n.t('Set USART to Asynchronous mode'),
-		uartStep1D: vscode.l10n.t('Assign RX/TX pins'),
-		uartStep2T: vscode.l10n.t('Enable RX interrupt'),
-		uartStep2D: vscode.l10n.t('Enable USART IRQ in NVIC'),
-		uartStep3T: vscode.l10n.t('Generate RX callback'),
-		uartStep3D: vscode.l10n.t('Always restart receive'),
-		uartStep4T: vscode.l10n.t('Build and verify'),
-		uartStep4D: vscode.l10n.t('Serial communication test'),
-		// Peripheral Workbench — I2C steps
-		i2cStep1T: vscode.l10n.t('Enable I2C'),
-		i2cStep1D: vscode.l10n.t('Assign SCL/SDA pins'),
-		i2cStep2T: vscode.l10n.t('Place MPU6050 files'),
-		i2cStep2D: vscode.l10n.t('Add to Core/Inc and Core/Src'),
-		i2cStep3T: vscode.l10n.t('Generate init/calibration code'),
-		i2cStep3D: vscode.l10n.t('Place in BEGIN 2 and WHILE'),
-		i2cStep4T: vscode.l10n.t('Flash and verify values'),
-		i2cStep4D: vscode.l10n.t('Check angle log'),
 		// Board Configurator
 		boardStudioTitle: vscode.l10n.t('TovaIDE-STM Board Config Studio'),
 		boardStudioSub: vscode.l10n.t('This screen is for project creation only. Clock Tree / NVIC / DMA / GPIO are configured in .ioc after generation.'),
@@ -4813,9 +3947,9 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 				<div class="desc" id="boardSearchMeta">${profiles.length} </div>
 			</div>
 			<div class="row">
-				<label id="boardIdLabel" for="boardId">Board</label>
+				<label id="boardIdLabel" for="boardId"></label>
 				<select id="boardId">${boardOptions}</select>
-				<div class="mcu-tag" id="boardMcu">CPN: -</div>
+				<div class="mcu-tag" id="boardMcu"></div>
 				<div class="desc" id="boardDesc">-</div>
 			</div>
 		</div>
@@ -4827,9 +3961,9 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 				<div class="desc" id="mcuSearchMeta">${mcuNames.length} </div>
 			</div>
 			<div class="row">
-				<label id="mcuIdLabel" for="mcuId">MCU / MPU Selector</label>
+				<label id="mcuIdLabel" for="mcuId"></label>
 				<select id="mcuId">${mcuOptions}</select>
-				<div class="mcu-tag" id="mcuMetaTag">CPN: -</div>
+				<div class="mcu-tag" id="mcuMetaTag"></div>
 			</div>
 		</div>
 
@@ -4854,6 +3988,8 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 		document.getElementById('bcModeRow').setAttribute('aria-label', _i18n.createMode);
 		document.getElementById('modeBoard').textContent = _i18n.modeFromBoard;
 		document.getElementById('modeMcu').textContent = _i18n.modeFromMcu;
+		document.getElementById('boardIdLabel').textContent = _i18n.modeFromBoard;
+		document.getElementById('mcuIdLabel').textContent = _i18n.modeFromMcu;
 		document.getElementById('boardSearchLabel').textContent = _i18n.boardSearchLabel;
 		document.getElementById('boardSearch').placeholder = _i18n.boardSearchPlaceholder;
 		document.getElementById('boardSearch').setAttribute('aria-label', _i18n.boardSearchLabel);
@@ -4923,13 +4059,13 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 
 		function updateBoardMeta() {
 			if (boardId.disabled || boardId.selectedIndex < 0) {
-				boardMcu.textContent = 'CPN: -';
+				boardMcu.textContent = '';
 				boardDesc.textContent = _i18n.noBoardMatch;
 				return;
 			}
 			const opt = boardId.options[boardId.selectedIndex];
-			boardMcu.textContent = 'CPN: ' + (opt.dataset.mcu || '-');
-			boardDesc.textContent = opt.dataset.desc || '-';
+			boardMcu.textContent = opt.dataset.mcu || '';
+			boardDesc.textContent = opt.dataset.desc || '';
 		}
 
 		function renderMcuOptions(query) {
@@ -4947,13 +4083,13 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 				mcuId.value = prev;
 			}
 			mcuSearchMeta.textContent = filtered.length + ' / ' + allMcu.length + ' ' + _i18n.mcuDbSuffix;
-			mcuMetaTag.textContent = 'CPN: ' + (mcuId.value || '-');
+			mcuMetaTag.textContent = mcuId.value || '';
 		}
 
 		boardSearch.addEventListener('input', () => renderBoardOptions(boardSearch.value));
 		boardId.addEventListener('change', updateBoardMeta);
 		mcuSearch.addEventListener('input', () => renderMcuOptions(mcuSearch.value));
-		mcuId.addEventListener('change', () => { mcuMetaTag.textContent = 'CPN: ' + (mcuId.value || '-'); });
+		mcuId.addEventListener('change', () => { mcuMetaTag.textContent = mcuId.value || ''; });
 
 		for (const mode of document.querySelectorAll('input[name="selectMode"]')) {
 			mode.addEventListener('change', () => {
@@ -4987,8 +4123,10 @@ function getBoardConfiguratorHtml(webview: vscode.Webview, profiles: BoardProfil
 
 function getOnboardingHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
-	const _i18nJson = JSON.stringify(getUxI18n());
+	const i18n = getUxI18n();
 	const lang = vscode.env.language.split('-')[0] ?? 'en';
+	// Inline strings directly — no runtime i18n lookup needed in webview
+	const t = (s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -4997,65 +4135,225 @@ function getOnboardingHtml(webview: vscode.Webview): string {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<style>
 		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-sideBar-background,#121621);--card:#181d2a;--bd:var(--vscode-panel-border,#273146);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#8b9bb5);--ac:#0f766e;--ac2:rgba(15,118,110,.2);--ok:#22c55e}
-		body{font:12px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);padding:8px;background:radial-gradient(circle at 85% -10%, rgba(15,118,110,.25), transparent 35%),var(--bg);color:var(--tx)}
-		.hero{padding:10px 10px 12px;border:1px solid var(--bd);border-radius:10px;background:linear-gradient(160deg,#101523,#1a2234);margin-bottom:8px}
-		.hero h1{font-size:13px;letter-spacing:.02em;margin-bottom:4px}
-		.hero p{font-size:10px;color:var(--mt)}
-		.grid{display:grid;gap:6px}
-		.btn{display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);cursor:pointer;text-align:left;transition:background .12s,border-color .12s}
-		.btn:hover{background:var(--ac2);border-color:rgba(15,118,110,.55)}
-		.badge{font-size:9px;padding:2px 6px;border-radius:999px;border:1px solid rgba(34,197,94,.45);color:#86efac;background:rgba(34,197,94,.14)}
-		.label{font-size:12px;font-weight:600;flex:1}
-		.meta{font-size:10px;color:var(--mt)}
+		:root{
+			--bg:var(--vscode-sideBar-background,#111827);
+			--bd:var(--vscode-panel-border,#1f2937);
+			--tx:var(--vscode-editor-foreground,#f3f4f6);
+			--mt:var(--vscode-descriptionForeground,#9ca3af);
+			--ac:#0d9488;
+			--ac-bg:rgba(13,148,136,.12);
+			--ac-bd:rgba(13,148,136,.4);
+			--card:var(--vscode-editor-background,#1a2332);
+		}
+		body{
+			font:12px/1.55 var(--vscode-font-family,'Segoe UI',system-ui,sans-serif);
+			background:var(--bg);
+			color:var(--tx);
+			padding:0 0 16px;
+		}
+		.header{
+			padding:14px 12px 10px;
+			border-bottom:1px solid var(--bd);
+			background:linear-gradient(135deg,rgba(13,148,136,.18) 0%,transparent 60%);
+		}
+		.header-title{
+			font-size:13px;
+			font-weight:700;
+			letter-spacing:.01em;
+			color:var(--tx);
+			display:flex;
+			align-items:center;
+			gap:6px;
+		}
+		.header-title::before{
+			content:'';
+			display:inline-block;
+			width:3px;height:14px;
+			background:var(--ac);
+			border-radius:2px;
+		}
+		.header-sub{
+			font-size:10px;
+			color:var(--mt);
+			margin-top:4px;
+			line-height:1.4;
+		}
+		.section{
+			padding:10px 10px 4px;
+		}
+		.section-label{
+			font-size:9.5px;
+			font-weight:700;
+			letter-spacing:.08em;
+			text-transform:uppercase;
+			color:var(--mt);
+			padding:0 2px 6px;
+			border-bottom:1px solid var(--bd);
+			margin-bottom:6px;
+		}
+		.row{
+			display:flex;
+			align-items:center;
+			gap:0;
+			width:100%;
+			padding:6px 8px;
+			margin-bottom:3px;
+			border:1px solid transparent;
+			border-radius:6px;
+			background:none;
+			color:var(--tx);
+			cursor:pointer;
+			text-align:left;
+			transition:background .1s,border-color .1s;
+			font:inherit;
+		}
+		.row:hover{
+			background:var(--ac-bg);
+			border-color:var(--ac-bd);
+		}
+		.row:active{
+			opacity:.8;
+		}
+		.row-icon{
+			width:24px;
+			height:24px;
+			border-radius:5px;
+			background:var(--ac-bg);
+			border:1px solid var(--ac-bd);
+			display:flex;align-items:center;justify-content:center;
+			font-size:11px;
+			flex-shrink:0;
+			margin-right:8px;
+			color:var(--ac);
+			font-weight:700;
+		}
+		.row-body{flex:1;min-width:0}
+		.row-label{
+			font-size:12px;
+			font-weight:600;
+			color:var(--tx);
+			white-space:nowrap;
+			overflow:hidden;
+			text-overflow:ellipsis;
+		}
+		.row-meta{
+			font-size:10px;
+			color:var(--mt);
+			margin-top:1px;
+			white-space:nowrap;
+			overflow:hidden;
+			text-overflow:ellipsis;
+		}
+		.row-arrow{
+			font-size:10px;
+			color:var(--mt);
+			margin-left:4px;
+			opacity:0;
+			transition:opacity .1s;
+		}
+		.row:hover .row-arrow{opacity:1}
 	</style>
 </head>
 <body>
-	<div class="hero">
-		<h1 id="dashTitle"></h1>
-		<p id="dashSub"></p>
+	<div class="header">
+		<div class="header-title">${t(i18n.dashboardTitle)}</div>
+		<div class="header-sub">${t(i18n.dashboardSub)}</div>
 	</div>
-	<div class="grid">
-		<button class="btn" id="studio"><span class="badge">MODE</span><span class="label" id="lStudio"></span><span class="meta" id="mStudio"></span></button>
-		<button class="btn" id="board"><span class="badge">NEW</span><span class="label" id="lBoard"></span><span class="meta" id="mBoard"></span></button>
-		<button class="btn" id="syncCatalog"><span class="badge">MCU</span><span class="label" id="lSync"></span><span class="meta" id="mSync"></span></button>
-		<button class="btn" id="pin"><span class="badge">PIN</span><span class="label" id="lPin"></span><span class="meta" id="mPin"></span></button>
-		<button class="btn" id="pwmLab"><span class="badge">LAB</span><span class="label" id="lPwm"></span><span class="meta" id="mPwm"></span></button>
-		<button class="btn" id="svd"><span class="badge">DBG</span><span class="label" id="lSvd"></span><span class="meta" id="mSvd"></span></button>
-		<button class="btn" id="build"><span class="badge">BUILD</span><span class="label" id="lBuild"></span><span class="meta" id="mBuild"></span></button>
-		<button class="btn" id="flash"><span class="badge">FLASH</span><span class="label" id="lFlash"></span><span class="meta" id="mFlash"></span></button>
-		<button class="btn" id="debug"><span class="badge">GDB</span><span class="label" id="lDebug"></span><span class="meta" id="mDebug"></span></button>
-		<button class="btn" id="collab"><span class="badge">COLLAB</span><span class="label" id="lCollab"></span><span class="meta" id="mCollab"></span></button>
-		<button class="btn" id="mcp"><span class="badge">MCP</span><span class="label" id="lMcp"></span><span class="meta" id="mMcp"></span></button>
+
+	<div class="section">
+		<div class="section-label">Project</div>
+		<button class="row" id="board">
+			<div class="row-icon">&#x2795;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.boardStudio)}</div>
+				<div class="row-meta">${t(i18n.boardStudioMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+		<button class="row" id="syncCatalog">
+			<div class="row-icon">&#x21BB;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.cubemxSync)}</div>
+				<div class="row-meta">${t(i18n.cubemxSyncMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+		<button class="row" id="pin">
+			<div class="row-icon">&#x25CE;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.pinVisualizer)}</div>
+				<div class="row-meta">${t(i18n.pinVisualizerMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+	</div>
+
+	<div class="section">
+		<div class="section-label">Build &amp; Flash</div>
+		<button class="row" id="build">
+			<div class="row-icon">&#x25B6;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.buildDebug)}</div>
+				<div class="row-meta">${t(i18n.buildDebugMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+		<button class="row" id="flash">
+			<div class="row-icon">&#x21A1;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.flash)}</div>
+				<div class="row-meta">${t(i18n.flashMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+		<button class="row" id="debug">
+			<div class="row-icon">&#x1F41E;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.debugStart)}</div>
+				<div class="row-meta">${t(i18n.debugStartMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+	</div>
+
+	<div class="section">
+		<div class="section-label">Tools</div>
+		<button class="row" id="mcp">
+			<div class="row-icon">MCP</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.mcpDesk)}</div>
+				<div class="row-meta">${t(i18n.mcpDeskMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+		<button class="row" id="svd">
+			<div class="row-icon">SVD</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.svdRefresh)}</div>
+				<div class="row-meta">${t(i18n.svdRefreshMeta)}</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+		<button class="row" id="error">
+			<div class="row-icon">&#x26A0;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.autoErrorExplain)}</div>
+				<div class="row-meta">Auto-explain build errors with AI</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
+		<button class="row" id="envSettings">
+			<div class="row-icon">&#x2699;</div>
+			<div class="row-body">
+				<div class="row-label">${t(i18n.envSettings)}</div>
+				<div class="row-meta">make / CubeMX / Programmer CLI paths</div>
+			</div>
+			<span class="row-arrow">&#x276F;</span>
+		</button>
 	</div>
 <script>
-	const _i18n = ${_i18nJson};
 	const vscode = acquireVsCodeApi();
-	document.getElementById('dashTitle').textContent = _i18n.dashboardTitle;
-	document.getElementById('dashSub').textContent = _i18n.dashboardSub;
-	document.getElementById('lStudio').textContent = _i18n.workflowStudio;
-	document.getElementById('mStudio').textContent = _i18n.workflowStudioMeta;
-	document.getElementById('lBoard').textContent = _i18n.boardStudio;
-	document.getElementById('mBoard').textContent = _i18n.boardStudioMeta;
-	document.getElementById('lSync').textContent = _i18n.cubemxSync;
-	document.getElementById('mSync').textContent = _i18n.cubemxSyncMeta;
-	document.getElementById('lPin').textContent = _i18n.pinVisualizer;
-	document.getElementById('mPin').textContent = _i18n.pinVisualizerMeta;
-	document.getElementById('lPwm').textContent = _i18n.peripheralWorkbench;
-	document.getElementById('mPwm').textContent = _i18n.peripheralWorkbenchMeta;
-	document.getElementById('lSvd').textContent = _i18n.svdRefresh;
-	document.getElementById('mSvd').textContent = _i18n.svdRefreshMeta;
-	document.getElementById('lBuild').textContent = _i18n.buildDebug;
-	document.getElementById('mBuild').textContent = _i18n.buildDebugMeta;
-	document.getElementById('lFlash').textContent = _i18n.flash;
-	document.getElementById('mFlash').textContent = _i18n.flashMeta;
-	document.getElementById('lDebug').textContent = _i18n.debugStart;
-	document.getElementById('mDebug').textContent = _i18n.debugStartMeta;
-	document.getElementById('lCollab').textContent = _i18n.collabPanel;
-	document.getElementById('mCollab').textContent = _i18n.collabPanelMeta;
-	document.getElementById('lMcp').textContent = _i18n.mcpDesk;
-	document.getElementById('mMcp').textContent = _i18n.mcpDeskMeta;
-	for (const id of ['studio','board','syncCatalog','pin','pwmLab','svd','build','flash','debug','collab','mcp']) {
+	for (const id of ['board','syncCatalog','pin','build','flash','debug','mcp','svd','error','envSettings']) {
 		document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 	}
 </script>
@@ -5104,7 +4402,6 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 		<button id="flash"><div class="t" data-i18n="flash"></div><div class="d">method: stm32.flash</div></button>
 		<button id="regen"><div class="t" data-i18n="regenerateCode"></div><div class="d">method: stm32.regenerateCode</div></button>
 		<button id="board"><div class="t" data-i18n="boardConfig"></div><div class="d">method: stm32.openBoardConfigurator</div></button>
-		<button id="collab"><div class="t" data-i18n="collabPanel"></div><div class="d">method: stm32.collab.openPanel</div></button>
 		<button id="svd"><div class="t" data-i18n="svdRefresh"></div><div class="d">method: stm32.refreshRegisters</div></button>
 	</div>
 	<script>
@@ -5136,7 +4433,7 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 			}
 		});
 
-		for (const id of ['startMcp','startSseMcp','stopMcp','envSettings','exportConfig','composeRpc','build','flash','regen','board','collab','svd']) {
+		for (const id of ['startMcp','startSseMcp','stopMcp','envSettings','exportConfig','composeRpc','build','flash','regen','board','svd']) {
 			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 		}
 		vscode.postMessage({ type: 'checkMcpStatus' });
@@ -5145,510 +4442,7 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 </html>`;
 }
 
-function getWorkflowStudioHtml(webview: vscode.Webview): string {
-	const csp = webview.cspSource;
-	const _i18nJson = JSON.stringify(getUxI18n());
-	const lang = vscode.env.language.split('-')[0] ?? 'en';
-	return `<!DOCTYPE html>
-<html lang="${lang}">
-<head>
-	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<style>
-		*{box-sizing:border-box;margin:0;padding:0}
-		:root{
-			--bg:var(--vscode-editor-background,#0d0e14);
-			--sf:var(--vscode-sideBar-background,#13151e);
-			--bd:var(--vscode-panel-border,#1e2030);
-			--tx:var(--vscode-editor-foreground,#e8eaed);
-			--mt:var(--vscode-descriptionForeground,#6b7280);
-			--ac:#0f766e;--ac2:rgba(15,118,110,.14);
-		}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:22px 24px;max-width:980px}
-		h1{font-size:20px;font-weight:700;margin-bottom:6px}
-		.sub{font-size:12px;color:var(--mt);margin-bottom:18px}
-		.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
-		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
-		.ttl{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
-		.badge{font-size:10px;padding:2px 8px;border-radius:999px;background:var(--ac2);color:#99f6e4;border:1px solid rgba(15,118,110,.45)}
-		.desc{font-size:12px;color:var(--mt)}
-		.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
-		button{background:transparent;border:1px solid var(--bd);color:var(--tx);border-radius:7px;padding:8px 10px;font:600 12px var(--vscode-font-family,'Segoe UI',sans-serif);cursor:pointer}
-		button:hover{background:var(--ac2);border-color:rgba(15,118,110,.55)}
-		button.primary{background:var(--ac);border-color:var(--ac);color:#fff}
-		button.primary:hover{background:#0d9488;border-color:#0d9488}
-		.tip{margin-top:16px;font-size:11px;color:var(--mt)}
-	</style>
-</head>
-<body>
-	<h1 id="wsTitle"></h1>
-	<p class="sub" id="wsSub"></p>
-	<div class="grid">
-		<div class="card">
-			<div class="ttl" id="wsCard1Title"></div>
-			<p class="desc" id="wsCard1Desc"></p>
-			<div class="actions">
-				<button class="primary" id="create" data-i18n="boardStudio"></button>
-				<button id="syncCatalog" data-i18n="cubemxSync"></button>
-				<button id="tutorial" data-i18n="tutorial"></button>
-			</div>
-		</div>
-		<div class="card">
-			<div class="ttl" id="wsCard2Title"></div>
-			<p class="desc" id="wsCard2Desc"></p>
-			<div class="actions">
-				<button class="primary" id="coding" data-i18n="commandCenter"></button>
-				<button id="pins" data-i18n="pinVisualizer"></button>
-				<button id="pwmLab" data-i18n="peripheralWorkbench"></button>
-			</div>
-		</div>
-		<div class="card">
-			<div class="ttl" id="wsCard3Title"></div>
-			<p class="desc" id="wsCard3Desc"></p>
-			<div class="actions">
-				<button class="primary" id="settings" data-i18n="envCheck"></button>
-			</div>
-		</div>
-	</div>
-	<p class="tip" id="wsTip"></p>
-	<script>
-		const _i18n = ${_i18nJson};
-		const vscode = acquireVsCodeApi();
-		document.getElementById('wsTitle').textContent = _i18n.workflowStudioTitle;
-		document.getElementById('wsSub').textContent = _i18n.workflowStudioSub;
-		document.getElementById('wsCard1Title').innerHTML = _i18n.wsCard1Title || ('1) ' + _i18n.templateCreate + ' <span class="badge">Create</span>');
-		document.getElementById('wsCard1Desc').textContent = _i18n.wsCard1Desc || '';
-		document.getElementById('wsCard2Title').innerHTML = _i18n.wsCard2Title || ('2) ' + (_i18n.codingMode || 'Coding') + ' <span class="badge">Code</span>');
-		document.getElementById('wsCard2Desc').textContent = _i18n.wsCard2Desc || '';
-		document.getElementById('wsCard3Title').innerHTML = _i18n.wsCard3Title || ('3) ' + _i18n.envSettings + ' <span class="badge">Setup</span>');
-		document.getElementById('wsCard3Desc').textContent = _i18n.wsCard3Desc || '';
-		document.getElementById('wsTip').textContent = _i18n.wsTip || '';
-		document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.getAttribute('data-i18n'); if (_i18n[k]) el.textContent = _i18n[k]; });
-		for (const id of ['create', 'coding', 'settings', 'tutorial', 'pins', 'pwmLab', 'syncCatalog']) {
-			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
-		}
-	</script>
-</body>
-</html>`;
-}
 
-function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
-	const csp = webview.cspSource;
-	const _i18nJson = JSON.stringify(getUxI18n());
-	const lang = vscode.env.language.split('-')[0] ?? 'en';
-	return `<!DOCTYPE html>
-<html lang="${lang}">
-<head>
-	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<style>
-		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#7b8696);--ac:#0f766e;--ac2:rgba(15,118,110,.16);--ok:#16a34a}
-		body{font:13px/1.55 var(--vscode-font-family,'Segoe UI',sans-serif);background:radial-gradient(circle at 85% -10%, rgba(15,118,110,.22), transparent 38%),transparent;color:var(--tx);padding:18px}
-		h1{font-size:20px;margin-bottom:4px}
-		.sub{font-size:12px;color:var(--mt);margin-bottom:12px}
-		.preset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:14px}
-		.preset{background:linear-gradient(145deg,#101723,#162133);border:1px solid var(--bd);color:var(--tx);border-radius:10px;padding:10px;text-align:left;cursor:pointer}
-		.preset:hover{border-color:rgba(15,118,110,.65);background:linear-gradient(145deg,#142336,#1b3145)}
-		.preset .t{font-size:12px;font-weight:700}
-		.preset .d{font-size:10px;color:#9db2c9;margin-top:4px}
-		.layout{display:grid;grid-template-columns:minmax(260px,320px) minmax(460px,1fr);gap:12px}
-		@media (max-width:980px){.layout{grid-template-columns:1fr}}
-		.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
-		.ttl{font-size:13px;font-weight:700}
-		.muted{font-size:11px;color:var(--mt)}
-		.step-list{display:flex;flex-direction:column;gap:7px;max-height:440px;overflow:auto;padding-right:2px}
-		.step{display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:start;padding:8px;border:1px solid #243041;border-radius:8px;background:#0f141f}
-		.step.done{border-color:rgba(22,163,74,.55);background:rgba(22,163,74,.12)}
-		.step input{margin-top:2px}
-		.step .st{font-size:12px;font-weight:600}
-		.step .sd{font-size:10px;color:var(--mt)}
-		.step button{padding:5px 8px;border-radius:6px}
-		input,select,textarea{width:100%;background:#0d0e14;border:1px solid var(--bd);border-radius:8px;color:var(--tx);padding:8px 9px;font:12px var(--vscode-font-family,'Segoe UI',sans-serif)}
-		textarea{min-height:220px;line-height:1.5}
-		.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-		.actions{display:flex;gap:8px;flex-wrap:wrap}
-		button{background:transparent;border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:8px 10px;cursor:pointer;font:600 12px var(--vscode-font-family,'Segoe UI',sans-serif)}
-		button:hover{background:var(--ac2);border-color:rgba(15,118,110,.55)}
-		button.primary{background:var(--ac);border-color:var(--ac);color:#fff}
-		.kpi{font-size:12px;padding:8px 10px;border:1px solid rgba(15,118,110,.45);background:rgba(15,118,110,.12);border-radius:8px;color:#c4f0ec}
-		.hidden{display:none}
-		.badge{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid rgba(15,118,110,.45);background:var(--ac2);color:#99f6e4;width:max-content}
-	</style>
-</head>
-<body>
-	<h1 id="pwTitle"></h1>
-	<p class="sub" id="pwSub"></p>
-
-	<div class="preset-grid">
-		<button class="preset" id="presetPwm"><div class="t" id="pwmT"></div><div class="d" id="pwmD"></div></button>
-		<button class="preset" id="presetServo"><div class="t" id="servoT"></div><div class="d" id="servoD"></div></button>
-		<button class="preset" id="presetUart"><div class="t" id="uartT"></div><div class="d" id="uartD"></div></button>
-		<button class="preset" id="presetI2c"><div class="t" id="i2cT"></div><div class="d" id="i2cD"></div></button>
-	</div>
-
-	<div class="layout">
-		<div class="card">
-			<div class="ttl" id="execStepsTitle"></div>
-			<div class="muted" id="stepLead"></div>
-			<div class="badge" id="modeBadge">Mode: PWM</div>
-			<div class="step-list" id="stepList"></div>
-			<div class="actions">
-				<button id="openMcp" data-i18n="openMcpDesk"></button>
-				<button id="openCommandCenter" data-i18n="commandCenter"></button>
-			</div>
-		</div>
-
-		<div class="card">
-			<div class="ttl" id="designParamsTitle"></div>
-			<div class="row" id="timingRowA">
-				<div><label id="lTimClk"></label><input id="timClk" type="number" value="80000000" min="1" step="1" /></div>
-				<div><label id="lTargetPwm"></label><input id="targetPwm" type="number" value="30000" min="1" step="1" /></div>
-			</div>
-			<div class="row" id="timingRowB">
-				<div><label>Prescaler</label><input id="psc" type="number" value="0" min="0" step="1" /></div>
-				<div><label>Counter Period (ARR)</label><input id="arr" type="number" value="255" min="1" step="1" /></div>
-			</div>
-			<div class="row" id="timingRowC">
-				<div><label id="lChannel"></label><select id="channel"><option>TIM_CHANNEL_1</option><option>TIM_CHANNEL_2</option><option>TIM_CHANNEL_3</option><option>TIM_CHANNEL_4</option></select></div>
-				<div><label id="lTimerHandle"></label><input id="timerHandle" value="htim15" /></div>
-			</div>
-
-			<div class="row hidden" id="uartRow">
-				<div><label id="lUartHandle"></label><input id="uartHandle" value="huart1" /></div>
-				<div><label>Baudrate</label><input id="baudRate" type="number" value="115200" min="1" step="1" /></div>
-			</div>
-
-			<div class="row hidden" id="i2cRow">
-				<div><label id="lI2cHandle"></label><input id="i2cHandle" value="hi2c1" /></div>
-				<div><label id="lSlaveAddr"></label><input id="slaveAddr" value="0x68" /></div>
-			</div>
-
-			<div class="actions" id="timerActions">
-				<button class="primary" id="calcArr" data-i18n="calcArrBtn"></button>
-				<button id="calcFreq" data-i18n="calcFreqBtn"></button>
-			</div>
-			<div class="kpi" id="result"></div>
-			<div class="muted" id="formulaNote"></div>
-
-			<div class="ttl" style="margin-top:8px" id="codeGenTitle"></div>
-			<div class="row" id="dutyRow">
-				<div><label data-i18n="dutyMinLabel"></label><input id="dutyMin" type="number" value="0" min="0" max="100" step="1" /></div>
-				<div><label data-i18n="dutyMaxLabel"></label><input id="dutyMax" type="number" value="100" min="0" max="100" step="1" /></div>
-			</div>
-			<div class="row" id="sweepRow">
-				<div><label id="lDutyStep"></label><input id="dutyStep" type="number" value="1" min="1" max="100" step="1" /></div>
-				<div><label id="lDelayMs"></label><input id="delayMs" type="number" value="10" min="0" step="1" /></div>
-			</div>
-			<div class="actions">
-				<button class="primary" id="genCode" data-i18n="genCodeBtn"></button>
-				<button id="copyCode" data-i18n="copyBtn"></button>
-				<button id="openPins" data-i18n="pinView"></button>
-				<button id="openBoard" data-i18n="boardSettings"></button>
-			</div>
-			<textarea id="codeOut" readonly></textarea>
-		</div>
-	</div>
-
-	<script>
-		const _i18n = ${_i18nJson};
-		const vscode = acquireVsCodeApi();
-		const el = id => document.getElementById(id);
-		let mode = 'PWM';
-		// Apply i18n
-		el('pwTitle').textContent = _i18n.peripheralWorkbenchTitle;
-		el('pwSub').textContent = _i18n.peripheralWorkbenchSub;
-		el('pwmT').textContent = _i18n.pwmPresetTitle;
-		el('pwmD').textContent = _i18n.pwmPresetDesc;
-		el('servoT').textContent = _i18n.servoPresetTitle;
-		el('servoD').textContent = _i18n.servoPresetDesc;
-		el('uartT').textContent = _i18n.uartPresetTitle;
-		el('uartD').textContent = _i18n.uartPresetDesc;
-		el('i2cT').textContent = _i18n.i2cPresetTitle;
-		el('i2cD').textContent = _i18n.i2cPresetDesc;
-		el('execStepsTitle').textContent = _i18n.execSteps;
-		el('stepLead').textContent = _i18n.stepLead;
-		el('designParamsTitle').textContent = _i18n.designParams;
-		el('result').textContent = _i18n.calcWaiting;
-		el('formulaNote').textContent = _i18n.formulaNote;
-		el('codeGenTitle').textContent = _i18n.codeGeneration;
-		// label assignments
-		if (el('lTimClk')) el('lTimClk').textContent = _i18n.timClkLabel;
-		if (el('lTargetPwm')) el('lTargetPwm').textContent = _i18n.targetPwmLabel;
-		if (el('lChannel')) el('lChannel').textContent = _i18n.channelLabel;
-		if (el('lTimerHandle')) el('lTimerHandle').textContent = _i18n.timerHandleLabel;
-		if (el('lUartHandle')) el('lUartHandle').textContent = _i18n.uartHandleLabel;
-		if (el('lI2cHandle')) el('lI2cHandle').textContent = _i18n.i2cHandleLabel;
-		if (el('lSlaveAddr')) el('lSlaveAddr').textContent = _i18n.slaveAddrLabel;
-		if (el('lDutyStep')) el('lDutyStep').textContent = _i18n.dutyStepLabel;
-		if (el('lDelayMs')) el('lDelayMs').textContent = _i18n.delayMsLabel;
-		document.querySelectorAll('[data-i18n]').forEach(e => { const k = e.getAttribute('data-i18n'); if (_i18n[k]) e.textContent = _i18n[k]; });
-
-		const stepsByMode = {
-			PWM: [
-				{ title: _i18n.pwmStep1T, desc: _i18n.pwmStep1D, action: 'openBoard', actionLabel: _i18n.openAction },
-				{ title: _i18n.pwmStep2T, desc: _i18n.pwmStep2D },
-				{ title: _i18n.pwmStep3T, desc: _i18n.pwmStep3D },
-				{ title: _i18n.pwmStep4T, desc: _i18n.pwmStep4D, action: 'copyCode', actionLabel: _i18n.copyBtn },
-				{ title: _i18n.pwmStep5T, desc: _i18n.pwmStep5D, action: 'runBuild', actionLabel: _i18n.buildAction },
-				{ title: _i18n.pwmStep6T, desc: _i18n.pwmStep6D, action: 'runDebug', actionLabel: _i18n.debugAction }
-			],
-			Servo: [
-				{ title: _i18n.servoStep1T, desc: _i18n.servoStep1D, action: 'openBoard', actionLabel: _i18n.openAction },
-				{ title: _i18n.servoStep2T, desc: _i18n.servoStep2D },
-				{ title: _i18n.servoStep3T, desc: _i18n.servoStep3D, action: 'copyCode', actionLabel: _i18n.copyBtn },
-				{ title: _i18n.servoStep4T, desc: _i18n.servoStep4D, action: 'runFlash', actionLabel: _i18n.flashAction }
-			],
-			UART: [
-				{ title: _i18n.uartStep1T, desc: _i18n.uartStep1D, action: 'openPins', actionLabel: _i18n.openAction },
-				{ title: _i18n.uartStep2T, desc: _i18n.uartStep2D },
-				{ title: _i18n.uartStep3T, desc: _i18n.uartStep3D, action: 'copyCode', actionLabel: _i18n.copyBtn },
-				{ title: _i18n.uartStep4T, desc: _i18n.uartStep4D, action: 'runBuild', actionLabel: _i18n.buildAction }
-			],
-			I2C: [
-				{ title: _i18n.i2cStep1T, desc: _i18n.i2cStep1D, action: 'openPins', actionLabel: _i18n.openAction },
-				{ title: _i18n.i2cStep2T, desc: _i18n.i2cStep2D },
-				{ title: _i18n.i2cStep3T, desc: _i18n.i2cStep3D, action: 'copyCode', actionLabel: _i18n.copyBtn },
-				{ title: _i18n.i2cStep4T, desc: _i18n.i2cStep4D, action: 'runFlash', actionLabel: _i18n.flashAction }
-			]
-		};
-
-		const presets = {
-			PWM: { timClk: 16000000, targetPwm: 10000, psc: 15, arr: 99, timerHandle: 'htim15' },
-			Servo: { timClk: 16000000, targetPwm: 50, psc: 1599, arr: 199, timerHandle: 'htim2' },
-			UART: { baudRate: 115200, uartHandle: 'huart1' },
-			I2C: { i2cHandle: 'hi2c1', slaveAddr: '0x68' }
-		};
-
-		function toInt(v, fallback) {
-			const n = Number(v);
-			return Number.isFinite(n) ? Math.trunc(n) : fallback;
-		}
-
-		function clamp(n, min, max) {
-			return Math.min(max, Math.max(min, n));
-		}
-
-		function currentParams() {
-			return {
-				timClk: Math.max(1, toInt(el('timClk').value, 80000000)),
-				targetPwm: Math.max(1, toInt(el('targetPwm').value, 30000)),
-				psc: Math.max(0, toInt(el('psc').value, 0)),
-				arr: Math.max(1, toInt(el('arr').value, 255)),
-				channel: el('channel').value,
-				timerHandle: (el('timerHandle').value || 'htim15').trim() || 'htim15',
-				uartHandle: (el('uartHandle').value || 'huart1').trim() || 'huart1',
-				baudRate: Math.max(1, toInt(el('baudRate').value, 115200)),
-				i2cHandle: (el('i2cHandle').value || 'hi2c1').trim() || 'hi2c1',
-				slaveAddr: (el('slaveAddr').value || '0x68').trim() || '0x68'
-			};
-		}
-
-		function calcFreq() {
-			if (mode === 'UART' || mode === 'I2C') {
-				el('result').textContent = _i18n.timerCalcNA.replace('{0}', mode);
-				return;
-			}
-			const p = currentParams();
-			const freq = p.timClk / ((p.psc + 1) * (p.arr + 1));
-			el('result').textContent = _i18n.freqResult.replace('{0}', freq.toFixed(2)).replace('{1}', (1000 / freq).toFixed(3));
-		}
-
-		function calcArr() {
-			const p = currentParams();
-			const raw = (p.timClk / ((p.psc + 1) * p.targetPwm)) - 1;
-			el('arr').value = String(Math.max(1, Math.round(raw)));
-			calcFreq();
-		}
-
-		function mapDutyToCompare(arr, dutyPercent) {
-			return Math.round(((arr + 1) * dutyPercent) / 100);
-		}
-
-		function renderSteps() {
-			const container = el('stepList');
-			container.innerHTML = '';
-			for (const item of stepsByMode[mode]) {
-				const row = document.createElement('div');
-				row.className = 'step';
-				const checkbox = document.createElement('input');
-				checkbox.type = 'checkbox';
-				checkbox.addEventListener('change', () => row.classList.toggle('done', checkbox.checked));
-				const body = document.createElement('div');
-				body.innerHTML = '<div class="st">' + item.title + '</div><div class="sd">' + item.desc + '</div>';
-				row.appendChild(checkbox);
-				row.appendChild(body);
-				if (item.action) {
-					const btn = document.createElement('button');
-					btn.textContent = item.actionLabel || _i18n.runStep;
-					btn.addEventListener('click', () => {
-						if (item.action === 'copyCode') {
-							vscode.postMessage({ type: 'copyText', value: el('codeOut').value });
-							return;
-						}
-						vscode.postMessage({ type: item.action });
-					});
-					row.appendChild(btn);
-				}
-				container.appendChild(row);
-			}
-		}
-
-		function genCode() {
-			const p = currentParams();
-			const minDuty = clamp(toInt(el('dutyMin').value, 0), 0, 100);
-			const maxDuty = clamp(toInt(el('dutyMax').value, 100), 0, 100);
-			const step = clamp(toInt(el('dutyStep').value, 1), 1, 100);
-			const delayMs = Math.max(0, toInt(el('delayMs').value, 10));
-			const lo = Math.min(minDuty, maxDuty);
-			const hi = Math.max(minDuty, maxDuty);
-			let code = [
-				'/* USER CODE BEGIN 2 */',
-				'HAL_TIM_PWM_Start(&' + p.timerHandle + ', ' + p.channel + ');',
-				'/* USER CODE END 2 */',
-				'',
-				'/* USER CODE BEGIN WHILE */',
-				'for (int duty = ' + lo + '; duty <= ' + hi + '; duty += ' + step + ') {',
-				'  uint32_t compare = (uint32_t)(((' + p.arr + ' + 1U) * duty) / 100U);',
-				'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', compare);',
-				'  HAL_Delay(' + delayMs + ');',
-				'}',
-				'for (int duty = ' + hi + '; duty >= ' + lo + '; duty -= ' + step + ') {',
-				'  uint32_t compare = (uint32_t)(((' + p.arr + ' + 1U) * duty) / 100U);',
-				'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', compare);',
-				'  HAL_Delay(' + delayMs + ');',
-				'}',
-				'/* USER CODE END WHILE */'
-			].join('\\n');
-
-			if (mode === 'Servo') {
-				// Servo: 50Hz (20ms period). 1ms pulse = 0deg, 2ms pulse = 180deg
-				// CCR_min = (ARR+1)/20,  CCR_max = (ARR+1)/10
-				const ccrMin = Math.round((p.arr + 1) / 20); // 1ms
-				const ccrMax = Math.round((p.arr + 1) / 10); // 2ms
-				code = [
-					'/* USER CODE BEGIN 2 */',
-					'HAL_TIM_PWM_Start(&' + p.timerHandle + ', ' + p.channel + ');',
-					'/* USER CODE END 2 */',
-					'',
-					'/* USER CODE BEGIN WHILE */',
-					'/* Servo sweep 0->180->0 deg. PSC=' + p.psc + ' ARR=' + p.arr + ' -> 50Hz */',
-					'for (int angle = 0; angle <= 180; angle += 2) {',
-					'  uint32_t ccr = ' + ccrMin + ' + (uint32_t)((' + (ccrMax - ccrMin) + 'U * (uint32_t)angle) / 180U);',
-					'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', ccr);',
-					'  HAL_Delay(20);',
-					'}',
-					'for (int angle = 180; angle >= 0; angle -= 2) {',
-					'  uint32_t ccr = ' + ccrMin + ' + (uint32_t)((' + (ccrMax - ccrMin) + 'U * (uint32_t)angle) / 180U);',
-					'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', ccr);',
-					'  HAL_Delay(20);',
-					'}',
-					'/* USER CODE END WHILE */'
-				].join('\\n');
-			}
-
-			if (mode === 'UART') {
-				code = [
-					'/* USER CODE BEGIN Includes */',
-					'#include <stdio.h>',
-					'/* USER CODE END Includes */',
-					'',
-					'/* USER CODE BEGIN PV */',
-					'uint8_t rxBuf[6] = {0};',
-					'/* USER CODE END PV */',
-					'',
-					'/* USER CODE BEGIN 2 */',
-					'HAL_UART_Receive_IT(&' + p.uartHandle + ', rxBuf, sizeof(rxBuf));',
-					'/* USER CODE END 2 */',
-					'',
-					'void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {',
-					'  if (huart == &' + p.uartHandle + ') {',
-					'    if (rxBuf[0] == 255U) {',
-					'      // process rxBuf[1..5] by purpose',
-					'    }',
-					'    HAL_UART_Receive_IT(&' + p.uartHandle + ', rxBuf, sizeof(rxBuf));',
-					'  }',
-					'}'
-				].join('\\n');
-			}
-
-			if (mode === 'I2C') {
-				code = [
-					'/* USER CODE BEGIN Includes */',
-					'#include "mpu6050.h"',
-					'#include <stdio.h>',
-					'/* USER CODE END Includes */',
-					'',
-					'/* USER CODE BEGIN PV */',
-					'MPU6050_t MPU6050;',
-					'/* USER CODE END PV */',
-					'',
-					'/* USER CODE BEGIN 2 */',
-					'MPU6050_Init(&' + p.i2cHandle + ');',
-					'MPU6050_Calibration(&' + p.i2cHandle + ', &MPU6050, 3000);',
-					'/* USER CODE END 2 */',
-					'',
-					'/* USER CODE BEGIN WHILE */',
-					'MPU6050_Read_All(&' + p.i2cHandle + ', &MPU6050);',
-					'printf("ADDR ' + p.slaveAddr + ' X:%0.2f Y:%0.2f Z:%0.2f\\r\\n", MPU6050.KalmanAngleX, MPU6050.KalmanAngleY, MPU6050.angleZ);',
-					'/* USER CODE END WHILE */'
-				].join('\\n');
-			}
-
-			el('codeOut').value = code;
-		}
-
-		function applyPreset(nextMode) {
-			mode = nextMode;
-			const preset = presets[nextMode] || {};
-			for (const [k, v] of Object.entries(preset)) {
-				if (el(k)) {
-					el(k).value = String(v);
-				}
-			}
-			el('modeBadge').textContent = 'Mode: ' + mode;
-			const timerVisible = mode === 'PWM' || mode === 'Servo';
-			for (const id of ['timingRowA','timingRowB','timingRowC','timerActions','dutyRow','sweepRow']) {
-				el(id).classList.toggle('hidden', !timerVisible);
-			}
-			el('uartRow').classList.toggle('hidden', mode !== 'UART');
-			el('i2cRow').classList.toggle('hidden', mode !== 'I2C');
-			el('formulaNote').textContent = timerVisible ? _i18n.formulaNote : _i18n.formulaNotNA;
-			renderSteps();
-			calcFreq();
-			genCode();
-		}
-
-		el('calcArr').addEventListener('click', calcArr);
-		el('calcFreq').addEventListener('click', calcFreq);
-		el('genCode').addEventListener('click', genCode);
-		el('copyCode').addEventListener('click', () => vscode.postMessage({ type: 'copyText', value: el('codeOut').value }));
-		el('openPins').addEventListener('click', () => vscode.postMessage({ type: 'openPins' }));
-		el('openBoard').addEventListener('click', () => vscode.postMessage({ type: 'openBoard' }));
-		el('openMcp').addEventListener('click', () => vscode.postMessage({ type: 'openMcp' }));
-		el('openCommandCenter').addEventListener('click', () => vscode.postMessage({ type: 'openCommandCenter' }));
-
-		el('presetPwm').addEventListener('click', () => applyPreset('PWM'));
-		el('presetServo').addEventListener('click', () => applyPreset('Servo'));
-		el('presetUart').addEventListener('click', () => applyPreset('UART'));
-		el('presetI2c').addEventListener('click', () => applyPreset('I2C'));
-
-		for (const id of ['timClk','targetPwm','psc','arr','channel','timerHandle','uartHandle','baudRate','i2cHandle','slaveAddr','dutyMin','dutyMax','dutyStep','delayMs']) {
-			if (el(id)) {
-				el(id).addEventListener('input', () => {
-					calcFreq();
-					genCode();
-				});
-			}
-		}
-
-		applyPreset('PWM');
-	</script>
-</body>
-</html>`;
-}
 
 function getWelcomeHtml(webview: vscode.Webview): string {
 	const csp = webview.cspSource;
@@ -5683,25 +4477,15 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	</style>
 </head>
 <body>
-		<h1 id="wlcTitle"></h1>
+	<h1 id="wlcTitle"></h1>
 <p class="sub" id="wlcSub"></p>
 
 <h2>Quick Start</h2>
-<ul class="action-list" id="quickStartList">
-	<li class="action-item">
-		<div class="action-name" id="wlcTutName"></div>
-		<div class="action-desc" id="wlcTutDesc"></div>
-		<button class="action-btn" id="tutorial" id="tutorial"></button>
-	</li>
+<ul class="action-list">
 	<li class="action-item">
 		<div class="action-name" id="wlcImportName"></div>
 		<div class="action-desc" id="wlcImportDesc"></div>
 		<button class="action-btn" id="import"></button>
-	</li>
-	<li class="action-item">
-		<div class="action-name" id="wlcTplName"></div>
-		<div class="action-desc" id="wlcTplDesc"></div>
-		<button class="action-btn" id="templates"></button>
 	</li>
 	<li class="action-item">
 		<div class="action-name" id="wlcBoardName"></div>
@@ -5709,17 +4493,9 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 		<button class="action-btn" id="board"></button>
 	</li>
 	<li class="action-item">
-		<div class="action-name" id="wlcWfName"></div>
-		<div class="action-desc" id="wlcWfDesc"></div>
-		<div>
-			<button class="action-btn" id="studio"></button>
-			<button class="action-btn" id="syncCatalog"></button>
-		</div>
-	</li>
-	<li class="action-item">
-		<div class="action-name" id="wlcPeriName"></div>
-		<div class="action-desc" id="wlcPeriDesc"></div>
-		<button class="action-btn" id="periphLab"></button>
+		<div class="action-name" id="wlcSyncName"></div>
+		<div class="action-desc" id="wlcSyncDesc"></div>
+		<button class="action-btn" id="syncCatalog"></button>
 	</li>
 </ul>
 
@@ -5727,7 +4503,6 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	<button class="link-btn" id="env"></button>
 	<button class="link-btn" id="envSettings"></button>
 	<button class="link-btn" id="pin"></button>
-	<button class="link-btn" id="pwmLab"></button>
 	<button class="link-btn" id="error"></button>
 </div>
 
@@ -5736,246 +4511,32 @@ function getWelcomeHtml(webview: vscode.Webview): string {
 	const vscode = acquireVsCodeApi();
 	document.getElementById('wlcTitle').textContent = _i18n.welcomeTitle;
 	document.getElementById('wlcSub').textContent = _i18n.welcomeSub;
-	document.getElementById('wlcTutName').textContent = _i18n.tutorial;
-	document.getElementById('wlcTutDesc').textContent = _i18n.tutorialDesc;
-	document.getElementById('tutorial').textContent = _i18n.startAction;
 	document.getElementById('wlcImportName').textContent = _i18n.importCubeIDE;
 	document.getElementById('wlcImportDesc').textContent = _i18n.importCubeIDEDesc;
 	document.getElementById('import').textContent = _i18n.import;
-	document.getElementById('wlcTplName').textContent = _i18n.templateCreate;
-	document.getElementById('wlcTplDesc').textContent = _i18n.templateCreateDesc;
-	document.getElementById('templates').textContent = _i18n.openAction;
 	document.getElementById('wlcBoardName').textContent = _i18n.boardConfig;
 	document.getElementById('wlcBoardDesc').textContent = _i18n.boardConfigDesc;
 	document.getElementById('board').textContent = _i18n.openAction;
-	document.getElementById('wlcWfName').textContent = _i18n.workflow;
-	document.getElementById('wlcWfDesc').textContent = _i18n.workflowDesc;
-	document.getElementById('studio').textContent = _i18n.openStudioAction;
+	document.getElementById('wlcSyncName').textContent = _i18n.cubemxSync;
+	document.getElementById('wlcSyncDesc').textContent = _i18n.cubemxSyncMeta;
 	document.getElementById('syncCatalog').textContent = _i18n.syncCatalogAction;
-	document.getElementById('wlcPeriName').textContent = _i18n.peripheralImpl;
-	document.getElementById('wlcPeriDesc').textContent = _i18n.peripheralImplDesc;
-	document.getElementById('periphLab').textContent = _i18n.openAction;
 	document.getElementById('env').textContent = _i18n.envCheck;
 	document.getElementById('envSettings').textContent = _i18n.envSettings;
 	document.getElementById('pin').textContent = _i18n.pinVisualizer;
-	document.getElementById('pwmLab').textContent = _i18n.peripheralWorkbench;
 	document.getElementById('error').textContent = _i18n.autoErrorExplain;
-	document.getElementById('studio').addEventListener('click', () => vscode.postMessage({ type: 'studio' }));
-	document.getElementById('syncCatalog').addEventListener('click', () => vscode.postMessage({ type: 'syncCatalog' }));
-	document.getElementById('tutorial').addEventListener('click', () => vscode.postMessage({ type: 'tutorial' }));
 	document.getElementById('import').addEventListener('click', () => vscode.postMessage({ type: 'import' }));
-	document.getElementById('templates').addEventListener('click', () => vscode.postMessage({ type: 'templates' }));
 	document.getElementById('board').addEventListener('click', () => vscode.postMessage({ type: 'board' }));
-	document.getElementById('periphLab').addEventListener('click', () => vscode.postMessage({ type: 'periphLab' }));
+	document.getElementById('syncCatalog').addEventListener('click', () => vscode.postMessage({ type: 'syncCatalog' }));
 	document.getElementById('env').addEventListener('click', () => vscode.postMessage({ type: 'env' }));
 	document.getElementById('envSettings').addEventListener('click', () => vscode.postMessage({ type: 'envSettings' }));
 	document.getElementById('pin').addEventListener('click', () => vscode.postMessage({ type: 'pin' }));
-	document.getElementById('pwmLab').addEventListener('click', () => vscode.postMessage({ type: 'pwmLab' }));
 	document.getElementById('error').addEventListener('click', () => vscode.postMessage({ type: 'error' }));
 </script>
 </body>
 </html>`;
 }
 
-function getTutorialHtml(webview: vscode.Webview): string {
-	const csp = webview.cspSource;
-	const stepsJson = JSON.stringify(getTutorialSteps());
-	const stepCount = getTutorialSteps().length;
-	const _i18nJson = JSON.stringify(getUxI18n());
-	const lang = vscode.env.language.split('-')[0] ?? 'en';
-	return `<!DOCTYPE html>
-<html lang="${lang}">
-<head>
-	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<style>
-		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14);--ok:#22c55e}
-		body{font:13px/1.6 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:24px 28px;max-width:700px}
-		h1{font-size:18px;font-weight:700;margin-bottom:4px}
-		.sub{font-size:12px;color:var(--mt);margin-bottom:20px}
-		.tracker{display:flex;gap:4px;margin-bottom:20px;align-items:center}
-		.dot{width:28px;height:4px;border-radius:2px;background:var(--bd);transition:background .2s,width .2s;flex-shrink:0}
-		.dot.done{background:var(--ok)}
-		.dot.active{background:var(--ac);width:36px}
-		.step-card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:20px 22px;margin-bottom:16px;min-height:80px}
-		.step-num{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mt);margin-bottom:6px}
-		.step-text{font-size:14px;line-height:1.6;color:var(--tx)}
-		.nav{display:flex;gap:8px;margin-bottom:20px}
-		.btn{padding:7px 16px;border-radius:6px;cursor:pointer;font:600 12px/1 var(--vscode-font-family,'Segoe UI',sans-serif);border:1px solid var(--bd);transition:background .1s}
-		.btn:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-		.btn-pri{background:var(--ac);color:#fff;border-color:var(--ac)}
-		.btn-pri:hover{background:#0d9488;border-color:#0d9488}
-		.btn-sec{background:transparent;color:var(--tx)}
-		.btn-sec:hover{background:var(--ac2);border-color:rgba(15,118,110,.45)}
-		.btn-sec:disabled{opacity:.4;cursor:default}
-		.actions-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mt);margin-bottom:8px}
-		.action-row{display:flex;gap:8px;flex-wrap:wrap}
-		.act-btn{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--tx);cursor:pointer;font:12px/1 var(--vscode-font-family,'Segoe UI',sans-serif);transition:background .1s}
-		.act-btn:hover{background:var(--ac2);border-color:rgba(99,102,241,.4)}
-		.act-btn:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
-	</style>
-</head>
-<body>
-	<h1 id="tutTitle"></h1>
-	<p class="sub" id="tutSub"></p>
 
-	<div class="tracker" id="tracker" aria-label="Progress"></div>
-
-	<div class="step-card" role="region" aria-label="Current Step">
-		<div class="step-num" id="stepNum"></div>
-		<div class="step-text" id="stepText" role="status" aria-live="polite"></div>
-	</div>
-
-	<div class="nav">
-		<button class="btn btn-sec" id="prev"></button>
-		<button class="btn btn-pri" id="next"></button>
-	</div>
-
-	<div class="actions-title" id="tutActionsTitle"></div>
-	<div class="action-row">
-		<button class="act-btn" id="openPin"></button>
-		<button class="act-btn" id="runBuild"></button>
-		<button class="act-btn" id="runFlash"></button>
-	</div>
-
-	<script>
-		const _i18n = ${_i18nJson};
-		const vscode = acquireVsCodeApi();
-		document.getElementById('tutTitle').textContent = _i18n.tutorialTitle;
-		document.getElementById('tutSub').textContent = _i18n.tutorialSub;
-		document.getElementById('prev').textContent = _i18n.prevStep;
-		document.getElementById('next').textContent = _i18n.nextStep;
-		document.getElementById('tutActionsTitle').textContent = _i18n.stepActions;
-		document.getElementById('openPin').textContent = _i18n.checkPins;
-		document.getElementById('runBuild').textContent = _i18n.runBuild;
-		document.getElementById('runFlash').textContent = _i18n.runFlash;
-		const steps = ${stepsJson};
-		let idx = 0;
-		const tracker = document.getElementById('tracker');
-		const stepNum = document.getElementById('stepNum');
-		const stepText = document.getElementById('stepText');
-		const prevBtn = document.getElementById('prev');
-		const nextBtn = document.getElementById('next');
-
-		for (let i = 0; i < ${stepCount}; i++) {
-			const d = document.createElement('div');
-			d.className = 'dot';
-			d.id = 'dot' + i;
-			tracker.appendChild(d);
-		}
-
-		function render() {
-			stepNum.textContent = 'Step ' + (idx + 1) + ' / ' + steps.length;
-			stepText.textContent = steps[idx];
-			prevBtn.disabled = idx === 0;
-			nextBtn.textContent = idx === steps.length - 1 ? _i18n.done : _i18n.nextStep;
-			for (let i = 0; i < steps.length; i++) {
-				const d = document.getElementById('dot' + i);
-				d.className = 'dot' + (i < idx ? ' done' : i === idx ? ' active' : '');
-			}
-		}
-
-		prevBtn.addEventListener('click', () => { if (idx > 0) { idx--; render(); } });
-		nextBtn.addEventListener('click', () => {
-			if (idx < steps.length - 1) { idx++; render(); }
-			else { vscode.postMessage({ type: 'complete' }); }
-		});
-
-		for (const id of ['runBuild','runFlash','openPin']) {
-			document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
-		}
-		render();
-	</script>
-</body>
-</html>`;
-}
-
-function getTemplateGalleryHtml(webview: vscode.Webview): string {
-	const csp = webview.cspSource;
-	const _i18nJson = JSON.stringify(getUxI18n());
-	const lang = vscode.env.language.split('-')[0] ?? 'en';
-
-	const categories: Record<string, { icon: string; items: string[] }> = {
-		'Beginner — GPIO / UART': { icon: '🌱', items: ['GPIO Blinky (F4)', 'UART Hello (F4)', 'EXTI Button IRQ', 'ADC Polling', 'DAC Wave Output'] },
-		'Intermediate — Comms / Timer': { icon: '⚙', items: ['I2C Sensor Read (F4)', 'SPI IMU (F4)', 'Timer PWM Basic', 'ADC + DMA', 'CAN Loopback', 'RTC Calendar'] },
-		'Advanced — USB / RTOS': { icon: '🚀', items: ['USB CDC Device', 'USB HID Device', 'FreeRTOS 2 Tasks', 'FreeRTOS Queue', 'FreeRTOS Mutex', 'LwIP TCP Echo', 'LwIP HTTP Basic'] },
-		'Storage / Flash': { icon: '💾', items: ['FatFS SD Card', 'QSPI External Flash', 'Bootloader UART'] },
-		'Power / Security': { icon: '🔒', items: ['Low Power STOP Mode', 'Watchdog IWDG', 'Crypto AES (L5)', 'CMSIS-DSP FIR'] },
-		'Industrial / Motor': { icon: '🔧', items: ['Modbus RTU Slave', 'Motor PWM + Encoder', 'Hall Sensor Capture'] },
-		'Wireless / Multi-board': { icon: '📡', items: ['BLE UART Bridge (WB)', 'Multi-board Workspace Sample'] },
-		'H7 / L4 / WB Targets': { icon: '🎯', items: ['Ethernet TCP (H7)', 'FMC SDRAM (H7)', 'Low Power LPUART (L4)', 'Touch Sense (L4)', 'BLE Custom Profile (WB)'] },
-		'F1 / G0 Entry': { icon: '🔵', items: ['Blue Pill Blinky (F1)', 'Blue Pill UART (F1)', 'G0 Nucleo Blinky', 'G0 Low Power'] },
-		'U5 / C0 Latest Series': { icon: '⚡', items: ['U5 TrustZone Blinky', 'U5 Low Power LPUART', 'C0 Minimal Blinky', 'C0 UART Echo'] },
-	};
-
-	const sections = Object.entries(categories).map(([cat, { icon, items }]) => {
-		const cards = items.map(name =>
-			`<button class="tcard" data-template="${escapeHtml(name)}" aria-label="Select template ${escapeHtml(name)}">${escapeHtml(name)}</button>`
-		).join('');
-		return `<div class="cat-section"><div class="cat-hd"><span class="cat-ic">${icon}</span>${escapeHtml(cat)}</div><div class="tgrid">${cards}</div></div>`;
-	}).join('');
-
-	return `<!DOCTYPE html>
-<html lang="${lang}">
-<head>
-	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<style>
-		*{box-sizing:border-box;margin:0;padding:0}
-		:root{--bg:var(--vscode-editor-background,#0d0e14);--sf:var(--vscode-sideBar-background,#13151e);--bd:var(--vscode-panel-border,#1e2030);--tx:var(--vscode-editor-foreground,#e8eaed);--mt:var(--vscode-descriptionForeground,#6b7280);--ac:#0f766e;--ac2:rgba(15,118,110,.14)}
-		body{font:13px/1.5 var(--vscode-font-family,'Segoe UI',sans-serif);background:transparent;color:var(--tx);padding:24px 28px}
-		.page-hd{margin-bottom:20px}
-		h1{font-size:18px;font-weight:700;margin-bottom:4px}
-		.sub{font-size:12px;color:var(--mt)}
-		.search-row{margin-bottom:18px}
-		#search{width:100%;padding:7px 12px;border-radius:7px;border:1px solid var(--bd);background:var(--sf);color:var(--tx);font:13px var(--vscode-font-family,'Segoe UI',sans-serif);outline:none;transition:border-color .15s}
-		#search:focus{border-color:rgba(15,118,110,.6)}
-		#search::placeholder{color:var(--mt)}
-		.cat-section{margin-bottom:20px}
-		.cat-hd{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mt);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--bd)}
-		.cat-ic{font-size:14px}
-		.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}
-		.tcard{text-align:left;border:1px solid var(--bd);border-radius:7px;padding:9px 11px;background:var(--sf);color:var(--tx);cursor:pointer;font:13px var(--vscode-font-family,'Segoe UI',sans-serif);transition:background .1s,border-color .1s;line-height:1.3}
-		.tcard:hover{background:var(--ac2);border-color:rgba(15,118,110,.48)}
-		.tcard:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
-		.tcard.hidden{display:none}
-	</style>
-</head>
-<body>
-	<div class="page-hd">
-		<h1 id="tgTitle"></h1>
-		<p class="sub" id="tgSub"></p>
-	</div>
-	<div class="search-row">
-		<input id="search" type="text" aria-label="template search" />
-	</div>
-	<div id="gallery">${sections}</div>
-	<script>
-		const _i18n = ${_i18nJson};
-		const vscode = acquireVsCodeApi();
-		document.getElementById('tgTitle').textContent = _i18n.templateGalleryTitle;
-		document.getElementById('tgSub').textContent = _i18n.templateGallerySub;
-		document.getElementById('search').placeholder = _i18n.searchTemplate;
-		document.querySelectorAll('.tcard').forEach(node => {
-			node.addEventListener('click', () => vscode.postMessage({ template: node.dataset.template }));
-		});
-		document.getElementById('search').addEventListener('input', function() {
-			const q = this.value.toLowerCase();
-			document.querySelectorAll('.tcard').forEach(c => {
-				c.classList.toggle('hidden', q.length > 0 && !c.textContent.toLowerCase().includes(q));
-			});
-			document.querySelectorAll('.cat-section').forEach(s => {
-				const visible = Array.from(s.querySelectorAll('.tcard')).some(c => !c.classList.contains('hidden'));
-				s.style.display = visible ? '' : 'none';
-			});
-		});
-	</script>
-</body>
-</html>`;
-}
 
 function buildLqfpSvg(
 	pins: Array<{ pin: string; mode: string }>,

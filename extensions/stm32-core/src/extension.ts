@@ -226,14 +226,14 @@ export function deactivate(): void {
 async function showNewProjectGuide(): Promise<void> {
 	const choice = await vscode.window.showInformationMessage(
 		vscode.l10n.t('Choose how to start a new STM32 project.'),
-		vscode.l10n.t('Create from Template'),
+		vscode.l10n.t('Board Config Studio'),
 		vscode.l10n.t('Launch CubeMX'),
 		vscode.l10n.t('Import CubeIDE Project'),
 		vscode.l10n.t('Open STM32 Settings'),
 	);
 
-	if (choice === vscode.l10n.t('Create from Template')) {
-		await vscode.commands.executeCommand('stm32ux.openTemplateGallery');
+	if (choice === vscode.l10n.t('Board Config Studio')) {
+		await vscode.commands.executeCommand('stm32ux.openBoardConfigurator');
 	} else if (choice === vscode.l10n.t('Launch CubeMX')) {
 		await openCubeMx();
 	} else if (choice === vscode.l10n.t('Import CubeIDE Project')) {

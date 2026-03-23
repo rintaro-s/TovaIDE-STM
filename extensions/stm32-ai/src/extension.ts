@@ -205,23 +205,23 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 							throw new Error('extension context unavailable');
 						}
 						await startMcpServer(extensionContextRef);
-						webviewView.webview.postMessage({ type: 'status', message: `MCPサーバー起動中: http://${mcpServerHost}:${mcpServerPort}/mcp` });
+						webviewView.webview.postMessage({ type: 'status', message: `MCP server starting: http://${mcpServerHost}:${mcpServerPort}/mcp` });
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
 						assistantOutput.appendLine(`[STM32-AI] MCP start failed: ${message}`);
-						webviewView.webview.postMessage({ type: 'status', message: `MCPサーバー起動失敗: ${message}` });
-						vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー起動に失敗しました: {0}', message));
+						webviewView.webview.postMessage({ type: 'status', message: `MCP server start failed: ${message}` });
+						vscode.window.showErrorMessage(vscode.l10n.t('Failed to start MCP server: {0}', message));
 					}
 					break;
 				case 'stopMcp':
 					try {
 						stopMcpServer();
-						webviewView.webview.postMessage({ type: 'status', message: 'MCPサーバーを停止しました。' });
+						webviewView.webview.postMessage({ type: 'status', message: 'MCP server stopped.' });
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
 						assistantOutput.appendLine(`[STM32-AI] MCP stop failed: ${message}`);
-						webviewView.webview.postMessage({ type: 'status', message: `MCPサーバー停止失敗: ${message}` });
-						vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー停止に失敗しました: {0}', message));
+						webviewView.webview.postMessage({ type: 'status', message: `MCP server stop failed: ${message}` });
+						vscode.window.showErrorMessage(vscode.l10n.t('Failed to stop MCP server: {0}', message));
 					}
 					break;
 			}
@@ -231,7 +231,7 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 	private getHtml(webview: vscode.Webview): string {
 		const csp = webview.cspSource;
 		return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'unsafe-inline';" />
@@ -274,54 +274,54 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 <body>
 
 <div class="sec">
-	<div class="sec-hd">MCP サーバー</div>
+	<div class="sec-hd">MCP Server</div>
 	<div class="mcp-row">
 		<div class="dot" id="mcpDot"></div>
-		<div class="mcp-info" id="mcpInfo">停止中</div>
-		<button class="mcp-btn" id="mcpToggle" aria-label="MCPサーバーを切り替え">起動</button>
+		<div class="mcp-info" id="mcpInfo">Stopped</div>
+		<button class="mcp-btn" id="mcpToggle" aria-label="Toggle MCP server">Start</button>
 	</div>
 </div>
 
 <div class="sec">
-	<div class="sec-hd">AI チャット</div>
-	<button class="btn pri" id="openChat" aria-label="AIチャットを開く">
-		<i class="ic">◎</i>
-		<span class="lbl">AIチャットを開く</span>
+	<div class="sec-hd">AI Chat</div>
+	<button class="btn pri" id="openChat" aria-label="Open AI Chat">
+		<i class="ic">&#x25CE;</i>
+		<span class="lbl">Open AI Chat</span>
 		<span class="badge">@stm32</span>
 	</button>
 </div>
 
 <div class="sec">
-	<div class="sec-hd">AI 自動化フロー</div>
-	<button class="btn" id="semiAuto" aria-label="半自動フローを実行">
-		<i class="ic">▶</i>
-		<span class="lbl">半自動 (再生成→ビルド)</span>
+	<div class="sec-hd">AI Automation</div>
+	<button class="btn" id="semiAuto" aria-label="Run semi-auto flow">
+		<i class="ic">&#x25B6;</i>
+		<span class="lbl">Semi-Auto (Regen &#x2192; Build)</span>
 	</button>
-	<button class="btn" id="autoUntilFlash" aria-label="書込み直前まで自動実行">
-		<i class="ic">⏩</i>
-		<span class="lbl">書込み直前まで自動</span>
+	<button class="btn" id="autoUntilFlash" aria-label="Auto until flash">
+		<i class="ic">&#x23E9;</i>
+		<span class="lbl">Auto Until Flash</span>
 	</button>
-	<button class="btn wn" id="fullAuto" aria-label="全自動フローを実行">
-		<i class="ic">⚡</i>
-		<span class="lbl">全自動 (→書込み→デバッグ)</span>
-	</button>
-</div>
-
-<div class="sec">
-	<div class="sec-hd">AI 診断</div>
-	<button class="btn" id="fixBuild" aria-label="ビルドエラーをAIで修正">
-		<i class="ic">🔧</i>
-		<span class="lbl">ビルドエラーをAI修正</span>
-	</button>
-	<button class="btn" id="hardFault" aria-label="HardFaultをAI解析">
-		<i class="ic">⚠</i>
-		<span class="lbl">HardFault AI 解析</span>
+	<button class="btn wn" id="fullAuto" aria-label="Run full-auto flow">
+		<i class="ic">&#x26A1;</i>
+		<span class="lbl">Full Auto (&#x2192; Flash &#x2192; Debug)</span>
 	</button>
 </div>
 
 <div class="sec">
-	<div class="sec-hd">ステータス</div>
-	<div id="log" role="status" aria-live="polite">準備完了</div>
+	<div class="sec-hd">AI Diagnostics</div>
+	<button class="btn" id="fixBuild" aria-label="Fix build error with AI">
+		<i class="ic">&#x1F527;</i>
+		<span class="lbl">Fix Build Error with AI</span>
+	</button>
+	<button class="btn" id="hardFault" aria-label="Analyze HardFault with AI">
+		<i class="ic">&#x26A0;</i>
+		<span class="lbl">HardFault AI Analysis</span>
+	</button>
+</div>
+
+<div class="sec">
+	<div class="sec-hd">Status</div>
+	<div id="log" role="status" aria-live="polite">Ready</div>
 </div>
 
 <script>
@@ -336,24 +336,24 @@ class Stm32AssistantViewProvider implements vscode.WebviewViewProvider {
 		mcpOn = on;
 		mcpDot.className = 'dot' + (on ? ' on' : '');
 		mcpInfo.innerHTML = on
-			? '起動中&nbsp;<span class="mcp-url">' + (url||'') + '</span>'
-			: '停止中';
-		mcpToggle.textContent = on ? '停止' : '起動';
+			? 'Running&nbsp;<span class="mcp-url">' + (url||'') + '</span>'
+			: 'Stopped';
+		mcpToggle.textContent = on ? 'Stop' : 'Start';
 	}
 	function setLog(msg) { log.textContent = msg; }
 
 	mcpToggle.addEventListener('click', () => {
-		if (mcpOn) { vscode.postMessage({type:'stopMcp'}); setLog('MCPサーバーを停止中...'); }
-		else { vscode.postMessage({type:'startMcp'}); setLog('MCPサーバーを起動中...'); }
+		if (mcpOn) { vscode.postMessage({type:'stopMcp'}); setLog('Stopping MCP server...'); }
+		else { vscode.postMessage({type:'startMcp'}); setLog('Starting MCP server...'); }
 	});
 
 	const actionMap = {
-		openChat:'AIチャット',semiAuto:'半自動フロー',autoUntilFlash:'書込み直前まで自動',
-		fullAuto:'全自動フロー',fixBuild:'ビルドエラーAI修正',hardFault:'HardFault解析'
+		openChat:'AI Chat',semiAuto:'Semi-Auto Flow',autoUntilFlash:'Auto Until Flash',
+		fullAuto:'Full Auto Flow',fixBuild:'Build Error AI Fix',hardFault:'HardFault Analysis'
 	};
 	for (const [id, label] of Object.entries(actionMap)) {
 		document.getElementById(id).addEventListener('click', () => {
-			setLog(label + ' を実行中...');
+			setLog('Running ' + label + '...');
 			vscode.postMessage({type: id});
 		});
 	}
@@ -381,7 +381,7 @@ const _unusedOpenAssistantPanelRef = openAssistantPanel;
 void _unusedOpenAssistantPanelRef;
 
 async function openStm32Chat(extraPrompt?: string): Promise<void> {
-	const basePrompt = vscode.workspace.getConfiguration('stm32ai').get<string>('chat.defaultPrompt', '現在のSTM32プロジェクトをレビューして、次の作業を提案してください。');
+	const basePrompt = vscode.workspace.getConfiguration('stm32ai').get<string>('chat.defaultPrompt', 'Review the current STM32 project and suggest next steps.');
 	const contextText = await buildStm32ContextSummary();
 	const merged = [basePrompt, contextText, extraPrompt ?? ''].filter(Boolean).join('\n\n');
 	await vscode.commands.executeCommand('workbench.action.chat.open', { query: merged });
@@ -403,7 +403,7 @@ async function runSemiAutoFlow(): Promise<void> {
 	}
 
 	assistantOutput.appendLine('[STM32-AI] Semi-auto flow completed.');
-	vscode.window.showInformationMessage(vscode.l10n.t('半自動フローが完了しました。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('Semi-auto flow completed.'));
 }
 
 async function runAutoUntilFlash(): Promise<void> {
@@ -421,7 +421,7 @@ async function runAutoUntilFlash(): Promise<void> {
 		return;
 	}
 
-	vscode.window.showInformationMessage(vscode.l10n.t('書込み直前まで完了しました。書込みは手動で実行してください。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('Auto-until-flash completed. Flash manually when ready.'));
 	assistantOutput.appendLine('[STM32-AI] Auto-until-flash flow completed.');
 }
 
@@ -443,11 +443,11 @@ async function runFullAutoFlow(): Promise<void> {
 	const requireFlashConfirmation = vscode.workspace.getConfiguration('stm32ai').get<boolean>('autoFlow.requireFlashConfirmation', true);
 	if (requireFlashConfirmation) {
 		const proceed = await vscode.window.showWarningMessage(
-			vscode.l10n.t('ビルドが成功しました。書込みを実行しますか？'),
-			vscode.l10n.t('書込みを実行'),
-			vscode.l10n.t('キャンセル')
+			vscode.l10n.t('Build succeeded. Proceed with flash?'),
+			vscode.l10n.t('Flash Now'),
+			vscode.l10n.t('Cancel')
 		);
-		if (proceed !== vscode.l10n.t('書込みを実行')) {
+		if (proceed !== vscode.l10n.t('Flash Now')) {
 			assistantOutput.appendLine('[STM32-AI] Flash canceled by user confirmation gate.');
 			return;
 		}
@@ -461,15 +461,15 @@ async function runFullAutoFlow(): Promise<void> {
 
 	await vscode.commands.executeCommand('stm32.startDebug');
 	assistantOutput.appendLine('[STM32-AI] Full-auto flow completed.');
-	vscode.window.showInformationMessage(vscode.l10n.t('全自動フローが完了しました。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('Full-auto flow completed.'));
 }
 
 async function fixBuildErrorWithAi(): Promise<void> {
 	const diagnostics = collectBuildDiagnostics();
 	const first = diagnostics[0];
 	const prompt = first
-		? `以下のビルドエラーを修正してください。\n\n${first}`
-		: 'STM32ビルドエラーの原因を推定し、修正手順を提案してください。';
+		? `Fix the following STM32 build error:\n\n${first}`
+		: 'Diagnose the STM32 build error and suggest a fix.';
 
 	const answer = await askModel(prompt);
 	if (answer) {
@@ -483,20 +483,20 @@ async function fixBuildErrorWithAi(): Promise<void> {
 }
 
 async function analyzeHardFaultWithAi(): Promise<void> {
-	const cfsr = await vscode.window.showInputBox({ prompt: vscode.l10n.t('CFSR値を入力 (0x形式)'), value: '0x00000000' });
+	const cfsr = await vscode.window.showInputBox({ prompt: vscode.l10n.t('Enter CFSR value (0x format)'), value: '0x00000000' });
 	if (!cfsr) {
 		return;
 	}
-	const hfsr = await vscode.window.showInputBox({ prompt: vscode.l10n.t('HFSR値を入力 (0x形式)'), value: '0x00000000' });
+	const hfsr = await vscode.window.showInputBox({ prompt: vscode.l10n.t('Enter HFSR value (0x format)'), value: '0x00000000' });
 	if (!hfsr) {
 		return;
 	}
 
 	const prompt = [
-		'STM32 HardFaultを解析してください。',
+		'Analyze this STM32 HardFault.',
 		`CFSR=${cfsr}`,
 		`HFSR=${hfsr}`,
-		'原因候補、再現防止策、優先順位付きの調査手順を返してください。',
+		'Return probable causes, prevention steps, and a prioritized investigation procedure.',
 	].join('\n');
 
 	const answer = await askModel(prompt);
@@ -566,10 +566,10 @@ async function startMcpServer(context: vscode.ExtensionContext, takeoverAttempt 
 					});
 				return;
 			}
-			vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー起動失敗: ポート占有を解放できませんでした ({0}:{1})。', mcpServerHost, String(mcpServerPort)));
+			vscode.window.showErrorMessage(vscode.l10n.t('MCP server failed to start: could not release port ({0}:{1}).', mcpServerHost, String(mcpServerPort)));
 			return;
 		}
-		vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバーでエラーが発生しました。出力を確認してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('MCP server encountered an error. Check the output log.'));
 	});
 
 	server.listen(mcpServerPort, mcpServerHost, () => {
@@ -577,7 +577,7 @@ async function startMcpServer(context: vscode.ExtensionContext, takeoverAttempt 
 		mcpServerRunning = true;
 		const url = `http://${mcpServerHost}:${mcpServerPort}/mcp`;
 		assistantOutput.appendLine(`[STM32-AI] MCP server started at ${url}`);
-		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `MCPサーバー起動: ${url}` });
+		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `MCP server started: ${url}` });
 	});
 }
 
@@ -590,7 +590,7 @@ async function forceTakeoverAndRestart(context: vscode.ExtensionContext, nextAtt
 		mcpServerStarting = false;
 		const url = `http://${mcpServerHost}:${mcpServerPort}/mcp`;
 		assistantOutput.appendLine(`[STM32-AI] Reusing running MCP at ${url}`);
-		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `既存MCPに接続: ${url}` });
+		activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: true, url, message: `Reusing existing MCP at: ${url}` });
 		return;
 	}
 
@@ -677,7 +677,7 @@ function stopMcpServer(): void {
 	mcpServerStarting = false;
 	mcpServerRunning = false;
 	assistantOutput.appendLine('[STM32-AI] MCP server stopped.');
-	activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: false, url: '', message: 'MCPサーバーを停止しました。' });
+	activeAssistantView?.webview.postMessage({ type: 'mcpStatus', running: false, url: '', message: 'MCP server stopped.' });
 }
 
 async function handleMcpHttpRequest(req: IncomingMessageLike, res: ServerResponseLike, token: string): Promise<void> {
@@ -819,10 +819,6 @@ async function executeMcpMethod(method: string, params: Record<string, unknown> 
 					{ name: 'stm32.runEnvironmentCheck' },
 					{ name: 'stm32.syncMcuCatalog' },
 					{ name: 'stm32.refreshRegisters' },
-					{ name: 'stm32.collab.openPanel' },
-					{ name: 'stm32.collab.startSession' },
-					{ name: 'stm32.collab.startWsSync' },
-					{ name: 'stm32.collab.stopWsSync' },
 					{ name: 'stm32.mcp.start' },
 					{ name: 'stm32.mcp.stop' },
 					{ name: 'stm32.analyzeHardFault' },
@@ -890,26 +886,10 @@ async function executeMcpMethod(method: string, params: Record<string, unknown> 
 			await vscode.commands.executeCommand('stm32.debug.refreshRegisters');
 			return { success: true };
 		}
-		case 'stm32.collab.openPanel': {
-			await vscode.commands.executeCommand('stm32collab.openPanel');
-			return { success: true };
-		}
-		case 'stm32.collab.startSession': {
-			await vscode.commands.executeCommand('stm32collab.startSession');
-			return { success: true };
-		}
-		case 'stm32.collab.startWsSync': {
-			await vscode.commands.executeCommand('stm32collab.startWsSync');
-			return { success: true };
-		}
-		case 'stm32.collab.stopWsSync': {
-			await vscode.commands.executeCommand('stm32collab.stopWsSync');
-			return { success: true };
-		}
 		case 'stm32.analyzeHardFault': {
 			const cfsr = typeof params?.cfsr === 'string' ? params.cfsr : '0x00000000';
 			const hfsr = typeof params?.hfsr === 'string' ? params.hfsr : '0x00000000';
-			const answer = await askModel(`STM32 HardFaultを解析してください。\nCFSR=${cfsr}\nHFSR=${hfsr}`);
+			const answer = await askModel(`Analyze this STM32 HardFault.\nCFSR=${cfsr}\nHFSR=${hfsr}`);
 			return { success: true, analysis: answer ?? '' };
 		}
 		default:
@@ -982,7 +962,7 @@ function registerLanguageModelTools(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(lmApi.registerTool<{ cfsr: string; hfsr: string }>('stm32AnalyzeHardFault', {
 		invoke: async options => {
-			const prompt = `STM32 HardFault解析\nCFSR=${options.input.cfsr}\nHFSR=${options.input.hfsr}`;
+			const prompt = `Analyze this STM32 HardFault.\nCFSR=${options.input.cfsr}\nHFSR=${options.input.hfsr}`;
 			const answer = await askModel(prompt);
 			return toToolResult(answer ?? 'No language model available.');
 		}
@@ -1016,12 +996,12 @@ function registerChatParticipant(context: vscode.ExtensionContext): void {
 			}
 			case 'explain': {
 				const selection = vscode.window.activeTextEditor?.document.getText(vscode.window.activeTextEditor.selection) ?? '';
-				const answer = await askModel(`次のSTM32コードを説明してください。\n\n${selection}`);
+				const answer = await askModel(`Explain the following STM32 code:\n\n${selection}`);
 				stream.markdown(answer ?? 'No model response.');
 				return { metadata: { participant: 'stm32ai', command } };
 			}
 			case 'hardfault': {
-				const answer = await askModel(`STM32 HardFaultを解析してください。\n${prompt}`);
+				const answer = await askModel(`Analyze this STM32 HardFault.\n${prompt}`);
 				stream.markdown(answer ?? 'No model response.');
 				return { metadata: { participant: 'stm32ai', command } };
 			}

@@ -221,21 +221,21 @@
       "stm32-pin": [
         {
           "id": "stm32-pin.quickActions",
-          "name": "ピン設定クイック操作",
+          "name": "Pin Config Quick Actions",
           "icon": "./media/icons/stm32-pin.svg"
         }
       ],
       "stm32-build": [
         {
           "id": "stm32-build.quickActions",
-          "name": "ビルドクイック操作",
+          "name": "Build Quick Actions",
           "icon": "./media/icons/stm32-build.svg"
         }
       ],
       "stm32-debug": [
         {
           "id": "stm32-debug.registers",
-          "name": "SVDレジスタ",
+          "name": "SVD Registers",
           "icon": "./media/icons/stm32-build.svg"
         },
         {

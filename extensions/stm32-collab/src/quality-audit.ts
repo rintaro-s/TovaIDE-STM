@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 export async function runQualityAudit(outputChannel: vscode.OutputChannel): Promise<void> {
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから品質監査を実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace folder before running the quality audit.'));
 		return;
 	}
 

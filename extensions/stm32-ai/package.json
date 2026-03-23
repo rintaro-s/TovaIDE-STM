@@ -106,7 +106,7 @@
         "toolReferenceName": "stm32Build",
         "canBeReferencedInPrompt": true,
         "modelDescription": "Build STM32 Debug target using stm32-core extension.",
-        "userDescription": "STM32プロジェクトをビルドします。",
+        "userDescription": "Build the STM32 project.",
         "inputSchema": {
           "type": "object",
           "properties": {}
@@ -118,7 +118,7 @@
         "toolReferenceName": "stm32Flash",
         "canBeReferencedInPrompt": true,
         "modelDescription": "Flash latest STM32 build using stm32-core extension.",
-        "userDescription": "STM32へ書き込みます。",
+        "userDescription": "Flash the STM32 device.",
         "inputSchema": {
           "type": "object",
           "properties": {}
@@ -130,7 +130,7 @@
         "toolReferenceName": "stm32RegenerateCode",
         "canBeReferencedInPrompt": true,
         "modelDescription": "Regenerate STM32 code from ioc while preserving USER CODE blocks.",
-        "userDescription": "iocからコード再生成します。",
+        "userDescription": "Regenerate code from the ioc file.",
         "inputSchema": {
           "type": "object",
           "properties": {}
@@ -142,7 +142,7 @@
         "toolReferenceName": "stm32AnalyzeHardFault",
         "canBeReferencedInPrompt": true,
         "modelDescription": "Analyze HardFault registers and explain causes.",
-        "userDescription": "HardFaultを解析します。",
+        "userDescription": "Analyze a HardFault using register values.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -177,7 +177,7 @@
         },
         "stm32ai.chat.defaultPrompt": {
           "type": "string",
-          "default": "現在のSTM32プロジェクトをレビューして、次の作業を提案してください。",
+          "default": "Review the current STM32 project and suggest next steps.",
           "markdownDescription": "%configuration.defaultPrompt.description%"
         },
         "stm32ai.mcp.autoStartServer": {

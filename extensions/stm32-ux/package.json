@@ -16,18 +16,13 @@
   "activationEvents": [
     "onStartupFinished",
     "onView:stm32-ux.onboardingView",
-    "onCommand:stm32ux.openWorkflowStudio",
     "onCommand:stm32ux.openWelcomeWizard",
     "onCommand:stm32ux.openMcpOperationDesk",
     "onCommand:stm32ux.syncMcuCatalogFromCubeMX",
-    "onCommand:stm32ux.startBlinkTutorial",
-    "onCommand:stm32ux.openTemplateGallery",
     "onCommand:stm32ux.openBoardConfigurator",
     "onCommand:stm32ux.runEnvironmentCheck",
     "onCommand:stm32ux.explainLatestError",
     "onCommand:stm32ux.openPinVisualizer",
-    "onCommand:stm32ux.openPeripheralWorkbench",
-    "onCommand:stm32ux.openPwmWorkbench",
     "onCommand:stm32ux.configureGlobalWallpaper",
     "onCommand:stm32ux.generateMcpConfigJson",
     "onCommand:stm32ux.composeMcpRequestJson",
@@ -42,11 +37,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "stm32ux.openWorkflowStudio",
-        "title": "%command.openWorkflowStudio.title%",
-        "category": "STM32"
-      },
-      {
         "command": "stm32ux.openWelcomeWizard",
         "title": "%command.openWelcomeWizard.title%",
         "category": "STM32"
@@ -59,16 +49,6 @@
       {
         "command": "stm32ux.syncMcuCatalogFromCubeMX",
         "title": "%command.syncMcuCatalogFromCubeMX.title%",
-        "category": "STM32"
-      },
-      {
-        "command": "stm32ux.startBlinkTutorial",
-        "title": "%command.startBlinkTutorial.title%",
-        "category": "STM32"
-      },
-      {
-        "command": "stm32ux.openTemplateGallery",
-        "title": "%command.openTemplateGallery.title%",
         "category": "STM32"
       },
       {
@@ -89,16 +69,6 @@
       {
         "command": "stm32ux.openPinVisualizer",
         "title": "%command.openPinVisualizer.title%",
-        "category": "STM32"
-      },
-      {
-        "command": "stm32ux.openPeripheralWorkbench",
-        "title": "%command.openPeripheralWorkbench.title%",
-        "category": "STM32"
-      },
-      {
-        "command": "stm32ux.openPwmWorkbench",
-        "title": "%command.openPwmWorkbench.title%",
         "category": "STM32"
       },
       {
@@ -136,7 +106,7 @@
         {
           "id": "stm32-ux.onboardingView",
           "type": "webview",
-          "name": "オンボーディング",
+          "name": "TovaIDE-STM Dashboard",
           "icon": "../stm32-core/media/icons/stm32-ux.svg"
         }
       ]
