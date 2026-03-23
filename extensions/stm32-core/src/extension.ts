@@ -8,7 +8,11 @@ import { registerPhase2Features } from './phase2';
 import { autoCheckProjectHealth, diagnoseAndFixProject, healthCheckCommand } from './extension-diagnostics';
 
 declare const require: (moduleName: string) => any;
-declare const process: { platform: string; env: Record<string, string | undefined> };
+declare const process: {
+	platform: string;
+	env: Record<string, string | undefined>;
+	on?: (event: 'uncaughtException' | 'unhandledRejection', listener: (...args: unknown[]) => void) => void;
+};
 declare function setInterval(handler: () => void, timeout?: number): number;
 declare function clearInterval(id: number): void;
 
@@ -122,45 +126,38 @@ let lastBuildOutput = '';
 let gdbServerProcess: ReturnType<typeof spawn> | undefined;
 let stLinkPollTimer: number | undefined;
 let extensionContext: vscode.ExtensionContext | undefined;
+let globalErrorGuardInstalled = false;
+
+function installGlobalErrorGuard(): void {
+	if (globalErrorGuardInstalled) {
+		return;
+	}
+	globalErrorGuardInstalled = true;
+	process.on?.('uncaughtException', error => {
+		const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+		outputChannel?.appendLine(`[STM32] uncaughtException: ${message}`);
+	});
+	process.on?.('unhandledRejection', reason => {
+		const message = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason);
+		outputChannel?.appendLine(`[STM32] unhandledRejection: ${message}`);
+	});
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	extensionContext = context;
 	outputChannel = vscode.window.createOutputChannel('STM32', { log: true });
 	outputChannel.appendLine('[STM32] Extension activated.');
+	installGlobalErrorGuard();
 
-	buildStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-	buildStatusItem.command = 'stm32.buildDebug';
-	buildStatusItem.text = vscode.l10n.t('$(tools) STM32: Build');
-	buildStatusItem.show();
-	context.subscriptions.push(buildStatusItem);
+	// Register phase-2 features early so contributed views always get a data provider.
+	registerPhase2Features(context, {
+		outputChannel,
+		getWorkspaceRoot,
+		findTopLevelIocFile,
+		openCubeMx,
+		runCli
+	});
 
-	stLinkStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-	stLinkStatusItem.command = 'stm32.checkStLink';
-	stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: Checking...');
-	stLinkStatusItem.show();
-	context.subscriptions.push(stLinkStatusItem);
-
-	// Auto-diagnose project health on startup (skip if recently regenerated)
-	setTimeout(() => {
-		const lastRegenTime = context.globalState.get<number>('lastRegenerateTime', 0);
-		const now = Date.now();
-		if (now - lastRegenTime > 10000) { // Skip if regenerated within last 10 seconds
-			autoCheckProjectHealth(getWorkspaceRoot(), outputChannel);
-		}
-	}, 2000);
-	buildStatusItem.command = 'stm32.buildDebug';
-
-	stLinkStatusItem.name = vscode.l10n.t('STM32 ST-LINK Status');
-	stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: Unknown');
-	stLinkStatusItem.tooltip = vscode.l10n.t('Run ST-LINK connection check');
-
-	branchStatusItem = vscode.window.createStatusBarItem('status.stm32.branch', vscode.StatusBarAlignment.Left, 198);
-	branchStatusItem.name = vscode.l10n.t('STM32 Branch Status');
-	branchStatusItem.text = vscode.l10n.t('$(git-branch) Branch: -');
-	branchStatusItem.tooltip = vscode.l10n.t('Current branch from SCM');
-	branchStatusItem.show();
-
-	context.subscriptions.push(outputChannel, buildStatusItem, stLinkStatusItem, branchStatusItem);
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.newProject', () => showNewProjectGuide()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.detectCubeCLT', () => detectCubeCLTMetadata()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.buildDebug', buildDebug));
@@ -175,17 +172,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.startDebug', () => startDebugSession()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32.stopDebug', () => stopDebugSession()));
 
-	registerPhase2Features(context, {
-		outputChannel,
-		getWorkspaceRoot,
-		findTopLevelIocFile,
-		openCubeMx,
-		runCli
-	});
+	try {
+		buildStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+		buildStatusItem.command = 'stm32.buildDebug';
+		buildStatusItem.text = vscode.l10n.t('$(tools) STM32: Build');
+		buildStatusItem.show();
+		context.subscriptions.push(buildStatusItem);
 
-	registerBranchStatus(context);
-	startStLinkAutoPolling();
-	void autoDetectToolPaths();
+		stLinkStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+		stLinkStatusItem.command = 'stm32.checkStLink';
+		stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: Checking...');
+		stLinkStatusItem.show();
+		context.subscriptions.push(stLinkStatusItem);
+
+		// Auto-diagnose project health on startup (skip if recently regenerated)
+		setTimeout(() => {
+			const lastRegenTime = context.globalState.get<number>('lastRegenerateTime', 0);
+			const now = Date.now();
+			if (now - lastRegenTime > 10000) { // Skip if regenerated within last 10 seconds
+				autoCheckProjectHealth(getWorkspaceRoot(), outputChannel);
+			}
+		}, 2000);
+		buildStatusItem.command = 'stm32.buildDebug';
+
+		stLinkStatusItem.name = vscode.l10n.t('STM32 ST-LINK Status');
+		stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: Unknown');
+		stLinkStatusItem.tooltip = vscode.l10n.t('Run ST-LINK connection check');
+
+		branchStatusItem = vscode.window.createStatusBarItem('status.stm32.branch', vscode.StatusBarAlignment.Left, 198);
+		branchStatusItem.name = vscode.l10n.t('STM32 Branch Status');
+		branchStatusItem.text = vscode.l10n.t('$(git-branch) Branch: -');
+		branchStatusItem.tooltip = vscode.l10n.t('Current branch from SCM');
+		branchStatusItem.show();
+
+		context.subscriptions.push(branchStatusItem);
+		registerBranchStatus(context);
+		startStLinkAutoPolling();
+		void autoDetectToolPaths();
+	} catch (error) {
+		const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+		outputChannel.appendLine(`[STM32] Activation warning: ${message}`);
+	}
 }
 
 export function deactivate(): void {

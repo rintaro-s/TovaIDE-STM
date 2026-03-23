@@ -6,7 +6,11 @@
 import * as vscode from 'vscode';
 
 declare const require: (moduleName: string) => unknown;
-declare const process: { platform: string; env: Record<string, string | undefined> };
+declare const process: {
+	platform: string;
+	env: Record<string, string | undefined>;
+	on?: (event: 'uncaughtException' | 'unhandledRejection', listener: (...args: unknown[]) => void) => void;
+};
 
 const childProcess = require('child_process') as {
 	execFile: (command: string, args: string[], options: { cwd?: string; shell?: boolean }, callback: (error: Error | null, stdout: string, stderr: string) => void) => void;
@@ -155,12 +159,32 @@ const COMMON_PIN_ALIASES: Record<string, string[]> = {
 let outputChannel: vscode.OutputChannel;
 let extensionUri: vscode.Uri;
 let managedMcpPid: number | undefined;
+let globalErrorGuardInstalled = false;
+
+function logUxError(scope: string, error: unknown): void {
+	const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+	outputChannel.appendLine(`[STM32 UX] ${scope} failed: ${message}`);
+}
+
+function installGlobalErrorGuard(): void {
+	if (globalErrorGuardInstalled) {
+		return;
+	}
+	globalErrorGuardInstalled = true;
+	process.on?.('uncaughtException', error => {
+		logUxError('uncaughtException', error);
+	});
+	process.on?.('unhandledRejection', reason => {
+		logUxError('unhandledRejection', reason);
+	});
+}
 
 export function activate(context: vscode.ExtensionContext): void {
 	outputChannel = vscode.window.createOutputChannel('STM32 UX');
 	extensionUri = context.extensionUri;
 	extensionContextRef = context;
 	context.subscriptions.push(outputChannel);
+	installGlobalErrorGuard();
 
 	context.subscriptions.push(vscode.window.registerWebviewViewProvider('stm32-ux.onboardingView', new OnboardingViewProvider()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ux.openWorkflowStudio', () => openWorkflowStudio()));
@@ -182,7 +206,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	const shouldOpenWelcome = vscode.workspace.getConfiguration('stm32ux').get<boolean>('autoOpenWelcome', true);
 	if (shouldOpenWelcome) {
-		void openWelcomeWizard();
+		void openWelcomeWizard().catch(error => {
+			logUxError('autoOpenWelcome', error);
+		});
 	}
 
 	const shouldAutoStartMcp = vscode.workspace.getConfiguration('stm32ux').get<boolean>('mcp.autoStart', true);
@@ -192,6 +218,8 @@ export function activate(context: vscode.ExtensionContext): void {
 				if (!status.running) {
 					outputChannel.appendLine(`[STM32 UX] MCP auto-start failed: ${status.detail}`);
 				}
+			}).catch(error => {
+				logUxError('mcp.autoStart', error);
 			});
 		}, 800);
 	}
@@ -380,62 +408,66 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.options = { enableScripts: true };
 		webviewView.webview.html = getOnboardingHtml(webviewView.webview);
 		webviewView.webview.onDidReceiveMessage(async message => {
-			if (!isRecord(message) || typeof message.type !== 'string') {
-				return;
-			}
-			switch (message.type) {
-				case 'studio':
-					await openWorkflowStudio();
-					break;
-				case 'mcp':
-					await openMcpOperationDesk();
-					break;
-				case 'collab':
-					await vscode.commands.executeCommand('stm32collab.openPanel');
-					break;
-				case 'svd':
-					await vscode.commands.executeCommand('workbench.view.extension.stm32-debug');
-					await vscode.commands.executeCommand('stm32.debug.refreshRegisters');
-					break;
-				case 'build':
-					await vscode.commands.executeCommand('stm32.buildDebug');
-					break;
-				case 'flash':
-					await vscode.commands.executeCommand('stm32.flash');
-					break;
-				case 'debug':
-					await vscode.commands.executeCommand('stm32.startDebug');
-					break;
-				case 'syncCatalog':
-					await syncMcuCatalogFromCubeMX();
-					break;
-				case 'welcome':
-					await openWelcomeWizard();
-					break;
-				case 'board':
-					await openBoardConfigurator();
-					break;
-				case 'tutorial':
-					await openBlinkTutorial();
-					break;
-				case 'templates':
-					await openTemplateGallery();
-					break;
-				case 'env':
-					await runEnvironmentCheck();
-					break;
-				case 'pin':
-					await openPinVisualizer();
-					break;
-				case 'pwmLab':
-					await openPwmWorkbench();
-					break;
-				case 'periphLab':
-					await openPeripheralWorkbench();
-					break;
-				case 'error':
-					await explainLatestError();
-					break;
+			try {
+				if (!isRecord(message) || typeof message.type !== 'string') {
+					return;
+				}
+				switch (message.type) {
+					case 'studio':
+						await openWorkflowStudio();
+						break;
+					case 'mcp':
+						await openMcpOperationDesk();
+						break;
+					case 'collab':
+						await vscode.commands.executeCommand('stm32collab.openPanel');
+						break;
+					case 'svd':
+						await vscode.commands.executeCommand('workbench.view.extension.stm32-debug');
+						await vscode.commands.executeCommand('stm32.debug.refreshRegisters');
+						break;
+					case 'build':
+						await vscode.commands.executeCommand('stm32.buildDebug');
+						break;
+					case 'flash':
+						await vscode.commands.executeCommand('stm32.flash');
+						break;
+					case 'debug':
+						await vscode.commands.executeCommand('stm32.startDebug');
+						break;
+					case 'syncCatalog':
+						await syncMcuCatalogFromCubeMX();
+						break;
+					case 'welcome':
+						await openWelcomeWizard();
+						break;
+					case 'board':
+						await openBoardConfigurator();
+						break;
+					case 'tutorial':
+						await openBlinkTutorial();
+						break;
+					case 'templates':
+						await openTemplateGallery();
+						break;
+					case 'env':
+						await runEnvironmentCheck();
+						break;
+					case 'pin':
+						await openPinVisualizer();
+						break;
+					case 'pwmLab':
+						await openPwmWorkbench();
+						break;
+					case 'periphLab':
+						await openPeripheralWorkbench();
+						break;
+					case 'error':
+						await explainLatestError();
+						break;
+				}
+			} catch (error) {
+				logUxError('onboarding message handler', error);
 			}
 		});
 	}
@@ -533,7 +565,9 @@ async function openMcpOperationDesk(): Promise<void> {
 		await panel.webview.postMessage({ type: 'mcpStatus', ...status });
 	};
 	const timer = setInterval(() => {
-		void publishStatus();
+		void publishStatus().catch(error => {
+			logUxError('mcp status polling', error);
+		});
 	}, 3000);
 	panel.onDidDispose(() => {
 		clearInterval(timer);
@@ -1621,7 +1655,9 @@ async function openBlinkTutorial(): Promise<void> {
 				vscode.l10n.t('Browse Templates')
 			).then(choice => {
 				if (choice === vscode.l10n.t('Browse Templates')) {
-					void openTemplateGallery();
+					void openTemplateGallery().catch(error => {
+						logUxError('openTemplateGallery from tutorial', error);
+					});
 				}
 			});
 		}

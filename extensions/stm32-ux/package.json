@@ -151,7 +151,7 @@
         },
         "stm32ux.mcp.autoStart": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "markdownDescription": "%configuration.mcp.autoStart.description%"
         },
         "stm32ux.mcp.transport": {

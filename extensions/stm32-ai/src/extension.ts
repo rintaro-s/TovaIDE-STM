@@ -6,7 +6,10 @@
 import * as vscode from 'vscode';
 
 declare const require: (moduleName: string) => unknown;
-declare const process: { platform: string };
+declare const process: {
+	platform: string;
+	on?: (event: 'uncaughtException' | 'unhandledRejection', listener: (...args: unknown[]) => void) => void;
+};
 
 const httpModule = require('http') as {
 	createServer: (handler: (req: IncomingMessageLike, res: ServerResponseLike) => void) => HttpServerLike;
@@ -76,13 +79,33 @@ let mcpServerRunning = false;
 let mcpServerStarting = false;
 let mcpRequireAuth = false;
 let mcpTakeoverInProgress = false;
+let globalErrorGuardInstalled = false;
 
 const MCP_TOKEN_SECRET_KEY = 'stm32ai.mcp.token';
+
+function logAiError(scope: string, error: unknown): void {
+	const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+	assistantOutput.appendLine(`[STM32-AI] ${scope} failed: ${message}`);
+}
+
+function installGlobalErrorGuard(): void {
+	if (globalErrorGuardInstalled) {
+		return;
+	}
+	globalErrorGuardInstalled = true;
+	process.on?.('uncaughtException', error => {
+		logAiError('uncaughtException', error);
+	});
+	process.on?.('unhandledRejection', reason => {
+		logAiError('unhandledRejection', reason);
+	});
+}
 
 export function activate(context: vscode.ExtensionContext): void {
 	extensionContextRef = context;
 	assistantOutput = vscode.window.createOutputChannel('STM32 AI');
 	context.subscriptions.push(assistantOutput);
+	installGlobalErrorGuard();
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.runSemiAutoFlow', () => runSemiAutoFlow()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.runAutoUntilFlash', () => runAutoUntilFlash()));
 	context.subscriptions.push(vscode.commands.registerCommand('stm32ai.runFullAutoFlow', () => runFullAutoFlow()));
@@ -94,10 +117,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	registerLanguageModelTools(context);
 
-	void ensureMcpServerToken(context);
+	void ensureMcpServerToken(context).catch(error => {
+		logAiError('ensureMcpServerToken', error);
+	});
 	const autoStartServer = vscode.workspace.getConfiguration('stm32ai').get<boolean>('mcp.autoStartServer', true);
 	if (autoStartServer) {
-		void startMcpServer(context);
+		void startMcpServer(context).catch(error => {
+			logAiError('autoStartMcpServer', error);
+		});
 	}
 
 	startMcpStatusPolling();
@@ -512,7 +539,10 @@ async function startMcpServer(context: vscode.ExtensionContext, takeoverAttempt 
 	const token = await ensureMcpServerToken(context);
 
 	const server = httpModule.createServer((req, res) => {
-		void handleMcpHttpRequest(req, res, token);
+		void handleMcpHttpRequest(req, res, token).catch(error => {
+			logAiError('handleMcpHttpRequest', error);
+			writeJson(res, 500, { error: { code: -32000, message: 'Internal MCP server error' } });
+		});
 	});
 	mcpServer = server;
 
@@ -527,9 +557,13 @@ async function startMcpServer(context: vscode.ExtensionContext, takeoverAttempt 
 		if (anyError.code === 'EADDRINUSE') {
 			if (!mcpTakeoverInProgress && takeoverAttempt < 3) {
 				mcpTakeoverInProgress = true;
-				void forceTakeoverAndRestart(context, takeoverAttempt + 1).finally(() => {
-					mcpTakeoverInProgress = false;
-				});
+				void forceTakeoverAndRestart(context, takeoverAttempt + 1)
+					.catch(restartError => {
+						logAiError('forceTakeoverAndRestart', restartError);
+					})
+					.finally(() => {
+						mcpTakeoverInProgress = false;
+					});
 				return;
 			}
 			vscode.window.showErrorMessage(vscode.l10n.t('MCPサーバー起動失敗: ポート占有を解放できませんでした ({0}:{1})。', mcpServerHost, String(mcpServerPort)));

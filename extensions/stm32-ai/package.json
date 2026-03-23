@@ -182,7 +182,7 @@
         },
         "stm32ai.mcp.autoStartServer": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "markdownDescription": "%configuration.mcpAutoStart.description%"
         },
         "stm32ai.mcp.host": {

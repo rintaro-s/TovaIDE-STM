@@ -14,6 +14,10 @@ import { CollaborationSessionInfo } from './types';
 import { YjsSyncProvider } from './yjs-provider';
 import { WsSyncServer } from './ws-sync-server';
 
+declare const process: {
+	on?: (event: 'uncaughtException' | 'unhandledRejection', listener: (...args: unknown[]) => void) => void;
+};
+
 let outputChannel: vscode.OutputChannel;
 let activeSessionCode: string | undefined;
 const discoveredSessions = new Map<string, CollaborationSessionInfo>();
@@ -24,10 +28,30 @@ let yjsSyncProvider: YjsSyncProvider;
 let gitDaemonService: GitDaemonService;
 let wsSyncServer: WsSyncServer;
 let wsSyncStatusBar: vscode.StatusBarItem;
+let globalErrorGuardInstalled = false;
+
+function logCollabError(scope: string, error: unknown): void {
+	const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+	outputChannel.appendLine(`[STM32-COLLAB] ${scope} failed: ${message}`);
+}
+
+function installGlobalErrorGuard(): void {
+	if (globalErrorGuardInstalled) {
+		return;
+	}
+	globalErrorGuardInstalled = true;
+	process.on?.('uncaughtException', error => {
+		logCollabError('uncaughtException', error);
+	});
+	process.on?.('unhandledRejection', reason => {
+		logCollabError('unhandledRejection', reason);
+	});
+}
 
 export function activate(context: vscode.ExtensionContext): void {
 	outputChannel = vscode.window.createOutputChannel('STM32 Collaboration');
 	context.subscriptions.push(outputChannel);
+	installGlobalErrorGuard();
 	shareServer = new LanFileShareServer(outputChannel);
 	gitDaemonService = new GitDaemonService(outputChannel);
 	yjsSyncProvider = new YjsSyncProvider(outputChannel);
@@ -70,52 +94,56 @@ class CollaborationViewProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.options = { enableScripts: true };
 		webviewView.webview.html = getPanelHtml(webviewView.webview);
 		webviewView.webview.onDidReceiveMessage(async message => {
-			if (!isRecord(message) || typeof message.type !== 'string') {
-				return;
-			}
-			switch (message.type) {
-				case 'start':
-					await startSession();
-					break;
-				case 'join':
-					await joinSession();
-					break;
-				case 'discover':
-					await discoverSessions();
-					break;
-				case 'syncOn':
-					await startRealtimeSync();
-					break;
-				case 'syncOff':
-					await stopRealtimeSync();
-					break;
-				case 'shareOn':
-					await startLanShare();
-					break;
-				case 'shareOff':
-					await stopLanShare();
-					break;
-				case 'gitOn':
-					await startGitDaemon();
-					break;
-				case 'gitOff':
-					await stopGitDaemon();
-					break;
-				case 'debug':
-					await shareDebugSnapshot();
-					break;
-				case 'audit':
-					await runQualityAudit(outputChannel);
-					break;
-				case 'zip':
-					await exportProjectZip();
-					break;
-				case 'wsOn':
-					await startWsSync();
-					break;
-				case 'wsOff':
-					await stopWsSync();
-					break;
+			try {
+				if (!isRecord(message) || typeof message.type !== 'string') {
+					return;
+				}
+				switch (message.type) {
+					case 'start':
+						await startSession();
+						break;
+					case 'join':
+						await joinSession();
+						break;
+					case 'discover':
+						await discoverSessions();
+						break;
+					case 'syncOn':
+						await startRealtimeSync();
+						break;
+					case 'syncOff':
+						await stopRealtimeSync();
+						break;
+					case 'shareOn':
+						await startLanShare();
+						break;
+					case 'shareOff':
+						await stopLanShare();
+						break;
+					case 'gitOn':
+						await startGitDaemon();
+						break;
+					case 'gitOff':
+						await stopGitDaemon();
+						break;
+					case 'debug':
+						await shareDebugSnapshot();
+						break;
+					case 'audit':
+						await runQualityAudit(outputChannel);
+						break;
+					case 'zip':
+						await exportProjectZip();
+						break;
+					case 'wsOn':
+						await startWsSync();
+						break;
+					case 'wsOff':
+						await stopWsSync();
+						break;
+				}
+			} catch (error) {
+				logCollabError('panel message handler', error);
 			}
 		});
 	}
