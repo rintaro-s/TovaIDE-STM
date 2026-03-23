@@ -73,7 +73,7 @@ function verbose(...args) {
 const TOOLS = [
 	{
 		name: 'stm32.operationDesk',
-		description: 'STM32 MCP オペレーションデスク: 現在の実行ワークスペース、起動情報、稼働状態を確認し、必要ならワークスペースを切り替えます。',
+		description: 'STM32 MCP Operation Desk: check current workspace, startup info, running state, and optionally switch workspace.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -391,6 +391,16 @@ async function toolBuild(params) {
 	const gccResolution = resolveArmGccCommand(wsRoot);
 	const gccCmd = gccResolution.gccCmd;
 
+	// Warn when toolchain is resolved from PATH rather than explicit config
+	if (!requestedMake) {
+		log(`[WARN] make path not configured — resolved via PATH/auto-detect: ${makeCmd}. Set stm32.makePath or STM32_MAKE_PATH for reproducible builds.`);
+	}
+	if (!getConfigValue('armGccPath', ['STM32_ARM_GCC_PATH', 'ARM_GCC_PATH'], wsRoot)) {
+		if (gccCmd) {
+			log(`[WARN] arm-none-eabi-gcc path not configured — resolved via PATH/auto-detect: ${gccCmd}. Set stm32.armGccPath or STM32_ARM_GCC_PATH for reproducible builds.`);
+		}
+	}
+
 	const debugDir = path.join(wsRoot, 'Debug');
 	const buildDir = findBuildDirectoryWithMakefile(wsRoot);
 	const makeLooksLikePath = typeof makeCmd === 'string' && (path.isAbsolute(makeCmd) || makeCmd.includes('\\') || makeCmd.includes('/'));
@@ -440,13 +450,14 @@ async function toolBuild(params) {
 
 	const preferredRoots = detectPreferredSourceRoots(wsRoot, buildDir);
 	const preBuildHealing = healGeneratedMainFiles(wsRoot);
+	const preBuildMakefile = healMakefileIncludes(wsRoot, buildDir);
 	const preBuildSync = synchronizeCriticalDuplicateFiles(wsRoot, preferredRoots);
 	let rebuildPlan = prepareBuildForRecentWrites(wsRoot, buildDir, params);
-	if ((preBuildSync.changedCount > 0 || preBuildHealing.fixedCount > 0) && !rebuildPlan.forceRebuild) {
+	if ((preBuildSync.changedCount > 0 || preBuildHealing.fixedCount > 0 || preBuildMakefile.patched) && !rebuildPlan.forceRebuild) {
 		rebuildPlan = {
 			...rebuildPlan,
 			forceRebuild: true,
-			reason: `pre-build sanitize (healed=${preBuildHealing.fixedCount}, synced=${preBuildSync.changedCount})`
+			reason: `pre-build sanitize (healed=${preBuildHealing.fixedCount}, synced=${preBuildSync.changedCount}, makefilePatched=${preBuildMakefile.patched})`
 		};
 	}
 
@@ -581,6 +592,102 @@ async function toolBuild(params) {
 			stderr: detail
 		};
 	}
+}
+
+/**
+ * Patch a CubeMX-generated Makefile that is missing the CMSIS Device include path.
+ * CubeMX sometimes omits "-IDrivers/CMSIS/Device/ST/STM32Fxxx/Include" from the
+ * C_INCLUDES block, causing "system_stm32fXxx.h: No such file or directory" errors.
+ *
+ * Strategy: look for any existing "-IDrivers/CMSIS/Include" line in the Makefile and,
+ * if the sibling Device/ST/<family>/Include directory exists but is not already listed,
+ * append it immediately after.
+ */
+function healMakefileIncludes(wsRoot, buildDir) {
+	const makefilePath = path.join(buildDir ?? wsRoot, 'Makefile');
+	if (!isExistingFile(makefilePath)) {
+		return { patched: false };
+	}
+
+	let content = '';
+	try {
+		content = fs.readFileSync(makefilePath, 'utf8');
+	} catch {
+		return { patched: false };
+	}
+
+	// Find all CMSIS Device/ST subdirectories that exist in the project
+	const driversRoot = path.join(wsRoot, 'Drivers');
+	const cmsisDeviceSt = path.join(driversRoot, 'CMSIS', 'Device', 'ST');
+	if (!isExistingDirectory(cmsisDeviceSt)) {
+		return { patched: false };
+	}
+
+	let families = [];
+	try {
+		families = fs.readdirSync(cmsisDeviceSt, { withFileTypes: true })
+			.filter(e => e.isDirectory())
+			.map(e => e.name);
+	} catch {
+		return { patched: false };
+	}
+
+	const toAdd = [];
+	for (const family of families) {
+		const incDir = `Drivers/CMSIS/Device/ST/${family}/Include`;
+		const incFlag = `-I${incDir}`;
+		if (content.includes(incFlag)) {
+			continue;
+		}
+		if (!isExistingDirectory(path.join(wsRoot, incDir))) {
+			continue;
+		}
+		toAdd.push(incDir);
+		log(`[healMakefileIncludes] Will inject missing include: ${incFlag}`);
+	}
+
+	if (toAdd.length === 0) {
+		return { patched: false };
+	}
+
+	const lineBreak = /\r\n/.test(content) ? '\r\n' : '\n';
+
+	// Match the entire C_INCLUDES = ... block (multiline with \ continuation)
+	const blockRe = /^(C_INCLUDES\s*=\s*\\?\s*\n)((?:[ \t]*-I[^\n]*\n?)*)/m;
+	const blockMatch = blockRe.exec(content);
+	let updated = content;
+
+	if (blockMatch) {
+		// Rebuild the block: existing lines + new ones
+		const existingLines = blockMatch[2].split('\n')
+			.map(l => l.trim())
+			.filter(l => l.startsWith('-I'));
+		const allIncludes = [...existingLines, ...toAdd.map(d => `-I${d}`)];
+		const newBlock = allIncludes.map((inc, i) =>
+			i < allIncludes.length - 1 ? `${inc} \\${lineBreak}` : `${inc}${lineBreak}`
+		).join('');
+		updated = content.slice(0, blockMatch.index) +
+			blockMatch[1] + newBlock +
+			content.slice(blockMatch.index + blockMatch[0].length);
+	} else {
+		// Fallback: append to C_INCLUDES = line
+		const singleLineRe = /^(C_INCLUDES\s*=\s*)(.*)$/m;
+		const singleMatch = singleLineRe.exec(content);
+		if (!singleMatch) {
+			return { patched: false };
+		}
+		const extra = toAdd.map(d => ` -I${d}`).join('');
+		updated = content.slice(0, singleMatch.index + singleMatch[0].length) +
+			extra + content.slice(singleMatch.index + singleMatch[0].length);
+	}
+
+	try {
+		fs.writeFileSync(makefilePath, updated, 'utf8');
+	} catch {
+		return { patched: false };
+	}
+
+	return { patched: true };
 }
 
 function healGeneratedMainFiles(wsRoot) {
@@ -1757,40 +1864,40 @@ function toolAnalyzeHardFault(params) {
 	const issues = [];
 
 	// UFSR (Usage Fault) bits 15:0 of CFSR
-	if (cfsr & 0x0001) issues.push({ type: 'UsageFault', bit: 'UNDEFINSTR', desc: '未定義命令を実行しました。不正なメモリ番地へのジャンプの可能性があります。' });
-	if (cfsr & 0x0002) issues.push({ type: 'UsageFault', bit: 'INVSTATE', desc: '不正なEPSR状態。Thumbビット未設定でジャンプした可能性があります。' });
-	if (cfsr & 0x0004) issues.push({ type: 'UsageFault', bit: 'INVPC', desc: '不正なPC値によるEXC_RETURNエラーです。' });
-	if (cfsr & 0x0008) issues.push({ type: 'UsageFault', bit: 'NOCP', desc: 'コプロセッサ(FPU等)が無効なのに使用されました。' });
-	if (cfsr & 0x0100) issues.push({ type: 'UsageFault', bit: 'UNALIGNED', desc: '非アラインアクセス。SCB->CCR の UNALIGN_TRP が設定されています。' });
-	if (cfsr & 0x0200) issues.push({ type: 'UsageFault', bit: 'DIVBYZERO', desc: 'ゼロ除算が発生しました。SCB->CCR の DIV_0_TRP が設定されています。' });
+	if (cfsr & 0x0001) issues.push({ type: 'UsageFault', bit: 'UNDEFINSTR', desc: 'Undefined instruction executed. Possible jump to invalid memory address.' });
+	if (cfsr & 0x0002) issues.push({ type: 'UsageFault', bit: 'INVSTATE', desc: 'Invalid EPSR state. Possible branch without Thumb bit set.' });
+	if (cfsr & 0x0004) issues.push({ type: 'UsageFault', bit: 'INVPC', desc: 'Invalid PC load (EXC_RETURN error).' });
+	if (cfsr & 0x0008) issues.push({ type: 'UsageFault', bit: 'NOCP', desc: 'Coprocessor (FPU etc.) used while disabled.' });
+	if (cfsr & 0x0100) issues.push({ type: 'UsageFault', bit: 'UNALIGNED', desc: 'Unaligned memory access. SCB->CCR UNALIGN_TRP is set.' });
+	if (cfsr & 0x0200) issues.push({ type: 'UsageFault', bit: 'DIVBYZERO', desc: 'Division by zero. SCB->CCR DIV_0_TRP is set.' });
 
 	// BFSR bits 15:8 of CFSR
 	if (cfsr & 0x0100_0000 >> 16) { }  // alias correction — use direct bit test
 	const bfsr = (cfsr >> 8) & 0xFF;
-	if (bfsr & 0x01) issues.push({ type: 'BusFault', bit: 'IBUSERR', desc: '命令フェッチBusエラー。PCが不正なFlash/RAM番地を指しています。' });
-	if (bfsr & 0x02) issues.push({ type: 'BusFault', bit: 'PRECISERR', desc: `正確なデータBusエラー。アドレス: ${bfar ?? '不明'}`, address: bfar });
-	if (bfsr & 0x04) issues.push({ type: 'BusFault', bit: 'IMPRECISERR', desc: 'バッファリングによる不正確なBusエラー。DMAや非同期アクセスを確認してください。' });
-	if (bfsr & 0x08) issues.push({ type: 'BusFault', bit: 'UNSTKERR', desc: 'スタック復元中にBusエラー。スタックオーバーフローの可能性があります。' });
-	if (bfsr & 0x10) issues.push({ type: 'BusFault', bit: 'STKERR', desc: 'スタック保存中にBusエラー。スタックポインタが不正です。' });
+	if (bfsr & 0x01) issues.push({ type: 'BusFault', bit: 'IBUSERR', desc: 'Instruction fetch bus error. PC points to invalid Flash/RAM address.' });
+	if (bfsr & 0x02) issues.push({ type: 'BusFault', bit: 'PRECISERR', desc: `Precise data bus error. Address: ${bfar ?? 'unknown'}`, address: bfar });
+	if (bfsr & 0x04) issues.push({ type: 'BusFault', bit: 'IMPRECISERR', desc: 'Imprecise bus error from buffered write. Check DMA and async accesses.' });
+	if (bfsr & 0x08) issues.push({ type: 'BusFault', bit: 'UNSTKERR', desc: 'Bus error during stack unwind. Possible stack overflow.' });
+	if (bfsr & 0x10) issues.push({ type: 'BusFault', bit: 'STKERR', desc: 'Bus error during stack push. Stack pointer is corrupted.' });
 
 	// MMFSR bits 7:0 of CFSR
 	const mmfsr = cfsr & 0xFF;
-	if (mmfsr & 0x01) issues.push({ type: 'MemManage', bit: 'IACCVIOL', desc: '命令フェッチでMPU違反。MPUの設定を確認してください。' });
-	if (mmfsr & 0x02) issues.push({ type: 'MemManage', bit: 'DACCVIOL', desc: `データアクセスでMPU違反。アドレス: ${mmfar ?? '不明'}`, address: mmfar });
-	if (mmfsr & 0x08) issues.push({ type: 'MemManage', bit: 'MUNSTKERR', desc: 'スタック復元中にMPU違反。' });
-	if (mmfsr & 0x10) issues.push({ type: 'MemManage', bit: 'MSTKERR', desc: 'スタック保存中にMPU違反。' });
+	if (mmfsr & 0x01) issues.push({ type: 'MemManage', bit: 'IACCVIOL', desc: 'Instruction fetch MPU violation. Check MPU configuration.' });
+	if (mmfsr & 0x02) issues.push({ type: 'MemManage', bit: 'DACCVIOL', desc: `Data access MPU violation. Address: ${mmfar ?? 'unknown'}`, address: mmfar });
+	if (mmfsr & 0x08) issues.push({ type: 'MemManage', bit: 'MUNSTKERR', desc: 'MPU violation during stack unwind.' });
+	if (mmfsr & 0x10) issues.push({ type: 'MemManage', bit: 'MSTKERR', desc: 'MPU violation during stack push.' });
 
 	// HFSR
 	const hfsrIssues = [];
 	if (hfsr !== null) {
-		if (hfsr & 0x40000000) hfsrIssues.push('FORCED: 他のフォルトが昇格してHardFaultになりました。CFSR の詳細を確認してください。');
-		if (hfsr & 0x00000002) hfsrIssues.push('VECTTBL: ベクターテーブルフェッチエラー。ベクターテーブルのアドレスが不正です。');
-		if (hfsr & 0x80000000) hfsrIssues.push('DEBUGEVT: デバッガイベントが原因です。');
+		if (hfsr & 0x40000000) hfsrIssues.push('FORCED: Another fault escalated to HardFault. Check CFSR for details.');
+		if (hfsr & 0x00000002) hfsrIssues.push('VECTTBL: Vector table fetch error. Invalid vector table address.');
+		if (hfsr & 0x80000000) hfsrIssues.push('DEBUGEVT: Caused by debug event.');
 	}
 
 	const priority = issues.length > 0
 		? issues.map(i => `[${i.type}/${i.bit}] ${i.desc}`).join('\n')
-		: 'CFSR=0x00000000: 明示的なフォルトビットなし。HFSRのFORCEDビットを確認してください。';
+		: 'CFSR=0x00000000: No explicit fault bits set. Check HFSR FORCED bit.';
 
 	return {
 		cfsr: `0x${cfsr.toString(16).padStart(8, '0').toUpperCase()}`,
@@ -1805,20 +1912,20 @@ function toolAnalyzeHardFault(params) {
 function buildRecommendations(issues) {
 	const recs = [];
 	if (issues.some(i => i.bit === 'UNDEFINSTR' || i.bit === 'INVSTATE')) {
-		recs.push('関数ポインタのThumbビット(LSB=1)を確認してください。');
-		recs.push('スタックオーバーフローでPCが破損している可能性があります。スタックサイズを確認してください。');
+		recs.push('Check function pointer Thumb bit (LSB=1).');
+		recs.push('PC may be corrupted by stack overflow. Check stack size.');
 	}
 	if (issues.some(i => i.type === 'BusFault' && i.bit === 'PRECISERR')) {
-		recs.push(`BFARアドレス(${issues.find(i => i.bit === 'PRECISERR')?.address ?? '不明'})を確認してください。NULLポインタや範囲外アクセスの可能性があります。`);
+		recs.push(`Check BFAR address (${issues.find(i => i.bit === 'PRECISERR')?.address ?? 'unknown'}). Possible NULL pointer or out-of-bounds access.`);
 	}
 	if (issues.some(i => i.bit === 'STKERR' || i.bit === 'UNSTKERR')) {
-		recs.push('FreeRTOSタスクのスタックサイズを増やし、uxTaskGetStackHighWaterMark()で残量を確認してください。');
+		recs.push('Increase FreeRTOS task stack size and check with uxTaskGetStackHighWaterMark().');
 	}
 	if (issues.some(i => i.bit === 'DIVBYZERO')) {
-		recs.push('除算前に除数が0でないことを確認してください。');
+		recs.push('Verify divisor is non-zero before division.');
 	}
 	if (issues.length === 0) {
-		recs.push('CubeProgrammer または GDB で SCB->CFSR/HFSR/MMFAR/BFAR を直接読んでください。');
+		recs.push('Read SCB->CFSR/HFSR/MMFAR/BFAR directly using CubeProgrammer or GDB.');
 	}
 	return recs;
 }
@@ -2000,7 +2107,7 @@ async function toolReadRegister(params) {
 
 function findElfFile(wsRoot) {
 	const candidates = [];
-	for (const sub of ['Debug', 'Release']) {
+	for (const sub of ['build', 'Debug', 'Release', 'Build']) {
 		const dir = path.join(wsRoot, sub);
 		try {
 			const files = fs.readdirSync(dir);
@@ -2226,6 +2333,7 @@ function resolveProgrammerCliCommand(configuredPath, workspacePath) {
 		}
 
 		const winCandidates = [
+			'E:/installs/CubeProg/bin/STM32_Programmer_CLI.exe',
 			'C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',
 			'C:/Program Files (x86)/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',
 			'C:/ST/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe',
@@ -2560,10 +2668,10 @@ function findExecutable(name) {
 		if (isWin) {
 			const localAppData = process.env.LOCALAPPDATA;
 			const candidates = [
+				'E:/installs/CubeMX/STM32CubeMX.exe',
 				localAppData ? `${localAppData.replace(/\\/g, '/')}/Programs/STM32CubeMX/STM32CubeMX.exe` : null,
 				'C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeMX/STM32CubeMX.exe',
 				'C:/ST/STM32CubeMX/STM32CubeMX.exe',
-				'C:/Users/s-rin/AppData/Local/Programs/STM32CubeMX/STM32CubeMX.exe'
 			];
 			for (const candidate of candidates) {
 				if (candidate && fs.existsSync(candidate)) {
@@ -3118,7 +3226,7 @@ function findBuildDirectoryWithMakefile(wsRoot) {
 
 	try {
 		const level1 = fs.readdirSync(wsRoot, { withFileTypes: true }).filter(e => e.isDirectory());
-		const skipDirs = new Set(['node_modules', '.git', '.vscode', '.tmp', 'out', 'dist', 'build']);
+		const skipDirs = new Set(['node_modules', '.git', '.vscode', '.tmp', 'out', 'dist']);
 		for (const entry of level1) {
 			if (skipDirs.has(entry.name)) {
 				continue;
@@ -3558,6 +3666,104 @@ function parseIocMcuInfo(wsRoot) {
 	}
 }
 
+/**
+ * Derive the GCC -D define symbol for the MCU from the .ioc file.
+ * e.g. Mcu.Name=STM32F303K8Tx  -> "STM32F303x8"
+ *      Mcu.Name=STM32F767ZITx  -> "STM32F767xx"
+ * Falls back to null if the .ioc is not present or unrecognised.
+ */
+function deriveMcuDefineFromIoc(wsRoot) {
+	try {
+		const iocPath = selectPreferredIocPath(wsRoot);
+		if (!iocPath) { return null; }
+		const content = fs.readFileSync(iocPath, 'utf8');
+		// Prefer Mcu.Name (e.g. STM32F303K8Tx), fall back to Mcu.CPN
+		let mcuRaw = (content.match(/^Mcu\.Name=(.+)$/m)?.[1] ?? '').trim();
+		if (!mcuRaw) {
+			mcuRaw = (content.match(/^Mcu\.CPN=(.+)$/m)?.[1] ?? '').trim();
+		}
+		if (!mcuRaw) { return null; }
+
+		// Strip parenthesised variants like STM32F303K(6-8)Tx → take last char of group
+		mcuRaw = mcuRaw.replace(/\(([A-Z0-9](?:-[A-Z0-9])*)\)/gi, (_m, chars) => {
+			const parts = chars.split('-');
+			return parts[parts.length - 1];
+		});
+
+		const upper = mcuRaw.toUpperCase();
+		// Match STM32<family><line><pin-count><flash-size><package>
+		// CubeMX define pattern: STM32F303x8, STM32F767xx, STM32H743xx …
+		// The define uses lowercase 'x' for pin-count and sometimes flash-size.
+		// Pattern: STM32 + letter + 3 digits + optional-letter + flash-char + rest
+		const m = upper.match(/^(STM32[A-Z][0-9]{3}[A-Z]?)([A-Z0-9])([A-Z0-9]*)/);
+		if (!m) { return null; }
+
+		const base = m[1];   // e.g. STM32F303, STM32F767
+		const flashChar = m[2]; // e.g. K=64K, R=256K, Z=1M — becomes the flash letter in the define
+		// The HAL define is base + 'x' + flashChar (lowercase) for specific lines,
+		// or base + 'xx' for families where CubeMX uses generic defines.
+		// Heuristic: if the base ends in a letter (e.g. STM32F303K), use that letter + flash;
+		// otherwise use 'xx'.
+		const baseMatch = base.match(/^(STM32[A-Z][0-9]{3})([A-Z])?$/);
+		if (!baseMatch) { return null; }
+		const family = baseMatch[1];    // STM32F303
+		const pinLetter = baseMatch[2]; // K (or undefined)
+
+		if (pinLetter) {
+			// Specific: STM32F303K8 → STM32F303x8
+			return `${family}x${flashChar.toLowerCase()}`;
+		} else {
+			// Generic: STM32F767 → STM32F767xx
+			return `${family}xx`;
+		}
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Collect include directories from a project's own Drivers/ subtree
+ * (i.e. CubeMX-copied vendor headers in the workspace).
+ * Returns an array of absolute paths that exist.
+ */
+function collectProjectDriverIncludes(wsRoot) {
+	const driversRoot = path.join(wsRoot, 'Drivers');
+	if (!isExistingDirectory(driversRoot)) { return []; }
+
+	const result = [];
+	try {
+		const families = fs.readdirSync(driversRoot, { withFileTypes: true });
+		for (const entry of families) {
+			if (!entry.isDirectory()) { continue; }
+			const familyDir = path.join(driversRoot, entry.name);
+			// Common patterns: STM32F3xx_HAL_Driver/Inc, CMSIS/Include, CMSIS/Device/ST/STM32F3xx/Include
+			const candidates = [
+				path.join(familyDir, 'Inc'),
+				path.join(familyDir, 'Inc', 'Legacy'),
+				path.join(familyDir, 'Include'),
+				path.join(familyDir, 'Device', 'ST'),
+			];
+			for (const c of candidates) {
+				if (isExistingDirectory(c)) { result.push(c); }
+			}
+			// CMSIS/Device/ST/<family>/Include
+			if (entry.name.toUpperCase() === 'CMSIS') {
+				try {
+					const deviceSt = path.join(familyDir, 'Device', 'ST');
+					if (isExistingDirectory(deviceSt)) {
+						for (const sub of fs.readdirSync(deviceSt, { withFileTypes: true })) {
+							if (!sub.isDirectory()) { continue; }
+							const incDir = path.join(deviceSt, sub.name, 'Include');
+							if (isExistingDirectory(incDir)) { result.push(incDir); }
+						}
+					}
+				} catch { /* ignore */ }
+			}
+		}
+	} catch { /* ignore */ }
+	return result;
+}
+
 function getProjectNameFromIoc(wsRoot) {
 	try {
 		const iocPath = selectPreferredIocPath(wsRoot);
@@ -3668,11 +3874,13 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 	const objDir = path.join(buildDir, 'obj');
 	fs.mkdirSync(objDir, { recursive: true });
 
+	const mcuDefine = deriveMcuDefineFromIoc(wsRoot) ?? 'STM32F303x8';
 	const includeArgs = [
 		...Array.from(new Set([
 			path.join(wsRoot, ...preferredRoots.includeRoot.split('/')),
 			path.join(wsRoot, 'Core', 'Inc'),
 			path.join(wsRoot, 'Inc'),
+			...collectProjectDriverIncludes(wsRoot),
 		].filter(isExistingDirectory))).map(includeDir => `-I${includeDir}`),
 		`-I${path.join(halRoot, 'Inc')}`,
 		`-I${path.join(halRoot, 'Inc', 'Legacy')}`,
@@ -3689,7 +3897,7 @@ async function buildGeneratedProjectWithoutMakefile(wsRoot, gccCmd, env) {
 		'-fdata-sections',
 		'-Wall',
 		'-DUSE_HAL_DRIVER',
-		'-DSTM32F303x8',
+		`-D${mcuDefine}`,
 		...includeArgs,
 	];
 
@@ -3870,6 +4078,7 @@ async function buildBareMetalFallbackF7(wsRoot, gccCmd, env, mcuName = null) {
 			path.join(wsRoot, ...preferredRoots.includeRoot.split('/')),
 			path.join(wsRoot, 'Core', 'Inc'),
 			path.join(wsRoot, 'Inc'),
+			...collectProjectDriverIncludes(wsRoot),
 		].filter(isExistingDirectory))).map(includeDir => `-I${includeDir}`),
 		`-I${path.join(halRoot, 'Inc')}`,
 		`-I${path.join(halRoot, 'Inc', 'Legacy')}`,
@@ -3877,7 +4086,7 @@ async function buildBareMetalFallbackF7(wsRoot, gccCmd, env, mcuName = null) {
 		`-I${path.join(cmsisRoot, 'Include')}`,
 	];
 
-	const defineSeries = `STM32${series.toUpperCase()}xx`;
+	const defineSeries = deriveMcuDefineFromIoc(wsRoot) ?? `STM32${series.toUpperCase()}xx`;
 	const commonFlags = [
 		'-mcpu=cortex-m7',
 		'-mthumb',
@@ -4059,16 +4268,18 @@ async function buildBareMetalFallbackF303K8(wsRoot, gccCmd, env) {
 		ldScript = ldPath;
 	}
 
+	const mcuDefineF303 = deriveMcuDefineFromIoc(wsRoot) ?? 'STM32F303x8';
 	const includeArgs = Array.from(new Set([
 		path.join(wsRoot, ...preferredRoots.includeRoot.split('/')),
 		path.join(wsRoot, 'Core', 'Inc'),
 		path.join(wsRoot, 'Inc'),
+		...collectProjectDriverIncludes(wsRoot),
 	].filter(isExistingDirectory))).map(d => `-I${d}`);
 
 	const commonFlags = [
 		'-mcpu=cortex-m4', '-mthumb', '-O0', '-g3',
 		'-ffunction-sections', '-fdata-sections', '-Wall',
-		'-DUSE_HAL_DRIVER', '-DSTM32F303x8',
+		'-DUSE_HAL_DRIVER', `-D${mcuDefineF303}`,
 		...includeArgs,
 	];
 

@@ -24,6 +24,10 @@ const childProcess = require('child_process') as {
 };
 const fsModule = require('fs') as {
 	constants: { F_OK: number };
+	existsSync: (path: string) => boolean;
+	readdirSync: (path: string, options: { withFileTypes: true }) => Array<{ isDirectory: () => boolean; name: string }>;
+	readFileSync: (path: string, encoding: string) => string;
+	writeFileSync: (path: string, data: string, encoding: string) => void;
 	promises: {
 		access: (path: string, mode?: number) => Promise<void>;
 		readFile: (path: string, encoding: string) => Promise<string>;
@@ -126,13 +130,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	buildStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 	buildStatusItem.command = 'stm32.buildDebug';
-	buildStatusItem.text = vscode.l10n.t('$(tools) STM32: ビルド');
+	buildStatusItem.text = vscode.l10n.t('$(tools) STM32: Build');
 	buildStatusItem.show();
 	context.subscriptions.push(buildStatusItem);
 
 	stLinkStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
 	stLinkStatusItem.command = 'stm32.checkStLink';
-	stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: 確認中');
+	stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: Checking...');
 	stLinkStatusItem.show();
 	context.subscriptions.push(stLinkStatusItem);
 
@@ -147,12 +151,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	buildStatusItem.command = 'stm32.buildDebug';
 
 	stLinkStatusItem.name = vscode.l10n.t('STM32 ST-LINK Status');
-	stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: 未確認');
+	stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: Unknown');
 	stLinkStatusItem.tooltip = vscode.l10n.t('Run ST-LINK connection check');
 
 	branchStatusItem = vscode.window.createStatusBarItem('status.stm32.branch', vscode.StatusBarAlignment.Left, 198);
 	branchStatusItem.name = vscode.l10n.t('STM32 Branch Status');
-	branchStatusItem.text = vscode.l10n.t('$(git-branch) ブランチ: -');
+	branchStatusItem.text = vscode.l10n.t('$(git-branch) Branch: -');
 	branchStatusItem.tooltip = vscode.l10n.t('Current branch from SCM');
 	branchStatusItem.show();
 
@@ -194,20 +198,20 @@ export function deactivate(): void {
 
 async function showNewProjectGuide(): Promise<void> {
 	const choice = await vscode.window.showInformationMessage(
-		vscode.l10n.t('新規STM32プロジェクトの開始方法を選択してください。'),
-		vscode.l10n.t('テンプレートから作成'),
-		vscode.l10n.t('CubeMXを起動'),
-		vscode.l10n.t('CubeIDEプロジェクトをインポート'),
-		vscode.l10n.t('STM32 設定を開く'),
+		vscode.l10n.t('Choose how to start a new STM32 project.'),
+		vscode.l10n.t('Create from Template'),
+		vscode.l10n.t('Launch CubeMX'),
+		vscode.l10n.t('Import CubeIDE Project'),
+		vscode.l10n.t('Open STM32 Settings'),
 	);
 
-	if (choice === vscode.l10n.t('テンプレートから作成')) {
+	if (choice === vscode.l10n.t('Create from Template')) {
 		await vscode.commands.executeCommand('stm32ux.openTemplateGallery');
-	} else if (choice === vscode.l10n.t('CubeMXを起動')) {
+	} else if (choice === vscode.l10n.t('Launch CubeMX')) {
 		await openCubeMx();
-	} else if (choice === vscode.l10n.t('CubeIDEプロジェクトをインポート')) {
+	} else if (choice === vscode.l10n.t('Import CubeIDE Project')) {
 		await vscode.commands.executeCommand('stm32.importCubeIDE');
-	} else if (choice === vscode.l10n.t('STM32 設定を開く')) {
+	} else if (choice === vscode.l10n.t('Open STM32 Settings')) {
 		await vscode.commands.executeCommand('workbench.action.openSettings', 'stm32.');
 	}
 }
@@ -256,20 +260,36 @@ async function resolveMakeExecutable(metadata: CubeMetadata | undefined): Promis
 
 async function resolveProgrammerExecutable(metadata: CubeMetadata | undefined): Promise<string> {
 	const candidate = getProgrammerExecutable(metadata);
-	if (candidate === 'STM32_Programmer_CLI') {
-		return candidate;
+	if (candidate !== 'STM32_Programmer_CLI') {
+		if (await probeFilePath(candidate)) {
+			return candidate;
+		}
+		outputChannel.appendLine(`[STM32] Configured programmer not found: ${candidate}.`);
 	}
-	if (await probeFilePath(candidate)) {
-		return candidate;
+	// Well-known fallback locations
+	const fallbackDirs = process.platform === 'win32' ? [
+		'E:\\installs\\CubeProg\\bin',
+		'C:\\ST\\STM32CubeProgrammer\\bin',
+		join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'STMicroelectronics', 'STM32Cube', 'STM32CubeProgrammer', 'bin'),
+	] : [
+		'/opt/st/stm32cubeprogrammer/bin',
+		'/usr/local/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin',
+	];
+	const cliName = process.platform === 'win32' ? 'STM32_Programmer_CLI.exe' : 'STM32_Programmer_CLI';
+	for (const dir of fallbackDirs) {
+		const fullPath = join(dir, cliName);
+		if (await probeFilePath(fullPath)) {
+			outputChannel.appendLine(`[STM32] Using fallback programmer: ${fullPath}`);
+			return fullPath;
+		}
 	}
-	outputChannel.appendLine(`[STM32] Configured programmer not found: ${candidate}. Falling back to PATH STM32_Programmer_CLI.`);
 	return 'STM32_Programmer_CLI';
 }
 
 async function detectCubeCLTMetadata(): Promise<CubeMetadata | undefined> {
 	const workspaceRoot = getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before running this command.'));
 		return undefined;
 	}
 
@@ -305,12 +325,12 @@ async function detectCubeCLTMetadata(): Promise<CubeMetadata | undefined> {
 			}
 		}
 
-		vscode.window.showInformationMessage(vscode.l10n.t('CubeCLTメタデータを検出しました。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('CubeCLT metadata detected successfully.'));
 		return metadata;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		outputChannel.appendLine(`[STM32] Metadata detection failed: ${message}`);
-		vscode.window.showErrorMessage(vscode.l10n.t('CubeCLTメタデータの検出に失敗しました。設定を確認してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Failed to detect CubeCLT metadata. Check your settings.'));
 		return undefined;
 	} finally {
 		await fs.unlink(tempJsonPath).catch(() => undefined);
@@ -320,7 +340,7 @@ async function detectCubeCLTMetadata(): Promise<CubeMetadata | undefined> {
 async function buildDebug(): Promise<boolean> {
 	const workspaceRoot = getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before running this command.'));
 		return false;
 	}
 
@@ -332,31 +352,34 @@ async function buildDebug(): Promise<boolean> {
 	const makeExecutable = await resolveMakeExecutable(metadata);
 	const buildDir = await resolveBuildDirectory(workspaceRoot);
 	if (!buildDir) {
-		buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
+		buildStatusItem.text = vscode.l10n.t('$(error) STM32: Build Failed');
 		buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-		vscode.window.showErrorMessage(vscode.l10n.t('ビルド先を解決できませんでした。`stm32.workspacePath` を確認してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Could not resolve build directory. Check `stm32.workspacePath`.'));
 		return false;
 	}
 
-	buildStatusItem.text = vscode.l10n.t('$(loading~spin) STM32: Debugビルド中');
+	buildStatusItem.text = vscode.l10n.t('$(loading~spin) STM32: Building...');
 	buildStatusItem.backgroundColor = undefined;
 	outputChannel.appendLine(`[STM32] Build backend: ${backend}`);
 	outputChannel.appendLine(`[STM32] Using build directory: ${buildDir === workspaceRoot ? '.' : buildDir}`);
 
 	const makefileInBuildDir = await directoryContainsMakefile(buildDir);
+	if (makefileInBuildDir) {
+		healMakefileIncludes(buildDir, workspaceRoot);
+	}
 	if (backend === 'mcp') {
-		return await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('MCP指定'));
+		return await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('MCP backend specified'));
 	}
 
 	if (backend === 'auto' && !makefileInBuildDir) {
 		outputChannel.appendLine('[STM32] Makefile not found in resolved build directory. Using MCP build backend.');
-		return await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('Makefile未検出'));
+		return await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('Makefile not found'));
 	}
 
 	if (backend === 'make' && !makefileInBuildDir) {
-		buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
+		buildStatusItem.text = vscode.l10n.t('$(error) STM32: Build Failed');
 		buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-		vscode.window.showErrorMessage(vscode.l10n.t('make backend が指定されていますが Makefile が見つかりません。`stm32.build.backend` を auto または mcp に変更してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('make backend is specified but no Makefile was found. Change `stm32.build.backend` to auto or mcp.'));
 		return false;
 	}
 
@@ -368,19 +391,19 @@ async function buildDebug(): Promise<boolean> {
 		makeArgs.push('-C', buildDir);
 	}
 
-	let result = await runCli(makeExecutable, makeArgs, workspaceRoot, vscode.l10n.t('Debugビルド'));
+	let result = await runCli(makeExecutable, makeArgs, workspaceRoot, vscode.l10n.t('Debug Build'));
 	if (result.exitCode !== 0 && makeTarget.length > 0 && shouldRetryMakeWithoutExplicitTarget(result.stdout + '\n' + result.stderr)) {
 		outputChannel.appendLine('[STM32] Retrying make without explicit target because requested target was not found.');
 		const retryArgs = [`-j${jobs}`];
 		if (buildDir !== workspaceRoot) {
 			retryArgs.push('-C', buildDir);
 		}
-		result = await runCli(makeExecutable, retryArgs, workspaceRoot, vscode.l10n.t('Debugビルド (targetなし再試行)'));
+		result = await runCli(makeExecutable, retryArgs, workspaceRoot, vscode.l10n.t('Debug Build (retry without target)'));
 	}
 	lastBuildOutput = `${result.stdout}\n${result.stderr}`;
 
 	if (result.exitCode === 0) {
-		buildStatusItem.text = vscode.l10n.t('$(check) STM32: Debugビルド成功');
+		buildStatusItem.text = vscode.l10n.t('$(check) STM32: Build OK');
 		buildStatusItem.backgroundColor = undefined;
 
 		// CRITICAL: Verify ELF file was actually generated
@@ -388,36 +411,36 @@ async function buildDebug(): Promise<boolean> {
 		if (!elfPath) {
 			outputChannel.appendLine('[TovaIDE] WARNING: Build succeeded but no ELF file found!');
 			vscode.window.showWarningMessage(
-				vscode.l10n.t('ビルドは成功しましたが、ELFファイルが見つかりません。Makefileの設定を確認してください。'),
-				vscode.l10n.t('診断実行')
+				vscode.l10n.t('Build succeeded but no ELF file found. Check your Makefile settings.'),
+				vscode.l10n.t('Run Diagnostics')
 			).then(choice => {
-				if (choice === vscode.l10n.t('診断実行')) {
+				if (choice === vscode.l10n.t('Run Diagnostics')) {
 					vscode.commands.executeCommand('stm32.healthCheck');
 				}
 			});
 		} else {
 			outputChannel.appendLine(`[TovaIDE] Build succeeded. ELF: ${elfPath}`);
-			vscode.window.showInformationMessage(vscode.l10n.t('Debugビルドが成功しました。'));
+			vscode.window.showInformationMessage(vscode.l10n.t('Debug build succeeded.'));
 		}
 		return true;
 	}
 
 	if (backend === 'auto' && shouldTryMcpBuildFallback(lastBuildOutput)) {
 		outputChannel.appendLine('[STM32] make build failed. Trying MCP build fallback...');
-		const fallbackOk = await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('make失敗フォールバック'));
+		const fallbackOk = await runMcpBuildAndReport(workspaceRoot, vscode.l10n.t('make failed fallback'));
 		if (fallbackOk) {
 			return true;
 		}
 	}
 
-	buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
+	buildStatusItem.text = vscode.l10n.t('$(error) STM32: Build Failed');
 	buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 	const hint = getJapaneseErrorHint(lastBuildOutput);
 	if (hint) {
 		outputChannel.appendLine(`[STM32] Hint: ${hint}`);
 	}
-	const action = await vscode.window.showErrorMessage(vscode.l10n.t('Debugビルドに失敗しました。出力を確認してください。'), vscode.l10n.t('最初のエラーへ移動'));
-	if (action === vscode.l10n.t('最初のエラーへ移動')) {
+	const action = await vscode.window.showErrorMessage(vscode.l10n.t('Debug build failed. Check the output panel.'), vscode.l10n.t('Jump to First Error'));
+	if (action === vscode.l10n.t('Jump to First Error')) {
 		await jumpToFirstBuildError();
 	}
 	return false;
@@ -426,20 +449,20 @@ async function buildDebug(): Promise<boolean> {
 async function flashLatestBuild(): Promise<boolean> {
 	const workspaceRoot = getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before running this command.'));
 		return false;
 	}
 	const stLinkConnected = await isStLinkConnected(workspaceRoot);
 	if (!stLinkConnected) {
-		stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: 未接続');
+		stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: Disconnected');
 		stLinkStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-		vscode.window.showErrorMessage(vscode.l10n.t('ST-LINKが未接続です。接続状態を確認してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('ST-LINK not connected. Check your connection.'));
 		return false;
 	}
 
 	const elfPath = await findElfFile(workspaceRoot);
 	if (!elfPath) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ELFファイルが見つかりません。先にビルドしてください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('ELF file not found. Build the project first.'));
 		return false;
 	}
 
@@ -448,17 +471,17 @@ async function flashLatestBuild(): Promise<boolean> {
 	const frequency = vscode.workspace.getConfiguration('stm32').get<number>('flash.frequencyKHz', 4000);
 
 	const result = await vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('STM32 書込み実行中'), cancellable: false },
+		{ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('STM32 Flashing'), cancellable: false },
 		async progress => {
-			progress.report({ increment: 5, message: vscode.l10n.t('接続中...') });
+			progress.report({ increment: 5, message: vscode.l10n.t('Connecting...') });
 			const flashResult = await runCliWithProgress(
 				programmerExecutable,
 				['-c', 'port=SWD', `freq=${frequency}`, '-w', elfPath, '-v', '-rst'],
 				workspaceRoot,
-				vscode.l10n.t('書込み'),
-				increment => progress.report({ increment, message: vscode.l10n.t('進行中...') }),
+				vscode.l10n.t('Flash'),
+				increment => progress.report({ increment, message: vscode.l10n.t('In progress...') }),
 			);
-			progress.report({ increment: 100, message: vscode.l10n.t('完了処理中...') });
+			progress.report({ increment: 100, message: vscode.l10n.t('Finishing...') });
 			return flashResult;
 		},
 	);
@@ -468,13 +491,13 @@ async function flashLatestBuild(): Promise<boolean> {
 		const hasSuccessSignature = /(Download verified successfully|Verification\s*\.\.\.\s*OK|File download complete|Download complete)/i.test(combined);
 		const hasFailureSignature = /(Error:|No ST-?LINK detected|STLink not found|Cannot connect|No STM32 target found|failed)/i.test(combined);
 		if (hasSuccessSignature && !hasFailureSignature) {
-			vscode.window.showInformationMessage(vscode.l10n.t('書込みが完了しました。'));
+			vscode.window.showInformationMessage(vscode.l10n.t('Flash completed successfully.'));
 			return true;
 		}
 		outputChannel.appendLine('[STM32] Flash command exited with code 0 but verification signature was not detected.');
 	}
 
-	vscode.window.showErrorMessage(vscode.l10n.t('書込みに失敗しました。出力を確認してください。'));
+	vscode.window.showErrorMessage(vscode.l10n.t('Flash failed. Check the output panel.'));
 	return false;
 }
 
@@ -484,33 +507,33 @@ async function buildAndFlash(): Promise<void> {
 		return;
 	}
 
-	const selection = await vscode.window.showInformationMessage(vscode.l10n.t('ビルド成功。続けて書込みを実行しますか？'), vscode.l10n.t('書込みを実行'), vscode.l10n.t('キャンセル'));
-	if (selection === vscode.l10n.t('書込みを実行')) {
+	const selection = await vscode.window.showInformationMessage(vscode.l10n.t('Build succeeded. Flash now?'), vscode.l10n.t('Flash'), vscode.l10n.t('Cancel'));
+	if (selection === vscode.l10n.t('Flash')) {
 		await flashLatestBuild();
 	}
 }
 
-async function checkStLink(): Promise<void> {
+async function checkStLink(silent = false): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot();
 	if (!workspaceRoot) {
 		return;
 	}
 
-	const hasLink = await isStLinkConnected(workspaceRoot);
+	const hasLink = await isStLinkConnected(workspaceRoot, silent);
 	if (hasLink) {
-		stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: 接続中');
+		stLinkStatusItem.text = vscode.l10n.t('$(plug) ST-LINK: Connected');
 		stLinkStatusItem.backgroundColor = undefined;
 		return;
 	}
 
-	stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: 未接続');
+	stLinkStatusItem.text = vscode.l10n.t('$(debug-disconnect) ST-LINK: Disconnected');
 	stLinkStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 }
 
 async function openCubeMx(): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before running this command.'));
 		return;
 	}
 
@@ -520,57 +543,57 @@ async function openCubeMx(): Promise<void> {
 
 	try {
 		runDetached(cubeMxExecutable, args, workspaceRoot);
-		const fileName = iocPath ? basename(iocPath) : vscode.l10n.t('なし');
-		vscode.window.showInformationMessage(vscode.l10n.t('CubeMXを起動しました。対象ioc: {0}', fileName));
+		const fileName = iocPath ? basename(iocPath) : vscode.l10n.t('none');
+		vscode.window.showInformationMessage(vscode.l10n.t('CubeMX launched. Target ioc: {0}', fileName));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		outputChannel.appendLine(`[STM32] CubeMX launch failed: ${message}`);
-		vscode.window.showErrorMessage(vscode.l10n.t('CubeMXの起動に失敗しました。`stm32.cubemx.path` は実行ファイルまたはインストールフォルダを指定してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Failed to launch CubeMX. Set `stm32.cubemx.path` to the executable or installation folder.'));
 	}
 }
 
 async function regenerateWithCubeMX(): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before running this command.'));
 		return;
 	}
 
 	const iocPath = await findTopLevelIocFile(workspaceRoot);
 	if (!iocPath) {
-		vscode.window.showErrorMessage(vscode.l10n.t('.iocファイルが見つかりません。STM32CubeMXで新規プロジェクトを作成してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('.ioc file not found. Create a new project with STM32CubeMX.'));
 		return;
 	}
 
 	const choice = await vscode.window.showWarningMessage(
-		vscode.l10n.t('STM32CubeMXでプロジェクトを再生成します。\n\n重要: Project Manager → Project で Toolchain/IDE を "Makefile" に設定してから Generate Code を実行してください。'),
+		vscode.l10n.t('Regenerate project with STM32CubeMX.\n\nIMPORTANT: Set Toolchain/IDE to "Makefile" in Project Manager before generating code.'),
 		{ modal: true },
-		vscode.l10n.t('CubeMXを起動'),
-		vscode.l10n.t('手順を表示'),
-		vscode.l10n.t('キャンセル')
+		vscode.l10n.t('Launch CubeMX'),
+		vscode.l10n.t('Show Steps'),
+		vscode.l10n.t('Cancel')
 	);
 
-	if (choice === vscode.l10n.t('CubeMXを起動')) {
+	if (choice === vscode.l10n.t('Launch CubeMX')) {
 		// Record regeneration time to skip auto-diagnosis
 		await extensionContext?.globalState.update('lastRegenerateTime', Date.now());
 
 		await openCubeMx();
 		vscode.window.showInformationMessage(
-			vscode.l10n.t('CubeMXでコード生成後、ビルドを実行してください。'),
-			vscode.l10n.t('今すぐビルド')
+			vscode.l10n.t('After generating code in CubeMX, run a build.'),
+			vscode.l10n.t('Build Now')
 		).then(async buildChoice => {
-			if (buildChoice === vscode.l10n.t('今すぐビルド')) {
+			if (buildChoice === vscode.l10n.t('Build Now')) {
 				await vscode.commands.executeCommand('stm32.buildDebug');
 			}
 		});
-	} else if (choice === vscode.l10n.t('手順を表示')) {
+	} else if (choice === vscode.l10n.t('Show Steps')) {
 		const docPath = join(workspaceRoot, 'REGENERATE_PROJECT.md');
 		if (await probeFilePath(docPath)) {
 			const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(docPath));
 			await vscode.window.showTextDocument(doc);
 		} else {
 			vscode.window.showInformationMessage(
-				vscode.l10n.t('1. CubeMXで .ioc を開く\n2. Project Manager → Toolchain を "Makefile" に設定\n3. Generate Code を実行\n4. TovaIDEでビルド')
+				vscode.l10n.t('1. Open .ioc in CubeMX\n2. Set Toolchain to "Makefile" in Project Manager\n3. Run Generate Code\n4. Build in TovaIDE')
 			);
 		}
 	}
@@ -599,7 +622,7 @@ async function jumpToFirstBuildError(): Promise<void> {
 	const issues = parseBuildIssues(lastBuildOutput);
 	const firstError = issues.find(issue => issue.severity === 'error') ?? issues[0];
 	if (!firstError) {
-		vscode.window.showInformationMessage(vscode.l10n.t('解析可能なビルドエラーが見つかりませんでした。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('No parseable build errors found.'));
 		return;
 	}
 
@@ -613,19 +636,19 @@ async function jumpToFirstBuildError(): Promise<void> {
 async function startDebugSession(): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot();
 	if (!workspaceRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ワークスペースを開いてから実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Open a workspace before running this command.'));
 		return;
 	}
 
 	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
 	if (!metadata?.programmer_path) {
-		vscode.window.showErrorMessage(vscode.l10n.t('CubeCLTメタデータからProgrammerパスを取得できません。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Cannot resolve Programmer path from CubeCLT metadata.'));
 		return;
 	}
 
 	const elfPath = await findElfFile(workspaceRoot);
 	if (!elfPath) {
-		vscode.window.showErrorMessage(vscode.l10n.t('ELFファイルが見つかりません。先にビルドしてください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('ELF file not found. Build the project first.'));
 		return;
 	}
 
@@ -660,11 +683,11 @@ async function startDebugSession(): Promise<void> {
 	const started = await vscode.debug.startDebugging(vscode.workspace.workspaceFolders?.[0], debugConfiguration);
 	if (!started) {
 		await stopDebugSession();
-		vscode.window.showErrorMessage(vscode.l10n.t('デバッグセッションを開始できませんでした。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Failed to start debug session.'));
 		return;
 	}
 
-	vscode.window.showInformationMessage(vscode.l10n.t('デバッグセッションを開始しました。F9/F10/F11/F12 を利用できます。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('Debug session started. Use F9/F10/F11/F12.'));
 }
 
 async function stopDebugSession(): Promise<void> {
@@ -791,10 +814,24 @@ async function getBuildDirectoryCandidates(workspaceRoot: string): Promise<strin
 
 	candidates.add(join(workspaceRoot, 'Debug'));
 	candidates.add(join(workspaceRoot, 'Release'));
+	candidates.add(join(workspaceRoot, 'build'));
+	candidates.add(join(workspaceRoot, 'Build'));
 	candidates.add(join(workspaceRoot, 'build', 'Debug'));
 	candidates.add(join(workspaceRoot, 'build', 'Release'));
 	candidates.add(join(workspaceRoot, 'Build', 'Debug'));
 	candidates.add(join(workspaceRoot, 'Build', 'Release'));
+
+	// Parse BUILD_DIR from Makefile if present
+	try {
+		const makefileContent = fsModule.readFileSync(join(workspaceRoot, 'Makefile'), 'utf8');
+		const buildDirMatch = makefileContent.match(/^BUILD_DIR\s*=\s*(\S+)/m);
+		if (buildDirMatch) {
+			const parsedBuildDir = buildDirMatch[1].trim();
+			if (parsedBuildDir.length > 0) {
+				candidates.add(isAbsolutePath(parsedBuildDir) ? parsedBuildDir : join(workspaceRoot, parsedBuildDir));
+			}
+		}
+	} catch { /* ignore */ }
 
 	const topLevel = await fs.readdir(workspaceRoot, { withFileTypes: true }).catch(() => [] as Array<{ isDirectory: () => boolean; name: string }>);
 	for (const entry of topLevel) {
@@ -820,7 +857,7 @@ async function isExistingDirectory(dirPath: string): Promise<boolean> {
 	return Array.isArray(entries);
 }
 
-async function isStLinkConnected(workspaceRoot: string): Promise<boolean> {
+async function isStLinkConnected(workspaceRoot: string, silent = false): Promise<boolean> {
 	const metadata = cachedMetadata ?? await detectCubeCLTMetadata();
 	const programmerExecutable = await resolveProgrammerExecutable(metadata);
 	// Use ONLY -l to avoid resetting the MCU during connection checks
@@ -829,7 +866,9 @@ async function isStLinkConnected(workspaceRoot: string): Promise<boolean> {
 	];
 
 	for (const args of commands) {
-		const result = await runCli(programmerExecutable, args, workspaceRoot, vscode.l10n.t('ST-LINK接続確認'));
+		const result = silent
+			? await runCliSilent(programmerExecutable, args, workspaceRoot)
+			: await runCli(programmerExecutable, args, workspaceRoot, vscode.l10n.t('ST-LINK check'));
 		if (isSuccessfulStLinkOutput(result)) {
 			return true;
 		}
@@ -845,6 +884,129 @@ function isSuccessfulStLinkOutput(result: CliResult): boolean {
 	return result.exitCode === 0 && hasLink && !hasNegative;
 }
 
+/**
+ * Patch a CubeMX-generated Makefile that is missing include paths for headers
+ * that physically exist inside the project's Drivers/ tree.
+ *
+ * CubeMX commonly omits:
+ *   -IDrivers/CMSIS/Device/ST/STM32Fxxx/Include   (system_stm32fXxx.h lives here)
+ *
+ * Strategy:
+ *   1. Read the Makefile and collect every -I<dir> flag already listed.
+ *   2. Walk the project's Drivers/ subtree and collect every "Inc", "Inc/Legacy",
+ *      "Include" directory that exists.
+ *   3. For each missing one, append it to the C_INCLUDES block, respecting the
+ *      line-continuation style CubeMX uses.
+ *
+ * This runs synchronously before `make` is invoked so there is no race condition.
+ */
+function healMakefileIncludes(buildDir: string, wsRoot: string): void {
+	const makefilePath = join(buildDir, 'Makefile');
+	if (!fsModule.existsSync(makefilePath)) {
+		return;
+	}
+
+	let content: string;
+	try {
+		content = fsModule.readFileSync(makefilePath, 'utf8');
+	} catch {
+		return;
+	}
+
+	// Collect all -I flags already present in the Makefile (normalised to forward-slashes)
+	const existingIncludes = new Set<string>();
+	for (const m of content.matchAll(/-I([^\s\\]+)/g)) {
+		existingIncludes.add(m[1].replace(/\\/g, '/'));
+	}
+
+	// Walk Drivers/ in the workspace and collect include dirs to add
+	const driversRoot = join(wsRoot, 'Drivers');
+	if (!fsModule.existsSync(driversRoot)) {
+		return;
+	}
+
+	const toAdd: string[] = [];
+
+	function scanDir(absDir: string, relDir: string): void {
+		let entries: Array<{ isDirectory: () => boolean; name: string }>;
+		try {
+			entries = fsModule.readdirSync(absDir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			if (!entry.isDirectory()) { continue; }
+			const childRel = `${relDir}/${entry.name}`;
+			const childAbs = join(absDir, entry.name);
+			// These names are the conventional include directories in STM32Cube packages
+			if (entry.name === 'Inc' || entry.name === 'Include' || entry.name === 'Legacy') {
+				const relForward = childRel.replace(/\\/g, '/');
+				if (!existingIncludes.has(relForward)) {
+					toAdd.push(relForward);
+					existingIncludes.add(relForward); // avoid duplicates in multi-pass
+				}
+			}
+			// Recurse, but stop at source-only dirs to avoid huge walks
+			if (entry.name !== 'Src' && entry.name !== 'src') {
+				scanDir(childAbs, childRel);
+			}
+		}
+	}
+
+	scanDir(driversRoot, 'Drivers');
+
+	if (toAdd.length === 0) {
+		return;
+	}
+
+	outputChannel.appendLine(`[STM32] healMakefileIncludes: adding ${toAdd.length} missing include(s): ${toAdd.join(', ')}`);
+
+	// Inject into the Makefile's C_INCLUDES block.
+	// Strategy: find the C_INCLUDES block (a run of lines starting with -I or containing \),
+	// collect ALL existing -I flags in that block, append missing ones, and rewrite the block.
+	const lineBreak = content.includes('\r\n') ? '\r\n' : '\n';
+
+	// Match the entire C_INCLUDES = ... block (multiline with \ continuation)
+	const blockRe = /^(C_INCLUDES\s*=\s*\\?\s*\n)((?:[ \t]*-I[^\n]*\n?)*)/m;
+	const blockMatch = blockRe.exec(content);
+	if (!blockMatch) {
+		// Fallback: find the C_INCLUDES = line and append after it
+		const singleLineRe = /^(C_INCLUDES\s*=\s*)(.*)$/m;
+		const singleMatch = singleLineRe.exec(content);
+		if (!singleMatch) {
+			return;
+		}
+		const extra = toAdd.map(d => ` -I${d}`).join('');
+		const patched = content.slice(0, singleMatch.index + singleMatch[0].length) +
+			extra + content.slice(singleMatch.index + singleMatch[0].length);
+		try {
+			fsModule.writeFileSync(makefilePath, patched, 'utf8');
+		} catch (err) {
+			outputChannel.appendLine(`[STM32] healMakefileIncludes: failed to write Makefile: ${err}`);
+		}
+		return;
+	}
+
+	// Rebuild the block: existing lines + new ones, all as "-IPath \" except the last
+	const existingLines = blockMatch[2].split('\n')
+		.map(l => l.trim())
+		.filter(l => l.startsWith('-I'));
+	const allIncludes = [...existingLines, ...toAdd.map(d => `-I${d}`)];
+	const newBlock = allIncludes.map((inc, i) =>
+		i < allIncludes.length - 1 ? `${inc} \\${lineBreak}` : `${inc}${lineBreak}`
+	).join('');
+
+	const patched = content.slice(0, blockMatch.index) +
+		blockMatch[1] + newBlock +
+		content.slice(blockMatch.index + blockMatch[0].length);
+
+	try {
+		fsModule.writeFileSync(makefilePath, patched, 'utf8');
+	} catch (err) {
+		outputChannel.appendLine(`[STM32] healMakefileIncludes: failed to write Makefile: ${err}`);
+	}
+}
+
 function shouldTryMcpBuildFallback(output: string): boolean {
 	return /No rule to make target|no makefile found|can't find .*Makefile|ターゲット .* ルールがありません|makefile も見つかりません/i.test(output);
 }
@@ -856,13 +1018,13 @@ function shouldRetryMakeWithoutExplicitTarget(output: string): boolean {
 async function runMcpBuildAndReport(workspaceRoot: string, reason: string): Promise<boolean> {
 	const fallback = await tryMcpBuildFallback(workspaceRoot);
 	if (fallback.success) {
-		buildStatusItem.text = vscode.l10n.t('$(check) STM32: Debugビルド成功 (MCP)');
+		buildStatusItem.text = vscode.l10n.t('$(check) STM32: Build OK (MCP)');
 		buildStatusItem.backgroundColor = undefined;
-		vscode.window.showInformationMessage(vscode.l10n.t('Debugビルドが成功しました。(MCP: {0})', reason));
+		vscode.window.showInformationMessage(vscode.l10n.t('Debug build succeeded. (MCP: {0})', reason));
 		return true;
 	}
 
-	buildStatusItem.text = vscode.l10n.t('$(error) STM32: Debugビルド失敗');
+	buildStatusItem.text = vscode.l10n.t('$(error) STM32: Build Failed');
 	buildStatusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 	outputChannel.appendLine(`[STM32] MCP build failed (${reason}): ${fallback.message}`);
 	return false;
@@ -1006,6 +1168,18 @@ async function runCliWithProgress(command: string, args: string[], cwd: string, 
 	});
 }
 
+async function runCliSilent(command: string, args: string[], cwd: string): Promise<CliResult> {
+	try {
+		const needsShell = command.endsWith('.bat') || command.endsWith('.sh');
+		const { stdout, stderr } = await execFileAsync(command, args, { cwd, windowsHide: true, shell: needsShell });
+		return { exitCode: 0, stdout, stderr };
+	} catch (error) {
+		const err = error as { stdout?: string; stderr?: string; code?: number | string; message?: string };
+		const exitCode = typeof err.code === 'number' ? err.code : 1;
+		return { exitCode, stdout: err.stdout ?? '', stderr: err.stderr ?? err.message ?? '' };
+	}
+}
+
 async function runCli(command: string, args: string[], cwd: string, title: string): Promise<CliResult> {
 	outputChannel.show(true);
 	outputChannel.appendLine(`\n[STM32] ${title}`);
@@ -1055,12 +1229,12 @@ function parseBuildIssues(output: string): BuildIssue[] {
 
 function getJapaneseErrorHint(output: string): string | undefined {
 	const hints: Array<{ pattern: RegExp; hint: string }> = [
-		{ pattern: /undeclared/i, hint: vscode.l10n.t('未宣言の識別子です。ioc設定で対象ペリフェラルが有効か確認してください。') },
-		{ pattern: /No such file or directory/i, hint: vscode.l10n.t('ヘッダまたはソースが見つかりません。インクルードパスと生成コードを確認してください。') },
-		{ pattern: /undefined reference/i, hint: vscode.l10n.t('リンカエラーです。ソース未追加、または関数シグネチャ不一致の可能性があります。') },
-		{ pattern: /multiple definition/i, hint: vscode.l10n.t('同一シンボルが複数定義されています。重複実装や重複リンクを確認してください。') },
-		{ pattern: /collect2: error/i, hint: vscode.l10n.t('リンク工程で失敗しました。直前のエラー行を確認してください。') },
-		{ pattern: /region .* overflowed/i, hint: vscode.l10n.t('メモリ領域を超過しました。不要機能の削減や最適化を検討してください。') }
+		{ pattern: /undeclared/i, hint: vscode.l10n.t('Undeclared identifier. Check that the peripheral is enabled in the .ioc configuration.') },
+		{ pattern: /No such file or directory/i, hint: vscode.l10n.t('Header or source file not found. Check include paths and generated code.') },
+		{ pattern: /undefined reference/i, hint: vscode.l10n.t('Linker error. Source file may be missing or function signature mismatch.') },
+		{ pattern: /multiple definition/i, hint: vscode.l10n.t('Symbol defined multiple times. Check for duplicate implementations or duplicate linking.') },
+		{ pattern: /collect2: error/i, hint: vscode.l10n.t('Link stage failed. Check the error line above.') },
+		{ pattern: /region .* overflowed/i, hint: vscode.l10n.t('Memory region overflow. Consider removing unused features or enabling optimization.') }
 	];
 
 	for (const { pattern, hint } of hints) {
@@ -1170,6 +1344,6 @@ function startStLinkAutoPolling(): void {
 		clearInterval(stLinkPollTimer);
 	}
 	stLinkPollTimer = setInterval(() => {
-		checkStLink().then(undefined, () => undefined);
+		checkStLink(true).then(undefined, () => undefined);
 	}, 15000);
 }

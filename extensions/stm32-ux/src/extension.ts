@@ -86,48 +86,48 @@ const PREFERRED_BOARD_PROFILES: BoardProfile[] = [
 		id: 'nucleo-f446re',
 		name: 'Nucleo-F446RE',
 		mcu: 'STM32F446RETx',
-		description: vscode.l10n.t('汎用評価ボード。初学者向け。'),
+		description: vscode.l10n.t('General-purpose evaluation board. Suitable for beginners.'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }]
 	},
 	{
 		id: 'nucleo-l476rg',
 		name: 'Nucleo-L476RG',
 		mcu: 'STM32L476RGTx',
-		description: vscode.l10n.t('低消費電力向け。'),
+		description: vscode.l10n.t('For low-power applications.'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PB6', mode: 'I2C1_SCL' }, { pin: 'PB7', mode: 'I2C1_SDA' }]
 	},
 	{
 		id: 'nucleo-g071rb',
 		name: 'Nucleo-G071RB',
 		mcu: 'STM32G071RBTx',
-		description: vscode.l10n.t('コスト重視の量産向け。'),
+		description: vscode.l10n.t('Cost-optimized for mass production.'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }]
 	},
 	{
 		id: 'bluepill-f103c8',
 		name: 'BluePill-F103C8',
 		mcu: 'STM32F103C8Tx',
-		description: vscode.l10n.t('手軽なF1系評価基板。'),
+		description: vscode.l10n.t('Easy-to-use F1-series evaluation board.'),
 		defaultPins: [{ pin: 'PC13', mode: 'GPIO_Output' }, { pin: 'PA9', mode: 'USART1_TX' }, { pin: 'PA10', mode: 'USART1_RX' }]
 	},
 	{
 		id: 'nucleo-h743zi',
 		name: 'Nucleo-H743ZI',
 		mcu: 'STM32H743ZITx',
-		description: vscode.l10n.t('高性能H7向け。'),
+		description: vscode.l10n.t('High-performance H7-series board.'),
 		defaultPins: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PB13', mode: 'SPI2_SCK' }, { pin: 'PB14', mode: 'SPI2_MISO' }, { pin: 'PB15', mode: 'SPI2_MOSI' }]
 	}
 ];
 
 function getTutorialSteps(): string[] {
 	return [
-		vscode.l10n.t('1. MCUを選択: タイトルバーのMCUセレクタで対象デバイスを選びます。'),
-		vscode.l10n.t('2. 新規プロジェクト: コマンドパレットから STM32: 新規プロジェクト を実行します。'),
-		vscode.l10n.t('3. ピン設定: PA5 を GPIO_Output に設定して LED ピンを割り当てます。'),
-		vscode.l10n.t('4. コード再生成: ioc からコード再生成を実行します。'),
-		vscode.l10n.t('5. USER CODE にLチカコードを記述します。'),
-		vscode.l10n.t('6. Debugビルドを実行してエラーを解消します。'),
-		vscode.l10n.t('7. 書込みを実行して LED 点滅を確認します。'),
+		vscode.l10n.t('1. Select MCU: Choose the target device from the MCU selector in the title bar.'),
+		vscode.l10n.t('2. New Project: Run STM32: New Project from the Command Palette.'),
+		vscode.l10n.t('3. Pin Config: Set PA5 to GPIO_Output to assign the LED pin.'),
+		vscode.l10n.t('4. Regenerate Code: Regenerate code from the .ioc file.'),
+		vscode.l10n.t('5. Write LED blink code in the USER CODE section.'),
+		vscode.l10n.t('6. Run Debug Build and fix any errors.'),
+		vscode.l10n.t('7. Flash the firmware and confirm LED blink.'),
 	];
 }
 
@@ -139,7 +139,7 @@ const PIN_MODE_GROUPS: Record<string, string[]> = {
 	'SPI': ['SPI1_SCK', 'SPI1_MISO', 'SPI1_MOSI', 'SPI1_NSS', 'SPI2_SCK', 'SPI2_MISO', 'SPI2_MOSI', 'SPI2_NSS', 'SPI3_SCK', 'SPI3_MISO', 'SPI3_MOSI', 'SPI3_NSS'],
 	'ADC': ['ADC1_IN0', 'ADC1_IN1', 'ADC1_IN2', 'ADC1_IN3', 'ADC1_IN4', 'ADC1_IN5', 'ADC1_IN6', 'ADC1_IN7', 'ADC2_IN0', 'ADC2_IN1'],
 	'TIM/PWM': ['TIM1_CH1', 'TIM1_CH2', 'TIM1_CH3', 'TIM1_CH4', 'TIM2_CH1', 'TIM2_CH2', 'TIM2_CH3', 'TIM2_CH4', 'TIM3_CH1', 'TIM3_CH2', 'TIM3_CH3', 'TIM3_CH4', 'TIM4_CH1', 'TIM4_CH2', 'TIM4_CH3', 'TIM4_CH4'],
-	[vscode.l10n.t('その他')]: ['CAN1_TX', 'CAN1_RX', 'USB_DM', 'USB_DP', 'ETH_MDC', 'ETH_MDIO', 'SDIO_D0', 'SDIO_CLK', 'SDIO_CMD'],
+	[vscode.l10n.t('Other')]: ['CAN1_TX', 'CAN1_RX', 'USB_DM', 'USB_DP', 'ETH_MDC', 'ETH_MDIO', 'SDIO_D0', 'SDIO_CLK', 'SDIO_CMD'],
 };
 
 const COMMON_PIN_ALIASES: Record<string, string[]> = {
@@ -206,12 +206,12 @@ async function openEnvironmentSettingsDialog(): Promise<void> {
 	const cubectlPath = config.get<string>('cubectlPath', '');
 
 	const selectAction = await vscode.window.showQuickPick([
-		{ label: vscode.l10n.t('Make コマンドのパスを設定'), value: 'makePath' },
-		{ label: vscode.l10n.t('STM32CubeMX のパスを設定'), value: 'cubemxPath' },
-		{ label: vscode.l10n.t('STM32 Programmer CLI のパスを設定'), value: 'cubectlPath' },
-		{ label: vscode.l10n.t('すべてのパス設定をリセット'), value: 'reset' },
-		{ label: vscode.l10n.t('設定値を確認/デバッグ'), value: 'debug' },
-	], { placeHolder: vscode.l10n.t('設定する項目を選択ください。'), title: vscode.l10n.t('STM32 環境パス設定') });
+		{ label: vscode.l10n.t('Set make command path'), value: 'makePath' },
+		{ label: vscode.l10n.t('Set STM32CubeMX path'), value: 'cubemxPath' },
+		{ label: vscode.l10n.t('Set STM32 Programmer CLI path'), value: 'cubectlPath' },
+		{ label: vscode.l10n.t('Reset all path settings'), value: 'reset' },
+		{ label: vscode.l10n.t('Check / debug current settings'), value: 'debug' },
+	], { placeHolder: vscode.l10n.t('Select item to configure.'), title: vscode.l10n.t('STM32 Environment Path Settings') });
 
 	if (!selectAction) {
 		return;
@@ -221,38 +221,38 @@ async function openEnvironmentSettingsDialog(): Promise<void> {
 
 	if (value === 'makePath') {
 		const newPath = await vscode.window.showInputBox({
-			prompt: vscode.l10n.t('make コマンドのパスを入力してください。'),
+			prompt: vscode.l10n.t('Enter the path to the make command.'),
 			value: makePath,
 			placeHolder: 'e.g. C:\\ST\\STM32CubeCLT\\GNU_tools_for_STM32\\bin\\make.exe',
 		});
 		if (newPath !== undefined) {
 			await config.update('makePath', newPath, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ make パスを設定しました: {0}', newPath) : vscode.l10n.t('✅ make パスを削除しました。'));
+			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ make path set: {0}', newPath) : vscode.l10n.t('✅ make path cleared.'));
 		}
 	} else if (value === 'cubemxPath') {
 		const newPath = await vscode.window.showInputBox({
-			prompt: vscode.l10n.t('STM32CubeMX の実行ファイルパスを入力してください。'),
+			prompt: vscode.l10n.t('Enter the path to the STM32CubeMX executable.'),
 			value: cubemxPath,
 			placeHolder: 'e.g. C:\\ST\\STM32CubeMX\\STM32CubeMX.exe',
 		});
 		if (newPath !== undefined) {
 			await config.update('cubemxPath', newPath, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ CubeMX パスを設定しました: {0}', newPath) : vscode.l10n.t('✅ CubeMX パスを削除しました。'));
+			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ CubeMX path set: {0}', newPath) : vscode.l10n.t('✅ CubeMX path cleared.'));
 		}
 	} else if (value === 'cubectlPath') {
 		const newPath = await vscode.window.showInputBox({
-			prompt: vscode.l10n.t('STM32 Programmer CLI のパスを入力してください。'),
+			prompt: vscode.l10n.t('Enter the path to STM32 Programmer CLI.'),
 			value: cubectlPath,
 			placeHolder: 'e.g. C:\\ST\\STM32CubeCLT\\STM32_Programmer_CLI.exe',
 		});
 		if (newPath !== undefined) {
 			await config.update('cubectlPath', newPath, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ Programmer CLI パスを設定しました: {0}', newPath) : vscode.l10n.t('✅ Programmer CLI パスを削除しました。'));
+			vscode.window.showInformationMessage(newPath ? vscode.l10n.t('✅ Programmer CLI path set: {0}', newPath) : vscode.l10n.t('✅ Programmer CLI path cleared.'));
 		}
 	} else if (value === 'reset') {
-		const resetLabel = vscode.l10n.t('削除');
+		const resetLabel = vscode.l10n.t('Delete');
 		const confirm = await vscode.window.showWarningMessage(
-			vscode.l10n.t('すべての環境パス設定 (make, CubeMX, Programmer CLI) を削除してもよろしいですか？'),
+			vscode.l10n.t('Delete all environment path settings (make, CubeMX, Programmer CLI)?'),
 			{ modal: true },
 			resetLabel
 		);
@@ -260,20 +260,20 @@ async function openEnvironmentSettingsDialog(): Promise<void> {
 			await config.update('makePath', undefined, vscode.ConfigurationTarget.Workspace);
 			await config.update('cubemxPath', undefined, vscode.ConfigurationTarget.Workspace);
 			await config.update('cubectlPath', undefined, vscode.ConfigurationTarget.Workspace);
-			vscode.window.showInformationMessage(vscode.l10n.t('✅ すべての環境パス設定をリセットしました。'));
+			vscode.window.showInformationMessage(vscode.l10n.t('✅ All environment path settings reset.'));
 		}
 	} else if (value === 'debug') {
-		const notSet = vscode.l10n.t('(未設定)');
+		const notSet = vscode.l10n.t('(not set)');
 		const debugInfo = [
-			vscode.l10n.t('[STM32 環境パス設定 - デバッグ情報]'),
+			vscode.l10n.t('[STM32 Environment Paths - Debug Info]'),
 			'',
-			vscode.l10n.t('Make パス (設定):'),
+			vscode.l10n.t('Make path (configured):'),
 			`  ${makePath || notSet}`,
 			``,
-			vscode.l10n.t('CubeMX パス (設定):'),
+			vscode.l10n.t('CubeMX path (configured):'),
 			`  ${cubemxPath || notSet}`,
 			``,
-			vscode.l10n.t('Programmer CLI パス (設定):'),
+			vscode.l10n.t('Programmer CLI path (configured):'),
 			`  ${cubectlPath || notSet}`,
 		].join('\n');
 		await vscode.window.showInformationMessage(debugInfo, { modal: true });
@@ -285,10 +285,10 @@ export function deactivate(): void {
 
 async function configureGlobalWallpaper(): Promise<void> {
 	const action = await vscode.window.showQuickPick([
-		{ label: vscode.l10n.t('画像ファイルを選択して適用'), value: 'file' },
-		{ label: vscode.l10n.t('画像 URL を入力して適用'), value: 'url' },
-		{ label: vscode.l10n.t('壁紙をクリア'), value: 'clear' },
-	], { placeHolder: vscode.l10n.t('IDE 全体の壁紙設定を選択') });
+		{ label: vscode.l10n.t('Select image file and apply'), value: 'file' },
+		{ label: vscode.l10n.t('Enter image URL and apply'), value: 'url' },
+		{ label: vscode.l10n.t('Clear wallpaper'), value: 'clear' },
+	], { placeHolder: vscode.l10n.t('Select IDE wallpaper setting') });
 
 	if (!action) {
 		return;
@@ -299,7 +299,7 @@ async function configureGlobalWallpaper(): Promise<void> {
 	if (action.value === 'clear') {
 		await config.update('workbench.wallpaper.enabled', false, vscode.ConfigurationTarget.Global);
 		await config.update('workbench.wallpaper.image', '', vscode.ConfigurationTarget.Global);
-		vscode.window.showInformationMessage(vscode.l10n.t('IDE 全体の壁紙をクリアしました。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('IDE wallpaper cleared.'));
 		return;
 	}
 
@@ -309,7 +309,7 @@ async function configureGlobalWallpaper(): Promise<void> {
 			canSelectFiles: true,
 			canSelectFolders: false,
 			canSelectMany: false,
-			openLabel: vscode.l10n.t('壁紙として使用'),
+			openLabel: vscode.l10n.t('Use as wallpaper'),
 			filters: {
 				Images: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg']
 			}
@@ -320,8 +320,8 @@ async function configureGlobalWallpaper(): Promise<void> {
 		imageSource = pick[0].toString();
 	} else {
 		const raw = await vscode.window.showInputBox({
-			title: vscode.l10n.t('壁紙 URL'),
-			prompt: vscode.l10n.t('https://... / file:///... / data:image/... / ローカル絶対パス'),
+			title: vscode.l10n.t('Wallpaper URL'),
+			prompt: vscode.l10n.t('https://... / file:///... / data:image/... / absolute local path'),
 			placeHolder: 'https://example.com/wallpaper.jpg',
 			ignoreFocusOut: true,
 		});
@@ -333,8 +333,8 @@ async function configureGlobalWallpaper(): Promise<void> {
 
 	const currentOpacity = config.get<number>('workbench.wallpaper.opacity', 0.2);
 	const opacityRaw = await vscode.window.showInputBox({
-		title: vscode.l10n.t('壁紙の透明度'),
-		prompt: vscode.l10n.t('0〜1 または 0〜100(%) で入力'),
+		title: vscode.l10n.t('Wallpaper Opacity'),
+		prompt: vscode.l10n.t('Enter 0–1 or 0–100(%)'),
 		value: String(currentOpacity),
 		ignoreFocusOut: true,
 	});
@@ -344,7 +344,7 @@ async function configureGlobalWallpaper(): Promise<void> {
 
 	let opacity = Number(opacityRaw.trim());
 	if (!Number.isFinite(opacity)) {
-		vscode.window.showErrorMessage(vscode.l10n.t('透明度の数値が不正です。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Invalid opacity value.'));
 		return;
 	}
 	if (opacity > 1) {
@@ -356,7 +356,7 @@ async function configureGlobalWallpaper(): Promise<void> {
 	await config.update('workbench.wallpaper.opacity', opacity, vscode.ConfigurationTarget.Global);
 	await config.update('workbench.wallpaper.enabled', true, vscode.ConfigurationTarget.Global);
 
-	vscode.window.showInformationMessage(vscode.l10n.t('IDE 全体の壁紙を更新しました。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('IDE wallpaper updated.'));
 }
 
 function normalizeWallpaperInput(value: string): string {
@@ -442,7 +442,7 @@ class OnboardingViewProvider implements vscode.WebviewViewProvider {
 }
 
 async function openWorkflowStudio(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.workflowStudio', 'STM32 ワークフロースタジオ', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.workflowStudio', 'STM32 Workflow Studio', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getWorkflowStudioHtml(panel.webview);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || typeof message.type !== 'string') {
@@ -483,7 +483,7 @@ async function openPwmWorkbench(): Promise<void> {
 }
 
 async function openPeripheralWorkbench(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.peripheralWorkbench', 'STM32 ペリフェラルワークベンチ', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.peripheralWorkbench', 'STM32 Peripheral Workbench', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getPeripheralWorkbenchHtml(panel.webview);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || typeof message.type !== 'string') {
@@ -497,7 +497,7 @@ async function openPeripheralWorkbench(): Promise<void> {
 					return;
 				}
 				await vscode.env.clipboard.writeText(value);
-				vscode.window.showInformationMessage(vscode.l10n.t('コードをクリップボードへコピーしました。'));
+				vscode.window.showInformationMessage(vscode.l10n.t('Code copied to clipboard.'));
 				break;
 			}
 			case 'openPins':
@@ -526,7 +526,7 @@ async function openPeripheralWorkbench(): Promise<void> {
 }
 
 async function openMcpOperationDesk(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.mcpDesk', 'STM32 MCP オペレーションデスク', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.mcpDesk', 'STM32 MCP Operation Desk', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getMcpOperationDeskHtml(panel.webview);
 	const publishStatus = async (): Promise<void> => {
 		const status = await checkMcpHealth();
@@ -555,9 +555,9 @@ async function openMcpOperationDesk(): Promise<void> {
 				? JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
 				: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method });
 			const result = await vscode.window.showInputBox({
-				title: vscode.l10n.t('MCP 呼び出し JSON (実行済み)'),
+				title: vscode.l10n.t('MCP Call JSON (executed)'),
 				value: payload,
-				prompt: vscode.l10n.t('下記 JSON は MCP クライアントから同等に実行できます。')
+				prompt: vscode.l10n.t('The JSON below can be sent identically from an MCP client.')
 			});
 			if (typeof result === 'string') {
 				void result;
@@ -573,11 +573,11 @@ async function openMcpOperationDesk(): Promise<void> {
 					const status = await ensureMcpServerReady();
 					await panel.webview.postMessage({
 						type: 'status', message: status.running
-							? vscode.l10n.t('MCPサーバー起動: {0}', status.endpoint ?? '')
-							: vscode.l10n.t('MCP起動に失敗しました: {0}', status.detail)
+							? vscode.l10n.t('MCP server started: {0}', status.endpoint ?? '')
+							: vscode.l10n.t('MCP failed to start: {0}', status.detail)
 					});
 					if (!status.running) {
-						vscode.window.showErrorMessage(vscode.l10n.t('MCP起動に失敗しました: {0}', status.detail));
+						vscode.window.showErrorMessage(vscode.l10n.t('MCP failed to start: {0}', status.detail));
 					}
 					await publishStatus();
 				}
@@ -586,15 +586,15 @@ async function openMcpOperationDesk(): Promise<void> {
 				{
 					const status = await ensureMcpServerReady();
 					if (!status.running) {
-						vscode.window.showErrorMessage(vscode.l10n.t('SSE MCP起動に失敗しました: {0}', status.detail));
+						vscode.window.showErrorMessage(vscode.l10n.t('SSE MCP failed to start: {0}', status.detail));
 						await publishStatus();
 						break;
 					}
 
 					const sseEndpoint = status.endpoint ? status.endpoint.replace(/\/mcp$/u, '/sse') : '';
 					const message = sseEndpoint
-						? vscode.l10n.t('SSE MCPサーバー起動完了: {0}', sseEndpoint)
-						: vscode.l10n.t('SSE MCPサーバーを起動しました。');
+						? vscode.l10n.t('SSE MCP server started: {0}', sseEndpoint)
+						: vscode.l10n.t('SSE MCP server started.');
 					vscode.window.showInformationMessage(message);
 					await panel.webview.postMessage({ type: 'status', message });
 					await publishStatus();
@@ -605,11 +605,11 @@ async function openMcpOperationDesk(): Promise<void> {
 					const result = await stopMcpServerCompletely();
 					await panel.webview.postMessage({
 						type: 'status', message: result.ok
-							? vscode.l10n.t('MCPサーバーを停止しました。')
-							: vscode.l10n.t('MCP停止に失敗しました: {0}', result.detail)
+							? vscode.l10n.t('MCP server stopped.')
+							: vscode.l10n.t('MCP failed to stop: {0}', result.detail)
 					});
 					if (!result.ok) {
-						vscode.window.showErrorMessage(vscode.l10n.t('MCP停止に失敗しました: {0}', result.detail));
+						vscode.window.showErrorMessage(vscode.l10n.t('MCP failed to stop: {0}', result.detail));
 					}
 					await publishStatus();
 				}
@@ -882,7 +882,7 @@ async function checkMcpHealth(): Promise<McpHealthStatus> {
 				return {
 					running: true,
 					endpoint: `http://${target.host}:${target.port}/mcp`,
-					detail: `接続OK (${target.host}:${target.port})`,
+					detail: `connected OK (${target.host}:${target.port})`,
 				};
 			}
 
@@ -891,10 +891,10 @@ async function checkMcpHealth(): Promise<McpHealthStatus> {
 	}
 
 	if (incompatibleEndpoints.length > 0) {
-		return { running: false, detail: `MCPは応答中ですが互換ツールが不足しています (${incompatibleEndpoints.join(', ')})` };
+		return { running: false, detail: `MCP is responding but compatible tools are missing (${incompatibleEndpoints.join(', ')})` };
 	}
 
-	return { running: false, detail: 'MCPサーバー未起動または /health 応答なし' };
+	return { running: false, detail: 'MCP server not started or no /health response' };
 }
 
 async function waitMs(ms: number): Promise<void> {
@@ -917,20 +917,20 @@ function getPrimaryWorkspacePath(): string | undefined {
 async function tryStartManagedMcpProcess(): Promise<ManagedMcpStartResult> {
 	const workspacePath = getPrimaryWorkspacePath();
 	if (!workspacePath) {
-		return { ok: false, detail: 'ワークスペース未検出のため managed 起動をスキップ' };
+		return { ok: false, detail: 'no workspace found, skipping managed start' };
 	}
 	try {
 		await ensureMcpServerInWorkspace(vscode.Uri.file(workspacePath));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		return { ok: false, detail: `managed 起動準備に失敗しました: ${message}` };
+		return { ok: false, detail: `managed start preparation failed: ${message}` };
 	}
 	const config = vscode.workspace.getConfiguration('stm32ux');
 	const host = config.get<string>('mcp.host', '127.0.0.1');
 	const port = config.get<number>('mcp.port', 3737);
 	const serverEntryPath = pathModule.join(workspacePath, 'mcp-server', 'index.js');
 	if (!(await fileExists(serverEntryPath))) {
-		return { ok: false, detail: `managed 起動対象が見つかりません: ${serverEntryPath}` };
+		return { ok: false, detail: `managed start target not found: ${serverEntryPath}` };
 	}
 
 	return await new Promise<ManagedMcpStartResult>(resolve => {
@@ -955,28 +955,28 @@ async function tryStartManagedMcpProcess(): Promise<ManagedMcpStartResult> {
 			});
 
 			if (!child.pid) {
-				finish({ ok: false, detail: 'managed 起動失敗: node プロセス PID を取得できませんでした' });
+				finish({ ok: false, detail: 'managed start failed: could not get node process PID' });
 				return;
 			}
 
 			managedMcpPid = child.pid;
 			child.on('error', error => {
 				const message = error instanceof Error ? error.message : String(error);
-				finish({ ok: false, detail: `managed 起動エラー: ${message}` });
+				finish({ ok: false, detail: `managed start error: ${message}` });
 			});
 			child.on('exit', (code: unknown) => {
 				if (typeof code === 'number' && code !== 0) {
-					finish({ ok: false, detail: `managed 起動直後に終了しました (exit=${code})` });
+					finish({ ok: false, detail: `managed process exited immediately (exit=${code})` });
 				}
 			});
 
 			child.unref();
 			setTimeout(() => {
-				finish({ ok: true, detail: `managed 起動実行: node PID ${String(managedMcpPid ?? '')}` });
+				finish({ ok: true, detail: `managed start launched: node PID ${String(managedMcpPid ?? '')}` });
 			}, 300);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			finish({ ok: false, detail: `managed 起動例外: ${message}` });
+			finish({ ok: false, detail: `managed start exception: ${message}` });
 		}
 	});
 }
@@ -1016,9 +1016,9 @@ async function stopMcpServerCompletely(): Promise<{ ok: boolean; detail: string 
 	const detailNotes: string[] = [];
 	try {
 		await vscode.commands.executeCommand('stm32ai.stopMcpServer');
-		detailNotes.push('stm32ai.stopMcpServer 実行');
+		detailNotes.push('stm32ai.stopMcpServer executed');
 	} catch {
-		detailNotes.push('stm32ai.stopMcpServer 失敗');
+		detailNotes.push('stm32ai.stopMcpServer failed');
 	}
 
 	await tryStopManagedMcpProcess();
@@ -1029,13 +1029,13 @@ async function stopMcpServerCompletely(): Promise<{ ok: boolean; detail: string 
 	const pids = await getListeningPidsOnPort(endpoint.port, workspacePath);
 	if (pids.length > 0) {
 		await killPids(pids, workspacePath);
-		detailNotes.push(`port ${String(endpoint.port)} を占有するPIDを停止: ${pids.join(', ')}`);
+		detailNotes.push(`stopped PID(s) occupying port ${String(endpoint.port)}: ${pids.join(', ')}`);
 		await waitMs(300);
 	}
 
 	const status = await checkMcpHealth();
 	if (status.running) {
-		return { ok: false, detail: `MCP停止後も応答中: ${status.detail} | ${detailNotes.join(' / ')}` };
+		return { ok: false, detail: `MCP still responding after stop: ${status.detail} | ${detailNotes.join(' / ')}` };
 	}
 	return { ok: true, detail: detailNotes.join(' / ') };
 }
@@ -1051,14 +1051,14 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 		}
 		return status;
 	}
-	attempts.push(`初回チェック: ${status.detail}`);
+	attempts.push(`initial check: ${status.detail}`);
 
-	if (status.detail.includes('互換ツールが不足')) {
+	if (status.detail.includes('incompatible tools missing')) {
 		try {
 			await vscode.commands.executeCommand('stm32ai.stopMcpServer');
-			attempts.push('非互換MCPを停止 (stm32ai.stopMcpServer)');
+			attempts.push('stopped incompatible MCP (stm32ai.stopMcpServer)');
 		} catch {
-			attempts.push('非互換MCP停止に失敗');
+			attempts.push('failed to stop incompatible MCP');
 		}
 	}
 
@@ -1068,7 +1068,7 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 		if (switched) {
 			status = await checkMcpHealth();
 			if (status.running) {
-				attempts.push('既存MCPへworkspace上書き接続');
+				attempts.push('reconnected to existing MCP with workspace override');
 				return status;
 			}
 		}
@@ -1077,9 +1077,9 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 	if (!forceTakeover) {
 		try {
 			await tryStartMcpTask();
-			attempts.push('タスク起動実行');
+			attempts.push('task start executed');
 		} catch {
-			attempts.push('タスク起動失敗');
+			attempts.push('task start failed');
 		}
 
 		for (let i = 0; i < 6; i++) {
@@ -1092,9 +1092,9 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 				return status;
 			}
 		}
-		attempts.push('タスク実行後 /health: NG');
+		attempts.push('post-task /health: NG');
 	} else {
-		attempts.push('forceTakeoverPort=true のためタスク起動をスキップ');
+		attempts.push('skipped task start because forceTakeoverPort=true');
 	}
 
 	if (forceTakeover) {
@@ -1102,7 +1102,7 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 		const listeningPids = await getListeningPidsOnPort(endpoint.port, workspacePath);
 		if (listeningPids.length > 0) {
 			await killPids(listeningPids, workspacePath);
-			attempts.push(`ポート ${String(endpoint.port)} 占有プロセスを停止: ${listeningPids.join(',')}`);
+			attempts.push(`killed process(es) holding port ${String(endpoint.port)}: ${listeningPids.join(',')}`);
 			await waitMs(350);
 		}
 	}
@@ -1124,36 +1124,36 @@ async function ensureMcpServerReady(): Promise<McpHealthStatus> {
 		}
 	}
 
-	attempts.push('managed 起動後 /health: NG');
+	attempts.push('post-managed-start /health: NG');
 	return { running: false, detail: attempts.join(' | ') };
 }
 
 function getMcpMethodCatalog(): Array<{ method: string; description: string; command?: string }> {
 	return [
-		{ method: 'stm32.build', description: 'Debugビルドを実行', command: 'stm32.buildDebug' },
-		{ method: 'stm32.flash', description: 'ファームを書込み', command: 'stm32.flash' },
-		{ method: 'stm32.regenerateCode', description: '.iocからコード再生成', command: 'stm32.regenerateCode' },
-		{ method: 'stm32.openBoardConfigurator', description: 'ボード設定画面を開く', command: 'stm32ux.openBoardConfigurator' },
-		{ method: 'stm32.collab.openPanel', description: '共同作業パネルを開く', command: 'stm32collab.openPanel' },
-		{ method: 'stm32.refreshRegisters', description: 'SVDレジスタビューを更新', command: 'stm32.debug.refreshRegisters' },
-		{ method: 'stm32.openPinVisualizer', description: 'ピンビジュアライザを開く', command: 'stm32ux.openPinVisualizer' },
-		{ method: 'stm32.syncCatalog', description: 'CubeMXカタログを同期', command: 'stm32ux.syncMcuCatalogFromCubeMX' },
-		{ method: 'stm32.runEnvironmentCheck', description: '環境チェックを実行', command: 'stm32ux.runEnvironmentCheck' },
+		{ method: 'stm32.build', description: 'Run Debug build', command: 'stm32.buildDebug' },
+		{ method: 'stm32.flash', description: 'Flash firmware', command: 'stm32.flash' },
+		{ method: 'stm32.regenerateCode', description: 'Regenerate code from .ioc', command: 'stm32.regenerateCode' },
+		{ method: 'stm32.openBoardConfigurator', description: 'Open board config screen', command: 'stm32ux.openBoardConfigurator' },
+		{ method: 'stm32.collab.openPanel', description: 'Open collaboration panel', command: 'stm32collab.openPanel' },
+		{ method: 'stm32.refreshRegisters', description: 'Refresh SVD register view', command: 'stm32.debug.refreshRegisters' },
+		{ method: 'stm32.openPinVisualizer', description: 'Open pin visualizer', command: 'stm32ux.openPinVisualizer' },
+		{ method: 'stm32.syncCatalog', description: 'Sync CubeMX catalog', command: 'stm32ux.syncMcuCatalogFromCubeMX' },
+		{ method: 'stm32.runEnvironmentCheck', description: 'Run environment check', command: 'stm32ux.runEnvironmentCheck' },
 	];
 }
 
 async function composeMcpRequestJson(): Promise<void> {
 	const selected = await vscode.window.showQuickPick(
 		getMcpMethodCatalog().map(item => ({ label: item.method, description: item.description })),
-		{ placeHolder: vscode.l10n.t('生成する MCP メソッドを選択') }
+		{ placeHolder: vscode.l10n.t('Select MCP method to compose') }
 	);
 	if (!selected) {
 		return;
 	}
 
 	const paramsRaw = await vscode.window.showInputBox({
-		title: vscode.l10n.t('MCP params JSON (任意)'),
-		prompt: vscode.l10n.t('空欄なら params なしで生成。指定する場合は JSON オブジェクト文字列を入力。'),
+		title: vscode.l10n.t('MCP params JSON (optional)'),
+		prompt: vscode.l10n.t('Leave empty for no params. Otherwise enter a JSON object string.'),
 		placeHolder: '{"target":"nucleo-f446re"}',
 		ignoreFocusOut: true,
 	});
@@ -1163,12 +1163,12 @@ async function composeMcpRequestJson(): Promise<void> {
 		try {
 			const parsed = JSON.parse(paramsRaw);
 			if (!isRecord(parsed)) {
-				vscode.window.showErrorMessage(vscode.l10n.t('params は JSON オブジェクトで入力してください。'));
+				vscode.window.showErrorMessage(vscode.l10n.t('params must be a JSON object.'));
 				return;
 			}
 			paramsObject = parsed;
 		} catch {
-			vscode.window.showErrorMessage(vscode.l10n.t('params JSON の解析に失敗しました。'));
+			vscode.window.showErrorMessage(vscode.l10n.t('Failed to parse params JSON.'));
 			return;
 		}
 	}
@@ -1181,15 +1181,15 @@ async function composeMcpRequestJson(): Promise<void> {
 	const doc = await vscode.workspace.openTextDocument({ language: 'json', content: requestJson });
 	await vscode.window.showTextDocument(doc, { preview: false });
 	await vscode.env.clipboard.writeText(requestJson);
-	vscode.window.showInformationMessage(vscode.l10n.t('MCP JSON-RPC を生成し、クリップボードにコピーしました。'));
+	vscode.window.showInformationMessage(vscode.l10n.t('MCP JSON-RPC generated and copied to clipboard.'));
 }
 
 async function generateMcpConfigJson(): Promise<void> {
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 	const defaultWorkspacePath = workspaceFolder?.uri.fsPath ?? '';
 	const targetWorkspacePathInput = await vscode.window.showInputBox({
-		title: vscode.l10n.t('MCP対象ワークスペースパス'),
-		prompt: vscode.l10n.t('MCPサーバーを起動する対象プロジェクトの絶対パスを入力してください。'),
+		title: vscode.l10n.t('MCP Target Workspace Path'),
+		prompt: vscode.l10n.t('Enter the absolute path of the project to start the MCP server for.'),
 		value: defaultWorkspacePath,
 		ignoreFocusOut: true,
 	});
@@ -1202,17 +1202,17 @@ async function generateMcpConfigJson(): Promise<void> {
 	try {
 		const stat = await vscode.workspace.fs.stat(targetWorkspaceUri);
 		if (stat.type !== vscode.FileType.Directory) {
-			vscode.window.showErrorMessage(vscode.l10n.t('指定パスはフォルダではありません: {0}', targetWorkspacePath));
+			vscode.window.showErrorMessage(vscode.l10n.t('Specified path is not a folder: {0}', targetWorkspacePath));
 			return;
 		}
 	} catch {
-		vscode.window.showErrorMessage(vscode.l10n.t('指定パスが存在しません: {0}', targetWorkspacePath));
+		vscode.window.showErrorMessage(vscode.l10n.t('Specified path does not exist: {0}', targetWorkspacePath));
 		return;
 	}
 
 	const serverEntryPath = await ensureMcpServerInWorkspace(targetWorkspaceUri);
 	if (!serverEntryPath) {
-		vscode.window.showErrorMessage(vscode.l10n.t('mcp-server の配置に失敗しました。設定JSONを生成できません。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('Failed to deploy mcp-server. Cannot generate config JSON.'));
 		return;
 	}
 
@@ -1350,15 +1350,15 @@ async function generateMcpConfigJson(): Promise<void> {
 		}
 	} else {
 		targetUri = await vscode.window.showSaveDialog({
-			saveLabel: vscode.l10n.t('Editor向けMCP設定JSONを保存'),
+			saveLabel: vscode.l10n.t('Save MCP config JSON for Editor'),
 			filters: { JSON: ['json'] },
 		});
 		qwenTargetUri = await vscode.window.showSaveDialog({
-			saveLabel: vscode.l10n.t('Qwen Desktop向けMCP設定JSONを保存'),
+			saveLabel: vscode.l10n.t('Save MCP config JSON for Qwen Desktop'),
 			filters: { JSON: ['json'] },
 		});
 		lmStudioTargetUri = await vscode.window.showSaveDialog({
-			saveLabel: vscode.l10n.t('LM Studio向けMCP設定JSONを保存'),
+			saveLabel: vscode.l10n.t('Save MCP config JSON for LM Studio'),
 			filters: { JSON: ['json'] },
 		});
 	}
@@ -1378,9 +1378,9 @@ async function generateMcpConfigJson(): Promise<void> {
 		? await runMcpHttpSelfCheck(host, port, timeoutMs)
 		: await runMcpStdioSelfCheck(serverEntryPath, targetWorkspacePath);
 	if (selfCheck.ok) {
-		vscode.window.showInformationMessage(vscode.l10n.t('MCP設定JSONを3種類出力し、自己診断に成功しました: {0} / {1} / {2}', targetUri.fsPath, qwenTargetUri.fsPath, lmStudioTargetUri.fsPath));
+		vscode.window.showInformationMessage(vscode.l10n.t('Exported 3 MCP config JSON files and self-check passed: {0} / {1} / {2}', targetUri.fsPath, qwenTargetUri.fsPath, lmStudioTargetUri.fsPath));
 	} else {
-		vscode.window.showErrorMessage(vscode.l10n.t('MCP設定JSONを出力しましたが、自己診断に失敗しました: {0}', selfCheck.detail));
+		vscode.window.showErrorMessage(vscode.l10n.t('MCP config JSON exported but self-check failed: {0}', selfCheck.detail));
 	}
 }
 
@@ -1551,7 +1551,7 @@ async function runMcpStdioSelfCheck(serverEntryPath: string, workspacePath: stri
 }
 
 async function openWelcomeWizard(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.welcome', 'TovaIDE-STM ウェルカム', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.welcome', 'TovaIDE-STM Welcome', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getWelcomeHtml(panel.webview);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || typeof message.type !== 'string') {
@@ -1599,7 +1599,7 @@ async function openWelcomeWizard(): Promise<void> {
 }
 
 async function openBlinkTutorial(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.tutorial', 'STM32 Lチカチュートリアル', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.tutorial', 'STM32 LED Blink Tutorial', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getTutorialHtml(panel.webview);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || typeof message.type !== 'string') {
@@ -1617,10 +1617,10 @@ async function openBlinkTutorial(): Promise<void> {
 		if (message.type === 'complete') {
 			panel.dispose();
 			vscode.window.showInformationMessage(
-				vscode.l10n.t('🎉 チュートリアル完了！STM32 Lチカをマスターしました。'),
-				vscode.l10n.t('テンプレートを探す')
+				vscode.l10n.t('🎉 Tutorial complete! You have mastered STM32 LED blink.'),
+				vscode.l10n.t('Browse Templates')
 			).then(choice => {
-				if (choice === vscode.l10n.t('テンプレートを探す')) {
+				if (choice === vscode.l10n.t('Browse Templates')) {
 					void openTemplateGallery();
 				}
 			});
@@ -1629,15 +1629,15 @@ async function openBlinkTutorial(): Promise<void> {
 }
 
 async function openTemplateGallery(): Promise<void> {
-	const panel = vscode.window.createWebviewPanel('stm32ux.templates', 'STM32 テンプレートギャラリー', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.templates', 'STM32 Template Gallery', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getTemplateGalleryHtml(panel.webview);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || typeof message.template !== 'string') {
 			return;
 		}
 		const selected = message.template;
-		const action = await vscode.window.showInformationMessage(vscode.l10n.t('テンプレート選択: {0}', selected), vscode.l10n.t('新規プロジェクト作成'));
-		if (action === vscode.l10n.t('新規プロジェクト作成')) {
+		const action = await vscode.window.showInformationMessage(vscode.l10n.t('Template selected: {0}', selected), vscode.l10n.t('Create New Project'));
+		if (action === vscode.l10n.t('Create New Project')) {
 			await createProjectFromTemplate(selected);
 		}
 	});
@@ -1647,11 +1647,11 @@ async function openBoardConfigurator(): Promise<void> {
 	const profiles = await getBoardProfilesFromCatalog();
 	const mcuNames = await getMcuSelectorNamesFromCatalog(profiles);
 	if (profiles.length === 0 && mcuNames.length === 0) {
-		vscode.window.showErrorMessage(vscode.l10n.t('利用可能なMCU定義が見つかりません。resources/stm32/mcu を確認してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('No available MCU definitions found. Check resources/stm32/mcu.'));
 		return;
 	}
 
-	const panel = vscode.window.createWebviewPanel('stm32ux.boardConfigurator', 'TovaIDE-STM ボード設定スタジオ', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.boardConfigurator', 'TovaIDE-STM Board Config Studio', vscode.ViewColumn.Active, { enableScripts: true });
 	panel.webview.html = getBoardConfiguratorHtml(panel.webview, profiles, mcuNames);
 	panel.webview.onDidReceiveMessage(async message => {
 		if (!isRecord(message) || message.type !== 'create' || !isRecord(message.payload)) {
@@ -1668,12 +1668,12 @@ async function openBoardConfigurator(): Promise<void> {
 		if (selectionMode === 'board') {
 			profile = profiles.find(item => item.id === boardId);
 			if (!profile) {
-				vscode.window.showErrorMessage(vscode.l10n.t('Board を選択してください。'));
+				vscode.window.showErrorMessage(vscode.l10n.t('Please select a Board.'));
 				return;
 			}
 		} else {
 			if (mcuName.length === 0) {
-				vscode.window.showErrorMessage(vscode.l10n.t('MCU/MPU Selector から Commercial Part Number を選択してください。'));
+				vscode.window.showErrorMessage(vscode.l10n.t('Please select a Commercial Part Number from the MCU/MPU Selector.'));
 				return;
 			}
 			const matched = profiles.find(item => normalizeMcuKey(item.mcu) === normalizeMcuKey(mcuName));
@@ -1681,13 +1681,13 @@ async function openBoardConfigurator(): Promise<void> {
 				id: `mcu-${mcuName.toLowerCase()}`,
 				name: `MCU/MPU Selector (${mcuName})`,
 				mcu: mcuName,
-				description: 'MCU/MPU Selector で選択した CPN から生成',
+				description: 'Generated from CPN selected in MCU/MPU Selector',
 				defaultPins: []
 			};
 		}
 
 		if (projectName.length === 0) {
-			vscode.window.showErrorMessage(vscode.l10n.t('プロジェクト名を入力してください。'));
+			vscode.window.showErrorMessage(vscode.l10n.t('Please enter a project name.'));
 			return;
 		}
 
@@ -1720,10 +1720,10 @@ async function runEnvironmentCheck(): Promise<void> {
 			outputChannel.appendLine(`[STM32-UX] CubeMX path check failed: ${err}`);
 			return false;
 		});
-		rows.push(`- STM32CubeMX: ${exists ? `✅ ${configuredCubeMx}` : `❌ 設定パスが無効: ${configuredCubeMx}`}`);
+		rows.push(`- STM32CubeMX: ${exists ? `✅ ${configuredCubeMx}` : `❌ configured path is invalid: ${configuredCubeMx}`}`);
 	} else {
 		const foundPath = await resolveCommandPath('STM32CubeMX', workspaceRoot);
-		rows.push(`- STM32CubeMX: ${foundPath ? `✅ ${foundPath}` : '❌ 未検出'}`);
+		rows.push(`- STM32CubeMX: ${foundPath ? `✅ ${foundPath}` : '❌ not found'}`);
 	}
 
 	if (configuredMetadata) {
@@ -1735,10 +1735,10 @@ async function runEnvironmentCheck(): Promise<void> {
 			outputChannel.appendLine(`[STM32-UX] CubeCLT metadata path check failed: ${err}`);
 			return false;
 		});
-		rows.push(`- STM32CubeCLT_metadata: ${exists ? `✅ ${configuredMetadata}` : `❌ 設定パスが無効: ${configuredMetadata}`}`);
+		rows.push(`- STM32CubeCLT_metadata: ${exists ? `✅ ${configuredMetadata}` : `❌ configured path is invalid: ${configuredMetadata}`}`);
 	} else {
 		const foundPath = await resolveCommandPath('STM32CubeCLT_metadata', workspaceRoot);
-		rows.push(`- STM32CubeCLT_metadata: ${foundPath ? `✅ ${foundPath}` : '❌ 未検出'}`);
+		rows.push(`- STM32CubeCLT_metadata: ${foundPath ? `✅ ${foundPath}` : '❌ not found'}`);
 	}
 
 	const tools = [
@@ -1754,32 +1754,32 @@ async function runEnvironmentCheck(): Promise<void> {
 		}
 
 		if (tool.id === 'STM32_Programmer_CLI' && inferredToolPaths.programmerCliPath) {
-			rows.push(`- ${tool.id}: ✅ ${inferredToolPaths.programmerCliPath} (CubeCLT メタデータから推定)`);
+			rows.push(`- ${tool.id}: ✅ ${inferredToolPaths.programmerCliPath} (inferred from CubeCLT metadata)`);
 			continue;
 		}
 
 		if (tool.id === 'arm-none-eabi-gcc' && inferredToolPaths.gccPath) {
-			rows.push(`- ${tool.id}: ✅ ${inferredToolPaths.gccPath} (CubeCLT メタデータから推定)`);
+			rows.push(`- ${tool.id}: ✅ ${inferredToolPaths.gccPath} (inferred from CubeCLT metadata)`);
 			continue;
 		}
 
-		rows.push(`- ${tool.id}: ❌ 未検出 (PATH に含まれていません)`);
+		rows.push(`- ${tool.id}: ❌ not found (not in PATH)`);
 	}
 
 	const report = [
-		'# STM32 環境チェック',
+		'# STM32 Environment Check',
 		'',
-		'## ツール検出',
+		'## Tool Detection',
 		...rows,
 		'',
-		'## 設定値',
-		`- stm32.cubemx.path: ${configuredCubeMx.length > 0 ? configuredCubeMx : '(未設定)'}`,
-		`- stm32.cubeclt.metadataPath: ${configuredMetadata.length > 0 ? configuredMetadata : '(未設定)'}`,
+		'## Configuration',
+		`- stm32.cubemx.path: ${configuredCubeMx.length > 0 ? configuredCubeMx : '(not set)'}`,
+		`- stm32.cubeclt.metadataPath: ${configuredMetadata.length > 0 ? configuredMetadata : '(not set)'}`,
 		'',
-		'## ヒント',
-		'- STM32_Programmer_CLI / arm-none-eabi-gcc が PATH に無くても、CubeCLT メタデータパスから推定検出される場合があります',
-		'- PATH に通しておくと、外部ターミナルやビルドタスクでも同じ実行ファイルを利用できます',
-		'- コマンドパレット: `STM32: CubeCLT メタデータを検出`',
+		'## Hints',
+		'- STM32_Programmer_CLI / arm-none-eabi-gcc can be auto-detected from CubeCLT metadata path even if not in PATH',
+		'- Adding them to PATH allows the same executables to be used in external terminals and build tasks',
+		'- Command Palette: `STM32: Detect CubeCLT Metadata`',
 	].join('\n');
 
 	outputChannel.appendLine('[STM32-UX] Environment check completed.');
@@ -1796,7 +1796,7 @@ async function explainLatestError(): Promise<void> {
 		.at(0);
 
 	if (!firstError) {
-		vscode.window.showInformationMessage(vscode.l10n.t('現在エラーは検出されていません。'));
+		vscode.window.showInformationMessage(vscode.l10n.t('No errors currently detected.'));
 		return;
 	}
 
@@ -1805,13 +1805,13 @@ async function explainLatestError(): Promise<void> {
 	const doc = await vscode.workspace.openTextDocument({
 		language: 'markdown',
 		content: [
-			'# ビルドエラー自動解説',
+			'# Build Error Explanation',
 			'',
-			`- ファイル: ${firstError.uri.fsPath}`,
-			`- 行: ${firstError.item.range.start.line + 1}`,
-			`- エラー: ${message}`,
+			`- File: ${firstError.uri.fsPath}`,
+			`- Line: ${firstError.item.range.start.line + 1}`,
+			`- Error: ${message}`,
 			'',
-			`## 解説`,
+			`## Explanation`,
 			hint,
 		].join('\n')
 	});
@@ -2038,16 +2038,16 @@ async function syncMcuCatalogFromCubeMX(): Promise<void> {
 	}
 
 	if (!selectedMcuRoot) {
-		vscode.window.showErrorMessage(vscode.l10n.t('CubeMX の MCU DB が見つかりません。stm32.cubemx.path を設定して再実行してください。'));
+		vscode.window.showErrorMessage(vscode.l10n.t('CubeMX MCU DB not found. Set stm32.cubemx.path and try again.'));
 		return;
 	}
 
 	const mcuNames = await vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
-		title: vscode.l10n.t('CubeMX MCU カタログを同期中...'),
+		title: vscode.l10n.t('Syncing CubeMX MCU catalog...'),
 		cancellable: false,
 	}, async progress => {
-		progress.report({ message: vscode.l10n.t('MCU 定義を走査しています') });
+		progress.report({ message: vscode.l10n.t('Scanning MCU definitions') });
 		return scanCubeMxMcuNames(vscode.Uri.file(selectedMcuRoot));
 	});
 
@@ -2061,7 +2061,7 @@ async function syncMcuCatalogFromCubeMX(): Promise<void> {
 	if (selectedBoardRoot) {
 		outputChannel.appendLine(`[STM32-UX] Synced Board catalog: ${boardItems.length} entries (${selectedBoardRoot})`);
 	}
-	vscode.window.showInformationMessage(vscode.l10n.t('CubeMX 同期完了: MCU {0} 件 / Board {1} 件', mcuNames.length, boardItems.length));
+	vscode.window.showInformationMessage(vscode.l10n.t('CubeMX sync complete: {0} MCUs / {1} Boards', mcuNames.length, boardItems.length));
 }
 
 function buildCubeMxMcuDbCandidates(configuredPath: string): string[] {
@@ -2282,7 +2282,7 @@ async function scanCubeMxBoardProfiles(root: vscode.Uri): Promise<CubeMxBoardCat
 				id,
 				name: boardStem,
 				mcu,
-				description: `CubeMX Board DB 由来 (${boardName})`
+				description: `From CubeMX Board DB (${boardName})`
 			});
 		}
 	}
@@ -2308,7 +2308,7 @@ async function loadMcuPinDefinitions(mcuName?: string): Promise<Array<{ pin: str
 	}
 }
 
-/** CubeMX MCU DBの db/mcu フォルダから、対象MCUに対応するXMLファイルを検索する */
+/** Search the db/mcu folder of CubeMX MCU DB for the XML file matching the target MCU */
 async function findCubeMxMcuXmlFile(mcuName: string): Promise<vscode.Uri | undefined> {
 	const configured = vscode.workspace.getConfiguration('stm32').get<string>('cubemx.path', '').trim();
 	for (const candidate of buildCubeMxMcuDbCandidates(configured)) {
@@ -2328,7 +2328,7 @@ async function findCubeMxMcuXmlFile(mcuName: string): Promise<vscode.Uri | undef
 	return undefined;
 }
 
-/** "STM32F446R(C-E)Tx" のような CubeMX ファイル名パターンが指定 MCU にマッチするか */
+/** Check whether a CubeMX filename pattern like "STM32F446R(C-E)Tx" matches the given MCU name */
 function cubeMxFileNameMatchesMcu(fileName: string, mcuName: string): boolean {
 	const pattern = fileName.replace(/\(([A-Z0-9](?:-[A-Z0-9])+)\)/gi, (_, chars: string) =>
 		'[' + chars.replace(/-/g, '') + ']'
@@ -2374,7 +2374,7 @@ function inferDefaultModeFromCubeMxSignals(pinName: string, signals: string[]): 
 		return 'GPIO_Input';
 	}
 
-	return '未使用';
+	return 'Unused';
 }
 
 async function loadMcuPinsFromCubeMxXml(mcuName: string): Promise<Array<{ pin: string; mode: string }>> {
@@ -2427,7 +2427,7 @@ async function loadMcuPinsFromCubeMxXml(mcuName: string): Promise<Array<{ pin: s
 	return entries.map(e => ({ pin: e.pin, mode: e.mode }));
 }
 
-/** CubeMX MCU XML から Pin → Signal名一覧 を読み込む */
+/** Load Pin → Signal name list from CubeMX MCU XML */
 async function loadPinSignalsFromCubeMxXml(xmlUri: vscode.Uri): Promise<Map<string, string[]>> {
 	const result = new Map<string, string[]>();
 	let text = '';
@@ -2801,7 +2801,7 @@ async function getPinModeGroupsForPin(mcuName: string | undefined, pinName: stri
 	const groups: Record<string, string[]> = {};
 	for (const mode of values) {
 		const upper = mode.toUpperCase();
-		let group = 'その他';
+		let group = 'Other';
 		if (upper.startsWith('RESET_STATE') || upper.startsWith('GPIO')) { group = 'GPIO'; }
 		else if (upper.startsWith('USART') || upper.startsWith('UART') || upper.startsWith('LPUART')) { group = 'UART/USART'; }
 		else if (upper.startsWith('I2C') || upper.startsWith('FMPI2C')) { group = 'I2C'; }
@@ -2829,7 +2829,7 @@ async function getPinModeGroupsForPin(mcuName: string | undefined, pinName: stri
 
 async function openPinVisualizer(): Promise<void> {
 	const iocUri = await findIocFile();
-	const panel = vscode.window.createWebviewPanel('stm32ux.pinVisualizer', 'STM32 ピンビジュアライザ', vscode.ViewColumn.Active, { enableScripts: true });
+	const panel = vscode.window.createWebviewPanel('stm32ux.pinVisualizer', 'STM32 Pin Visualizer', vscode.ViewColumn.Active, { enableScripts: true });
 	let panelDetectedMcu: string | undefined;
 	let panelFixedPins = new Set<string>();
 	const render = async (): Promise<void> => {
@@ -2863,7 +2863,7 @@ async function openPinVisualizer(): Promise<void> {
 				const totalPins = getPackagePinCount(text, detectedMcu);
 				pins = buildFullPackagePins(configuredPins, totalPins);
 			}
-			panel.title = `STM32 ピンビジュアライザ — ${detectedMcu ?? 'STM32'} (${pins.length} pin)`;
+			panel.title = `STM32 Pin Visualizer — ${detectedMcu ?? 'STM32'} (${pins.length} pin)`;
 			panelDetectedMcu = detectedMcu;
 		} else {
 			// No .ioc: recover current pin modes from generated sources (gpio.c/main.h) if possible.
@@ -2876,18 +2876,18 @@ async function openPinVisualizer(): Promise<void> {
 						pin: p.pin,
 						mode: configMap.get(p.pin.toUpperCase()) ?? p.mode,
 					}));
-					panel.title = `STM32 ピンビジュアライザ — 生成コード復元 ${generatedMcu ? ('(' + generatedMcu + ')') : ''} (${pins.length} pin)`;
+					panel.title = `STM32 Pin Visualizer — Restored from generated code ${generatedMcu ? ('(' + generatedMcu + ')') : ''} (${pins.length} pin)`;
 					panelDetectedMcu = generatedMcu;
 				} else {
 					pins = generatedConfiguredPins;
-					panel.title = `STM32 ピンビジュアライザ — 生成コード復元 (${pins.length} pin)`;
+					panel.title = `STM32 Pin Visualizer — Restored from generated code (${pins.length} pin)`;
 					panelDetectedMcu = undefined;
 				}
 			} else {
 				// No .ioc and no generated sources: use default MCU baseline.
 				const fallback = await loadMcuPackagePins();
 				pins = fallback.length > 0 ? fallback : buildFullPackagePins([], 64);
-				panel.title = 'STM32 ピンビジュアライザ — STM32F446RE (デフォルト)';
+				panel.title = 'STM32 Pin Visualizer — STM32F446RE (default)';
 				panelDetectedMcu = 'STM32F446RETx';
 			}
 		}
@@ -2902,20 +2902,20 @@ async function openPinVisualizer(): Promise<void> {
 
 		if (message.type === 'editPin' && typeof message.pin === 'string') {
 			if (panelFixedPins.has(message.pin.toUpperCase())) {
-				vscode.window.showWarningMessage(vscode.l10n.t('{0} はボード固定ピンのため編集できません。', message.pin));
+				vscode.window.showWarningMessage(vscode.l10n.t('{0} is a board-fixed pin and cannot be edited.', message.pin));
 				return;
 			}
 			if (!activeIocUri) {
 				const wsFolder = vscode.workspace.workspaceFolders?.[0];
 				if (!wsFolder) {
-					vscode.window.showWarningMessage(vscode.l10n.t('ワークスペースが開かれていません。フォルダを開いてから再試行してください。'));
+					vscode.window.showWarningMessage(vscode.l10n.t('No workspace open. Open a folder first then retry.'));
 					return;
 				}
 				const choice = await vscode.window.showInformationMessage(
-					vscode.l10n.t('.ioc ファイルが見つかりません。STM32F446RE の初期設定で新規作成しますか？'),
-					vscode.l10n.t('作成する'), vscode.l10n.t('キャンセル')
+					vscode.l10n.t('.ioc file not found. Create a new one with STM32F446RE defaults?'),
+					vscode.l10n.t('Create'), vscode.l10n.t('Cancel')
 				);
-				if (choice !== vscode.l10n.t('作成する')) { return; }
+				if (choice !== vscode.l10n.t('Create')) { return; }
 				const newIocUri = vscode.Uri.joinPath(wsFolder.uri, 'project.ioc');
 				const mcuPins = await loadMcuPackagePins();
 				const configPins = mcuPins.filter(p => p.mode && p.mode !== 'Reset_State' && p.mode !== 'Analog' && !p.mode.startsWith('__'));
@@ -2950,7 +2950,7 @@ async function openPinVisualizer(): Promise<void> {
 				];
 				await writeTextFile(newIocUri, lines.join('\n') + '\n');
 				activeIocUri = newIocUri;
-				vscode.window.showInformationMessage(vscode.l10n.t('project.ioc を作成しました。'));
+				vscode.window.showInformationMessage(vscode.l10n.t('project.ioc created.'));
 			}
 			// Send mode list + current mode back to webview for the in-webview dialog
 			let currentMode = '';
@@ -2971,18 +2971,18 @@ async function openPinVisualizer(): Promise<void> {
 		if (message.type === 'applyPin' && typeof message.pin === 'string' && typeof message.mode === 'string') {
 			if (!activeIocUri) { return; }
 			if (panelFixedPins.has(message.pin.toUpperCase())) {
-				vscode.window.showWarningMessage(vscode.l10n.t('{0} はボード固定ピンのため変更できません。', message.pin));
+				vscode.window.showWarningMessage(vscode.l10n.t('{0} is a board-fixed pin and cannot be changed.', message.pin));
 				return;
 			}
 			const allowedGroups = await getPinModeGroupsForPin(panelDetectedMcu, message.pin, message.mode);
 			const allowedModes = Object.values(allowedGroups).flat();
 			if (!allowedModes.includes(message.mode)) {
-				vscode.window.showErrorMessage(vscode.l10n.t('{0} は {1} で選択できないモードです。', message.pin, message.mode));
+				vscode.window.showErrorMessage(vscode.l10n.t('{0} cannot use mode {1}.', message.pin, message.mode));
 				return;
 			}
 			const updated = await updateIocPinMode(activeIocUri, message.pin, message.mode);
 			if (updated) {
-				vscode.window.showInformationMessage(vscode.l10n.t('{0} を {1} に更新しました。', message.pin, message.mode));
+				vscode.window.showInformationMessage(vscode.l10n.t('Updated {0} to {1}.', message.pin, message.mode));
 				await render();
 			}
 			return;
@@ -2990,20 +2990,20 @@ async function openPinVisualizer(): Promise<void> {
 
 		if (message.type === 'addPin' && typeof message.pin === 'string' && typeof message.mode === 'string') {
 			if (panelFixedPins.has(message.pin.toUpperCase())) {
-				vscode.window.showWarningMessage(vscode.l10n.t('{0} はボード固定ピンのため追加/変更できません。', message.pin));
+				vscode.window.showWarningMessage(vscode.l10n.t('{0} is a board-fixed pin and cannot be added or changed.', message.pin));
 				return;
 			}
 			if (!activeIocUri) {
 				const wsFolder = vscode.workspace.workspaceFolders?.[0];
 				if (!wsFolder) {
-					vscode.window.showWarningMessage(vscode.l10n.t('ワークスペースが開かれていません。'));
+					vscode.window.showWarningMessage(vscode.l10n.t('No workspace open.'));
 					return;
 				}
 				const choice = await vscode.window.showInformationMessage(
-					vscode.l10n.t('.ioc ファイルが見つかりません。新規作成しますか？'),
-					vscode.l10n.t('作成する'), vscode.l10n.t('キャンセル')
+					vscode.l10n.t('.ioc file not found. Create a new one?'),
+					vscode.l10n.t('Create'), vscode.l10n.t('Cancel')
 				);
-				if (choice !== vscode.l10n.t('作成する')) { return; }
+				if (choice !== vscode.l10n.t('Create')) { return; }
 				const newIocUri = vscode.Uri.joinPath(wsFolder.uri, 'project.ioc');
 				const mcuPins = await loadMcuPackagePins();
 				const cfgPins = mcuPins.filter(p => p.mode && p.mode !== 'Reset_State' && p.mode !== 'Analog' && !p.mode.startsWith('__'));
@@ -3042,11 +3042,11 @@ async function openPinVisualizer(): Promise<void> {
 			const allowedGroups = await getPinModeGroupsForPin(panelDetectedMcu, message.pin, message.mode);
 			const allowedModes = Object.values(allowedGroups).flat();
 			if (!allowedModes.includes(message.mode)) {
-				vscode.window.showErrorMessage(vscode.l10n.t('{0} では {1} は選択できません。', message.pin, message.mode));
+				vscode.window.showErrorMessage(vscode.l10n.t('{0} does not support mode {1}.', message.pin, message.mode));
 				return;
 			}
 			await updateIocPinMode(activeIocUri, message.pin, message.mode);
-			vscode.window.showInformationMessage(vscode.l10n.t('{0} を {1} として追加しました。', message.pin, message.mode));
+			vscode.window.showInformationMessage(vscode.l10n.t('Added {0} as {1}.', message.pin, message.mode));
 			await render();
 			return;
 		}
@@ -3060,7 +3060,7 @@ async function openPinVisualizer(): Promise<void> {
 		// Apply a single key=value line to the .ioc file
 		if (message.type === 'applyIocLine' && typeof message.key === 'string' && typeof message.value === 'string') {
 			if (!activeIocUri) {
-				vscode.window.showWarningMessage(vscode.l10n.t('.ioc ファイルが開かれていません。'));
+				vscode.window.showWarningMessage(vscode.l10n.t('.ioc file is not open.'));
 				return;
 			}
 			await updateIocKeyValue(activeIocUri, message.key, message.value);
@@ -3071,7 +3071,7 @@ async function openPinVisualizer(): Promise<void> {
 		// Apply multiple key=value lines at once (batch settings save)
 		if (message.type === 'applyIocLines' && Array.isArray(message.lines)) {
 			if (!activeIocUri) {
-				vscode.window.showWarningMessage(vscode.l10n.t('.ioc ファイルが開かれていません。'));
+				vscode.window.showWarningMessage(vscode.l10n.t('.ioc file is not open.'));
 				return;
 			}
 			const validLines = (message.lines as unknown[]).filter(
@@ -3081,7 +3081,7 @@ async function openPinVisualizer(): Promise<void> {
 			for (const { key, value } of validLines) {
 				await updateIocKeyValue(activeIocUri, key, value);
 			}
-			vscode.window.showInformationMessage(vscode.l10n.t('設定を {0} 件保存しました。', validLines.length));
+			vscode.window.showInformationMessage(vscode.l10n.t('Saved {0} setting(s).', validLines.length));
 			await render();
 			return;
 		}
@@ -3104,7 +3104,7 @@ async function createProjectFromTemplate(templateName: string): Promise<void> {
 		canSelectMany: false,
 		canSelectFiles: false,
 		canSelectFolders: true,
-		openLabel: vscode.l10n.t('作成先フォルダを選択')
+		openLabel: vscode.l10n.t('Select destination folder')
 	});
 	if (!folderPick || folderPick.length === 0) {
 		return;
@@ -3112,9 +3112,9 @@ async function createProjectFromTemplate(templateName: string): Promise<void> {
 
 	const suggested = sanitizeProjectName(template.name);
 	const projectName = (await vscode.window.showInputBox({
-		title: vscode.l10n.t('プロジェクト名'),
+		title: vscode.l10n.t('Project Name'),
 		value: suggested,
-		prompt: vscode.l10n.t('英数字とハイフン/アンダースコア推奨')
+		prompt: vscode.l10n.t('Alphanumerics, hyphens, and underscores recommended')
 	}))?.trim();
 	if (!projectName) {
 		return;
@@ -3151,10 +3151,10 @@ async function createProjectFromTemplate(templateName: string): Promise<void> {
 	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'c_cpp_properties.json'), cPropertiesJson);
 
 	const openAction = await vscode.window.showInformationMessage(
-		vscode.l10n.t('テンプレートからプロジェクトを生成しました: {0}', projectName),
-		vscode.l10n.t('フォルダを開く')
+		vscode.l10n.t('Project generated from template: {0}', projectName),
+		vscode.l10n.t('Open Folder')
 	);
-	if (openAction === vscode.l10n.t('フォルダを開く')) {
+	if (openAction === vscode.l10n.t('Open Folder')) {
 		await vscode.commands.executeCommand('vscode.openFolder', projectUri, false);
 	}
 }
@@ -3164,7 +3164,7 @@ async function createProjectFromBoardConfigurator(profile: BoardProfile, config:
 		canSelectMany: false,
 		canSelectFiles: false,
 		canSelectFolders: true,
-		openLabel: vscode.l10n.t('作成先フォルダを選択')
+		openLabel: vscode.l10n.t('Select destination folder')
 	});
 	if (!folderPick || folderPick.length === 0) {
 		return;
@@ -3187,11 +3187,11 @@ async function createProjectFromBoardConfigurator(profile: BoardProfile, config:
 	const mergedPins = mergePins(mcuPins, profile.defaultPins);
 	const template: TemplateDefinition = {
 		name: profile.name,
-		category: 'ボード設定スタジオ',
+		category: 'Board Config Studio',
 		mcu: profile.mcu,
 		pinModes: mergedPins,
 		userCodeLines: [
-			'/* TovaIDE-STM ボード設定スタジオで生成 */',
+			'/* Generated by TovaIDE-STM Board Config Studio */',
 			'HAL_Delay(100);'
 		]
 	};
@@ -3215,16 +3215,16 @@ async function createProjectFromBoardConfigurator(profile: BoardProfile, config:
 	await writeTextFile(vscode.Uri.joinPath(projectUri, '.vscode', 'c_cpp_properties.json'), cPropertiesJson);
 
 	const openAction = await vscode.window.showInformationMessage(
-		vscode.l10n.t('ボード設定スタジオでプロジェクトを生成しました: {0}', projectName),
-		vscode.l10n.t('フォルダを開く'),
-		vscode.l10n.t('このままピン設定を開く')
+		vscode.l10n.t('Project generated from Board Config Studio: {0}', projectName),
+		vscode.l10n.t('Open Folder'),
+		vscode.l10n.t('Open Pin Config')
 	);
-	if (openAction === vscode.l10n.t('フォルダを開く')) {
+	if (openAction === vscode.l10n.t('Open Folder')) {
 		await vscode.commands.executeCommand('vscode.openFolder', projectUri, false);
 		return;
 	}
 
-	if (config.openPinGui || openAction === vscode.l10n.t('このままピン設定を開く')) {
+	if (config.openPinGui || openAction === vscode.l10n.t('Open Pin Config')) {
 		await vscode.workspace.updateWorkspaceFolders(0, vscode.workspace.workspaceFolders?.length ?? 0, { uri: projectUri });
 		await vscode.commands.executeCommand('stm32ux.openPinVisualizer');
 	}
@@ -3321,11 +3321,11 @@ async function confirmCreateProject(projectUri: vscode.Uri): Promise<boolean> {
 		return true;
 	}
 	const choice = await vscode.window.showWarningMessage(
-		vscode.l10n.t('作成先フォルダに既存ファイルがあります。上書きして続行しますか？'),
+		vscode.l10n.t('Destination folder already has files. Overwrite and continue?'),
 		{ modal: true },
-		vscode.l10n.t('続行')
+		vscode.l10n.t('Continue')
 	);
-	return choice === vscode.l10n.t('続行');
+	return choice === vscode.l10n.t('Continue');
 }
 
 async function directoryExists(uri: vscode.Uri): Promise<boolean> {
@@ -3339,12 +3339,12 @@ async function directoryExists(uri: vscode.Uri): Promise<boolean> {
 
 const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 	'GPIO Blinky (F4)': {
-		name: 'GPIO Blinky (F4)', category: '初級', mcu: 'STM32F446RETx',
+		name: 'GPIO Blinky (F4)', category: 'Beginner', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
 		userCodeLines: ['HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);', 'HAL_Delay(500);']
 	},
 	'UART Hello (F4)': {
-		name: 'UART Hello (F4)', category: '初級', mcu: 'STM32F446RETx',
+		name: 'UART Hello (F4)', category: 'Beginner', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }],
 		userCodeLines: [
 			'uint8_t msg[] = "Hello STM32\\r\\n";',
@@ -3353,7 +3353,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'EXTI Button IRQ': {
-		name: 'EXTI Button IRQ', category: '初級', mcu: 'STM32F446RETx',
+		name: 'EXTI Button IRQ', category: 'Beginner', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }, { pin: 'PC13', mode: 'GPIO_EXTI13' }],
 		userCodeLines: [
 			'/* PA5 LED toggled in HAL_GPIO_EXTI_Callback */',
@@ -3361,7 +3361,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'ADC Polling': {
-		name: 'ADC Polling', category: '初級', mcu: 'STM32F446RETx',
+		name: 'ADC Polling', category: 'Beginner', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA0', mode: 'ADC1_IN0' }],
 		userCodeLines: [
 			'HAL_ADC_Start(&hadc1);',
@@ -3374,7 +3374,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'DAC Wave Output': {
-		name: 'DAC Wave Output', category: '初級', mcu: 'STM32F446RETx',
+		name: 'DAC Wave Output', category: 'Beginner', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA4', mode: 'DAC1_OUT1' }],
 		userCodeLines: [
 			'static uint16_t sine[64] = { 2048,2248,2446,2637,2820,2991,3147,3285,',
@@ -3389,7 +3389,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'I2C Sensor Read (F4)': {
-		name: 'I2C Sensor Read (F4)', category: '中級', mcu: 'STM32F446RETx',
+		name: 'I2C Sensor Read (F4)', category: 'Intermediate', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PB6', mode: 'I2C1_SCL' }, { pin: 'PB7', mode: 'I2C1_SDA' }],
 		userCodeLines: [
 			'uint8_t buf[2];',
@@ -3399,7 +3399,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'SPI IMU (F4)': {
-		name: 'SPI IMU (F4)', category: '中級', mcu: 'STM32F446RETx',
+		name: 'SPI IMU (F4)', category: 'Intermediate', mcu: 'STM32F446RETx',
 		pinModes: [
 			{ pin: 'PA5', mode: 'SPI1_SCK' }, { pin: 'PA6', mode: 'SPI1_MISO' },
 			{ pin: 'PA7', mode: 'SPI1_MOSI' }, { pin: 'PB6', mode: 'GPIO_Output' }
@@ -3414,7 +3414,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Timer PWM Basic': {
-		name: 'Timer PWM Basic', category: '中級', mcu: 'STM32F446RETx',
+		name: 'Timer PWM Basic', category: 'Intermediate', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA8', mode: 'TIM1_CH1' }],
 		userCodeLines: [
 			'HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);',
@@ -3425,7 +3425,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'ADC + DMA': {
-		name: 'ADC + DMA', category: '中級', mcu: 'STM32F446RETx',
+		name: 'ADC + DMA', category: 'Intermediate', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA0', mode: 'ADC1_IN0' }, { pin: 'PA1', mode: 'ADC1_IN1' }],
 		userCodeLines: [
 			'uint32_t adcBuf[2];',
@@ -3435,7 +3435,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'CAN Loopback': {
-		name: 'CAN Loopback', category: '中級', mcu: 'STM32F446RETx',
+		name: 'CAN Loopback', category: 'Intermediate', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA11', mode: 'CAN1_RX' }, { pin: 'PA12', mode: 'CAN1_TX' }],
 		userCodeLines: [
 			'CAN_TxHeaderTypeDef txHdr = { .StdId=0x7FF, .DLC=1, .RTR=CAN_RTR_DATA, .IDE=CAN_ID_STD };',
@@ -3446,7 +3446,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'RTC Calendar': {
-		name: 'RTC Calendar', category: '中級', mcu: 'STM32F446RETx',
+		name: 'RTC Calendar', category: 'Intermediate', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'RTC_TimeTypeDef t;',
@@ -3458,7 +3458,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'USB CDC Device': {
-		name: 'USB CDC Device', category: '上級', mcu: 'STM32F446RETx',
+		name: 'USB CDC Device', category: 'Advanced', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'extern USBD_HandleTypeDef hUsbDeviceFS;',
@@ -3468,7 +3468,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'USB HID Device': {
-		name: 'USB HID Device', category: '上級', mcu: 'STM32F446RETx',
+		name: 'USB HID Device', category: 'Advanced', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'extern USBD_HandleTypeDef hUsbDeviceFS;',
@@ -3478,7 +3478,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'FreeRTOS 2 Tasks': {
-		name: 'FreeRTOS 2 Tasks', category: '上級', mcu: 'STM32F446RETx',
+		name: 'FreeRTOS 2 Tasks', category: 'Advanced', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
 		userCodeLines: [
 			'/* Tasks defined in freertos.c — see Task1 / Task2 */',
@@ -3486,7 +3486,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'FreeRTOS Queue': {
-		name: 'FreeRTOS Queue', category: '上級', mcu: 'STM32F446RETx',
+		name: 'FreeRTOS Queue', category: 'Advanced', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'/* Producer/consumer pattern via osMessageQueuePut / Get */',
@@ -3494,7 +3494,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'FreeRTOS Mutex': {
-		name: 'FreeRTOS Mutex', category: '上級', mcu: 'STM32F446RETx',
+		name: 'FreeRTOS Mutex', category: 'Advanced', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'/* Shared resource protected via osMutexAcquire / Release */',
@@ -3502,7 +3502,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'LwIP TCP Echo': {
-		name: 'LwIP TCP Echo', category: '上級', mcu: 'STM32F446RETx',
+		name: 'LwIP TCP Echo', category: 'Advanced', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'/* LwIP raw TCP echo server — see tcp_echoserver.c */',
@@ -3511,7 +3511,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'LwIP HTTP Basic': {
-		name: 'LwIP HTTP Basic', category: '上級', mcu: 'STM32F446RETx',
+		name: 'LwIP HTTP Basic', category: 'Advanced', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'/* Basic HTTP/1.0 server using LwIP httpd — see httpd.c */',
@@ -3520,7 +3520,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'FatFS SD Card': {
-		name: 'FatFS SD Card', category: 'ストレージ', mcu: 'STM32F446RETx',
+		name: 'FatFS SD Card', category: 'Storage', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'FATFS fs; FIL fil; FRESULT res;',
@@ -3532,7 +3532,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'QSPI External Flash': {
-		name: 'QSPI External Flash', category: 'ストレージ', mcu: 'STM32F446RETx',
+		name: 'QSPI External Flash', category: 'Storage', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'/* Read ID via QSPI — configure QSPI peripheral in CubeMX */',
@@ -3545,7 +3545,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Bootloader UART': {
-		name: 'Bootloader UART', category: 'ストレージ', mcu: 'STM32F446RETx',
+		name: 'Bootloader UART', category: 'Storage', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }],
 		userCodeLines: [
 			'/* Simple UART bootloader stub — jumps to app at 0x08008000 */',
@@ -3555,7 +3555,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Low Power STOP Mode': {
-		name: 'Low Power STOP Mode', category: '電源', mcu: 'STM32F446RETx',
+		name: 'Low Power STOP Mode', category: 'Power', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'HAL_SuspendTick();',
@@ -3565,7 +3565,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Watchdog IWDG': {
-		name: 'Watchdog IWDG', category: '電源', mcu: 'STM32F446RETx',
+		name: 'Watchdog IWDG', category: 'Power', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'HAL_IWDG_Refresh(&hiwdg);',
@@ -3573,7 +3573,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Crypto AES (L5)': {
-		name: 'Crypto AES (L5)', category: '電源', mcu: 'STM32L552ZETx',
+		name: 'Crypto AES (L5)', category: 'Power', mcu: 'STM32L552ZETx',
 		pinModes: [],
 		userCodeLines: [
 			'uint8_t key[16] = { 0x00 };',
@@ -3586,7 +3586,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'CMSIS-DSP FIR': {
-		name: 'CMSIS-DSP FIR', category: '電源', mcu: 'STM32F446RETx',
+		name: 'CMSIS-DSP FIR', category: 'Power', mcu: 'STM32F446RETx',
 		pinModes: [],
 		userCodeLines: [
 			'#include "arm_math.h"',
@@ -3597,7 +3597,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Modbus RTU Slave': {
-		name: 'Modbus RTU Slave', category: '産業', mcu: 'STM32F446RETx',
+		name: 'Modbus RTU Slave', category: 'Industrial', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA2', mode: 'USART2_TX' }, { pin: 'PA3', mode: 'USART2_RX' }],
 		userCodeLines: [
 			'/* Modbus RTU via RS-485 — add freemodbus or similar library */',
@@ -3606,7 +3606,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Motor PWM + Encoder': {
-		name: 'Motor PWM + Encoder', category: '産業', mcu: 'STM32F446RETx',
+		name: 'Motor PWM + Encoder', category: 'Industrial', mcu: 'STM32F446RETx',
 		pinModes: [
 			{ pin: 'PA8', mode: 'TIM1_CH1' }, { pin: 'PB4', mode: 'TIM3_CH1' }, { pin: 'PB5', mode: 'TIM3_CH2' }
 		],
@@ -3619,7 +3619,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Hall Sensor Capture': {
-		name: 'Hall Sensor Capture', category: '産業', mcu: 'STM32F446RETx',
+		name: 'Hall Sensor Capture', category: 'Industrial', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA8', mode: 'TIM1_CH1' }],
 		userCodeLines: [
 			'HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_1);',
@@ -3628,7 +3628,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'BLE UART Bridge (WB)': {
-		name: 'BLE UART Bridge (WB)', category: 'ワイヤレス', mcu: 'STM32WB55RGVx',
+		name: 'BLE UART Bridge (WB)', category: 'Wireless', mcu: 'STM32WB55RGVx',
 		pinModes: [{ pin: 'PA2', mode: 'USART1_TX' }, { pin: 'PA3', mode: 'USART1_RX' }],
 		userCodeLines: [
 			'/* BLE UART transparent bridge — see STM32WB BLE UART example */',
@@ -3637,7 +3637,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 		]
 	},
 	'Multi-board Workspace Sample': {
-		name: 'Multi-board Workspace Sample', category: 'ワイヤレス', mcu: 'STM32F446RETx',
+		name: 'Multi-board Workspace Sample', category: 'Wireless', mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
 		userCodeLines: ['/* Multi-board sample — add second board folder to workspace */', 'HAL_Delay(100);']
 	},
@@ -3760,7 +3760,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
 function getTemplateDefinition(templateName: string): TemplateDefinition {
 	return TEMPLATE_DEFINITIONS[templateName] ?? {
 		name: templateName,
-		category: '標準',
+		category: 'Standard',
 		mcu: 'STM32F446RETx',
 		pinModes: [{ pin: 'PA5', mode: 'GPIO_Output' }],
 		userCodeLines: ['/* TODO: template logic */', 'HAL_Delay(100);']
@@ -4277,7 +4277,7 @@ function normalizeGeneratedGpioMode(rawMode: string): string {
 	return 'GPIO_Input';
 }
 
-/** パッケージのピン総数を .ioc テキストまたは MCU 名から推定する */
+/** Estimate total pin count from .ioc text or MCU name */
 function getPackagePinCount(iocText: string, mcuName: string): number {
 	const pkgMatch = iocText.match(/Mcu\.Package\s*=\s*(\w+)/);
 	const pkg = (pkgMatch?.[1] ?? '').toUpperCase();
@@ -4297,7 +4297,7 @@ function getPackagePinCount(iocText: string, mcuName: string): number {
 	return 64;
 }
 
-/** パッケージ全ピンリストを生成し .ioc 設定済みピンをマージする */
+/** Build full package pin list and merge with .ioc configured pins */
 function buildFullPackagePins(
 	configured: Array<{ pin: string; mode: string }>,
 	totalPins: number,
@@ -4315,7 +4315,7 @@ function buildFullPackagePins(
 	for (const [bank, count, start] of bankSizes) {
 		for (let i = 0; i < count; i++) {
 			const pinName = `P${bank}${start + i}`;
-			all.push({ pin: pinName, mode: configMap.get(pinName.toUpperCase()) ?? '未使用' });
+			all.push({ pin: pinName, mode: configMap.get(pinName.toUpperCase()) ?? 'Unused' });
 		}
 	}
 
@@ -4335,7 +4335,7 @@ function buildFullPackagePins(
 	}
 
 	while (all.length < totalPins) {
-		all.push({ pin: `PIN${all.length + 1}`, mode: '未使用' });
+		all.push({ pin: `PIN${all.length + 1}`, mode: 'Unused' });
 	}
 
 	if (all.length > totalPins) {
@@ -4348,15 +4348,15 @@ function buildFullPackagePins(
 function getErrorHint(message: string): string {
 	const normalized = message.toLowerCase();
 	if (normalized.includes('undeclared')) {
-		return '未宣言シンボルです。ioc設定で対象ペリフェラルを有効化するか、変数名の誤字を確認してください。';
+		return 'Undeclared symbol. Enable the target peripheral in the .ioc config or check for typos in the variable name.';
 	}
 	if (normalized.includes('no such file')) {
-		return 'ヘッダまたはソースのインクルードパス不整合です。CubeIDE移行直後は includePath と生成コードの場所を確認してください。';
+		return 'Header or source include path mismatch. After migrating from CubeIDE check includePath and the generated code location.';
 	}
 	if (normalized.includes('undefined reference')) {
-		return 'リンクエラーです。ソース追加漏れ、関数名不一致、またはライブラリ未リンクの可能性があります。';
+		return 'Linker error. A source file may be missing, function signature may not match, or a library is not linked.';
 	}
-	return 'エラー内容を確認し、該当行と直前の変更を比較してください。必要であれば STM32 AI で /fix を実行します。';
+	return 'Review the error, compare the affected line with your last change. Run /fix in STM32 AI if needed.';
 }
 
 interface InferredToolPaths {
@@ -4444,278 +4444,278 @@ function execFileAsync(command: string, args: string[], cwd: string | undefined)
 function getUxI18n() {
 	return {
 		// Common
-		cancel: vscode.l10n.t('キャンセル'),
-		save: vscode.l10n.t('保存'),
-		open: vscode.l10n.t('開く'),
-		close: vscode.l10n.t('閉じる'),
-		start: vscode.l10n.t('開始'),
-		apply: vscode.l10n.t('適用'),
-		add: vscode.l10n.t('追加'),
-		del: vscode.l10n.t('削除'),
-		none: vscode.l10n.t('なし'),
-		unused: vscode.l10n.t('未使用'),
+		cancel: vscode.l10n.t('Cancel'),
+		save: vscode.l10n.t('Save'),
+		open: vscode.l10n.t('Open'),
+		close: vscode.l10n.t('Close'),
+		start: vscode.l10n.t('Start'),
+		apply: vscode.l10n.t('Apply'),
+		add: vscode.l10n.t('Add'),
+		del: vscode.l10n.t('Delete'),
+		none: vscode.l10n.t('None'),
+		unused: vscode.l10n.t('Unused'),
 		// Onboarding / Dashboard
-		dashboardTitle: vscode.l10n.t('TovaIDE-STM ダッシュボード'),
-		dashboardSub: vscode.l10n.t('CubeIDEの実運用フローに合わせて、作成・設定・ビルド・書込み・MCP操作をここから開始します。'),
-		workflowStudio: vscode.l10n.t('ワークフロースタジオ'),
-		workflowStudioMeta: vscode.l10n.t('作成/コーディング/設定'),
-		boardStudio: vscode.l10n.t('ボード設定スタジオ'),
-		boardStudioMeta: vscode.l10n.t('CubeMX不要の初期作成'),
-		cubemxSync: vscode.l10n.t('CubeMXカタログ同期'),
-		cubemxSyncMeta: vscode.l10n.t('5000+ MCU取り込み'),
-		pinVisualizer: vscode.l10n.t('ピンビジュアライザ'),
-		pinVisualizerMeta: vscode.l10n.t('チップ図とピン編集'),
-		peripheralWorkbench: vscode.l10n.t('ペリフェラルワークベンチ'),
-		peripheralWorkbenchMeta: vscode.l10n.t('PWM/UART/I2C/サーボ'),
-		svdRefresh: vscode.l10n.t('SVDレジスタ表示を更新'),
-		svdRefreshMeta: vscode.l10n.t('フォールバック含め表示'),
-		buildDebug: vscode.l10n.t('Debugビルド'),
-		buildDebugMeta: vscode.l10n.t('エラー位置へ即移動'),
-		flash: vscode.l10n.t('書込み'),
+		dashboardTitle: vscode.l10n.t('TovaIDE-STM Dashboard'),
+		dashboardSub: vscode.l10n.t('Start here to create, configure, build, flash, and control via MCP.'),
+		workflowStudio: vscode.l10n.t('Workflow Studio'),
+		workflowStudioMeta: vscode.l10n.t('Create / Code / Configure'),
+		boardStudio: vscode.l10n.t('Board Config Studio'),
+		boardStudioMeta: vscode.l10n.t('Initial setup without CubeMX'),
+		cubemxSync: vscode.l10n.t('CubeMX Catalog Sync'),
+		cubemxSyncMeta: vscode.l10n.t('Import 5000+ MCUs'),
+		pinVisualizer: vscode.l10n.t('Pin Visualizer'),
+		pinVisualizerMeta: vscode.l10n.t('Chip diagram and pin editor'),
+		peripheralWorkbench: vscode.l10n.t('Peripheral Workbench'),
+		peripheralWorkbenchMeta: vscode.l10n.t('PWM / UART / I2C / Servo'),
+		svdRefresh: vscode.l10n.t('Refresh SVD Register View'),
+		svdRefreshMeta: vscode.l10n.t('Show with fallback'),
+		buildDebug: vscode.l10n.t('Debug Build'),
+		buildDebugMeta: vscode.l10n.t('Jump to error location'),
+		flash: vscode.l10n.t('Flash'),
 		flashMeta: vscode.l10n.t('STM32_Programmer_CLI'),
-		debugStart: vscode.l10n.t('デバッグ開始'),
+		debugStart: vscode.l10n.t('Start Debug'),
 		debugStartMeta: vscode.l10n.t('ST-LINK GDB Server'),
-		collabPanel: vscode.l10n.t('共同作業パネル'),
-		collabPanelMeta: vscode.l10n.t('LAN/WS/Git共有'),
-		mcpDesk: vscode.l10n.t('MCPオペレーションデスク'),
-		mcpDeskMeta: vscode.l10n.t('全操作のRPC化'),
+		collabPanel: vscode.l10n.t('Collaboration Panel'),
+		collabPanelMeta: vscode.l10n.t('LAN / WS / Git sharing'),
+		mcpDesk: vscode.l10n.t('MCP Operation Desk'),
+		mcpDeskMeta: vscode.l10n.t('All operations as RPC'),
 		// MCP Desk
-		mcpDeskTitle: vscode.l10n.t('STM32 MCP オペレーションデスク'),
-		mcpDeskSub: vscode.l10n.t('ここから起動する操作は、同じ内容を MCP JSON-RPC でも呼べるように実装されています。'),
-		mcpStatusChecking: vscode.l10n.t('MCP 状態確認中...'),
+		mcpDeskTitle: vscode.l10n.t('STM32 MCP Operation Desk'),
+		mcpDeskSub: vscode.l10n.t('Operations here are also callable as MCP JSON-RPC.'),
+		mcpStatusChecking: vscode.l10n.t('Checking MCP status...'),
 		// Workflow Studio
-		workflowStudioTitle: vscode.l10n.t('STM32 ワークフロースタジオ'),
-		workflowStudioSub: vscode.l10n.t('作業内容に合わせてモードを選択してください。'),
+		workflowStudioTitle: vscode.l10n.t('STM32 Workflow Studio'),
+		workflowStudioSub: vscode.l10n.t('Select a mode to match your current task.'),
 		// Welcome
-		welcomeTitle: vscode.l10n.t('TovaIDE-STM ウェルカム'),
-		welcomeSub: vscode.l10n.t('最初に使う操作をテキスト中心でまとめています。必要な項目を選択して開発を開始してください。'),
-		tutorial: vscode.l10n.t('チュートリアル'),
-		tutorialDesc: vscode.l10n.t('Lチカの手順を順番に実行して、ビルドから書込みまで確認します。'),
-		importCubeIDE: vscode.l10n.t('CubeIDE から移行'),
-		importCubeIDEDesc: vscode.l10n.t('既存の STM32CubeIDE プロジェクトをインポートします。'),
-		templateCreate: vscode.l10n.t('テンプレート作成'),
-		templateCreateDesc: vscode.l10n.t('用途別テンプレートから新規プロジェクトを生成します。'),
-		boardConfig: vscode.l10n.t('基板設定'),
-		boardConfigDesc: vscode.l10n.t('基板を選択し、クロックやデバッグ設定を行ってプロジェクトを作成します。'),
-		workflow: vscode.l10n.t('作業フロー'),
-		workflowDesc: vscode.l10n.t('新規作成 / コーディング / 設定をモード別に起動します。'),
-		openStudio: vscode.l10n.t('スタジオを開く'),
-		syncCatalog: vscode.l10n.t('カタログ同期'),
-		peripheralImpl: vscode.l10n.t('ペリフェラル実装'),
-		peripheralImplDesc: vscode.l10n.t('PWM/UART/I2C/サーボの設定ガイドとコード雛形を生成します。'),
-		envCheck: vscode.l10n.t('環境チェック'),
-		envSettings: vscode.l10n.t('環境設定'),
-		autoErrorExplain: vscode.l10n.t('エラー自動解説'),
+		welcomeTitle: vscode.l10n.t('TovaIDE-STM Welcome'),
+		welcomeSub: vscode.l10n.t('Quick access to common operations. Select an item to start.'),
+		tutorial: vscode.l10n.t('Tutorial'),
+		tutorialDesc: vscode.l10n.t('Step through LED blink to confirm build and flash.'),
+		importCubeIDE: vscode.l10n.t('Import from CubeIDE'),
+		importCubeIDEDesc: vscode.l10n.t('Import an existing STM32CubeIDE project.'),
+		templateCreate: vscode.l10n.t('Create from Template'),
+		templateCreateDesc: vscode.l10n.t('Generate a new project from a use-case template.'),
+		boardConfig: vscode.l10n.t('Board Configuration'),
+		boardConfigDesc: vscode.l10n.t('Select a board, configure clock and debug settings, then create a project.'),
+		workflow: vscode.l10n.t('Workflow'),
+		workflowDesc: vscode.l10n.t('Launch Create / Coding / Settings modes.'),
+		openStudio: vscode.l10n.t('Open Studio'),
+		syncCatalog: vscode.l10n.t('Sync Catalog'),
+		peripheralImpl: vscode.l10n.t('Peripheral Implementation'),
+		peripheralImplDesc: vscode.l10n.t('Generate setup guides and code templates for PWM/UART/I2C/Servo.'),
+		envCheck: vscode.l10n.t('Environment Check'),
+		envSettings: vscode.l10n.t('Environment Settings'),
+		autoErrorExplain: vscode.l10n.t('Auto Error Explanation'),
 		// Tutorial
-		tutorialTitle: vscode.l10n.t('Lチカ インタラクティブチュートリアル'),
-		tutorialSub: vscode.l10n.t('STM32でLEDを点滅させる基本的な開発フローを学びます'),
-		prevStep: vscode.l10n.t('← 前へ'),
-		nextStep: vscode.l10n.t('次へ →'),
-		done: vscode.l10n.t('完了 ✓'),
-		stepActions: vscode.l10n.t('このステップで使うアクション'),
-		checkPins: vscode.l10n.t('◉ ピンを確認'),
-		runBuild: vscode.l10n.t('▶ ビルド実行'),
-		runFlash: vscode.l10n.t('⬇ 書込み実行'),
+		tutorialTitle: vscode.l10n.t('LED Blink Interactive Tutorial'),
+		tutorialSub: vscode.l10n.t('Learn the basic STM32 development flow by blinking an LED.'),
+		prevStep: vscode.l10n.t('← Prev'),
+		nextStep: vscode.l10n.t('Next →'),
+		done: vscode.l10n.t('Done ✓'),
+		stepActions: vscode.l10n.t('Actions for this step'),
+		checkPins: vscode.l10n.t('◉ Check Pins'),
+		runBuild: vscode.l10n.t('▶ Run Build'),
+		runFlash: vscode.l10n.t('⬇ Run Flash'),
 		// Template Gallery
-		templateGalleryTitle: vscode.l10n.t('テンプレートギャラリー'),
-		templateGallerySub: vscode.l10n.t('30種のプロジェクト雛形から選択してプロジェクトを作成します'),
-		searchTemplate: vscode.l10n.t('テンプレートを検索...'),
+		templateGalleryTitle: vscode.l10n.t('Template Gallery'),
+		templateGallerySub: vscode.l10n.t('Create a project by selecting from 30+ templates.'),
+		searchTemplate: vscode.l10n.t('Search templates...'),
 		// Pin Visualizer
-		pinVisualizerTitle: vscode.l10n.t('STM32 ピンビジュアライザ'),
-		noIocFile: vscode.l10n.t('.ioc ファイルなし — MCU パッケージ JSON フォールバック'),
-		filterPlaceholder: vscode.l10n.t('ピン名 / モード / LD2 / ラベルで絞込み'),
-		filterAriaLabel: vscode.l10n.t('ピン絞込み'),
-		viewToggleAriaLabel: vscode.l10n.t('表示切替'),
-		listView: vscode.l10n.t('リスト'),
-		chipView: vscode.l10n.t('チップ図'),
-		addPin: vscode.l10n.t('+ ピン追加'),
-		pinCount: vscode.l10n.t('{0} ピン'),
-		pinCountFiltered: vscode.l10n.t('{0} ピン (絞込み中)'),
-		pinClickHint: vscode.l10n.t('ピンをクリックするとモードを変更して .ioc に反映できます'),
-		colorLegend: vscode.l10n.t('カラーレジェンド'),
-		noIocOrPins: vscode.l10n.t('.ioc ファイルが見つからないか、ピン情報を解析できませんでした。'),
-		zoomIn: vscode.l10n.t('拡大 (+)'),
-		zoomOut: vscode.l10n.t('縮小 (-)'),
-		reset: vscode.l10n.t('リセット'),
-		noPins: vscode.l10n.t('ピンなし'),
+		pinVisualizerTitle: vscode.l10n.t('STM32 Pin Visualizer'),
+		noIocFile: vscode.l10n.t('No .ioc file — using MCU package JSON fallback.'),
+		filterPlaceholder: vscode.l10n.t('Filter by pin name / mode / label...'),
+		filterAriaLabel: vscode.l10n.t('Filter pins'),
+		viewToggleAriaLabel: vscode.l10n.t('Toggle view'),
+		listView: vscode.l10n.t('List'),
+		chipView: vscode.l10n.t('Chip Diagram'),
+		addPin: vscode.l10n.t('+ Add Pin'),
+		pinCount: vscode.l10n.t('{0} pins'),
+		pinCountFiltered: vscode.l10n.t('{0} pins (filtered)'),
+		pinClickHint: vscode.l10n.t('Click a pin to change its mode and sync to .ioc.'),
+		colorLegend: vscode.l10n.t('Color Legend'),
+		noIocOrPins: vscode.l10n.t('.ioc file not found or pin data could not be parsed.'),
+		zoomIn: vscode.l10n.t('Zoom In (+)'),
+		zoomOut: vscode.l10n.t('Zoom Out (-)'),
+		reset: vscode.l10n.t('Reset'),
+		noPins: vscode.l10n.t('No pins'),
 		// Pin Visualizer — Settings tabs
-		tabPins: vscode.l10n.t('📌 ピン設定'),
-		tabGpio: vscode.l10n.t('⚡ GPIO設定'),
-		tabNvic: vscode.l10n.t('🔔 NVIC設定'),
-		tabDma: vscode.l10n.t('↔ DMA設定'),
-		tabParam: vscode.l10n.t('⚙ パラメータ設定'),
-		tabConst: vscode.l10n.t('🔑 ユーザー定数'),
+		tabPins: vscode.l10n.t('📌 Pins'),
+		tabGpio: vscode.l10n.t('⚡ GPIO'),
+		tabNvic: vscode.l10n.t('🔔 NVIC'),
+		tabDma: vscode.l10n.t('↔ DMA'),
+		tabParam: vscode.l10n.t('⚙ Parameters'),
+		tabConst: vscode.l10n.t('🔑 User Constants'),
 		// GPIO panel
-		gpioDetailTitle: vscode.l10n.t('GPIO 詳細設定'),
-		gpioPin: vscode.l10n.t('ピン'),
-		gpioMode: vscode.l10n.t('割当モード'),
-		gpioUserLabel: vscode.l10n.t('ユーザーラベル'),
-		gpioLabelPlaceholder: vscode.l10n.t('ラベル'),
-		gpioEmpty: vscode.l10n.t('GPIO 設定可能なピンがありません。まずピン設定タブでピンを割り当ててください。'),
+		gpioDetailTitle: vscode.l10n.t('GPIO Detail Settings'),
+		gpioPin: vscode.l10n.t('Pin'),
+		gpioMode: vscode.l10n.t('Assigned Mode'),
+		gpioUserLabel: vscode.l10n.t('User Label'),
+		gpioLabelPlaceholder: vscode.l10n.t('Label'),
+		gpioEmpty: vscode.l10n.t('No configurable GPIO pins. Assign pins in the Pins tab first.'),
 		// NVIC panel
-		nvicTitle: vscode.l10n.t('NVIC 割込み設定'),
-		nvicIrq: vscode.l10n.t('割込み名 (IRQ)'),
-		nvicEnabled: vscode.l10n.t('有効'),
-		nvicEmpty: vscode.l10n.t('.ioc に NVIC 設定がありません。CubeMX でペリフェラルを有効化してから同期してください。'),
+		nvicTitle: vscode.l10n.t('NVIC Interrupt Settings'),
+		nvicIrq: vscode.l10n.t('Interrupt Name (IRQ)'),
+		nvicEnabled: vscode.l10n.t('Enabled'),
+		nvicEmpty: vscode.l10n.t('No NVIC settings in .ioc. Enable peripherals in CubeMX then sync.'),
 		// DMA panel
-		dmaTitle: vscode.l10n.t('DMA 設定'),
-		dmaKey: vscode.l10n.t('キー'),
-		dmaValue: vscode.l10n.t('値'),
-		dmaEmpty: vscode.l10n.t('DMA 設定はありません。'),
+		dmaTitle: vscode.l10n.t('DMA Settings'),
+		dmaKey: vscode.l10n.t('Key'),
+		dmaValue: vscode.l10n.t('Value'),
+		dmaEmpty: vscode.l10n.t('No DMA settings.'),
 		// Param panel
-		paramTitle: vscode.l10n.t('パラメータ設定'),
-		paramEmpty: vscode.l10n.t('パラメータ設定はありません。'),
+		paramTitle: vscode.l10n.t('Parameter Settings'),
+		paramEmpty: vscode.l10n.t('No parameter settings.'),
 		// Const panel
-		constTitle: vscode.l10n.t('ユーザー定数 (ProjectManager.UserConstants)'),
-		constName: vscode.l10n.t('定数名'),
-		constValue: vscode.l10n.t('値'),
-		constNamePlaceholder: vscode.l10n.t('定数名'),
-		constValuePlaceholder: vscode.l10n.t('値'),
-		addConst: vscode.l10n.t('+ 定数を追加'),
-		confirmDeleteKey: vscode.l10n.t('キー「{0}」を削除しますか？'),
+		constTitle: vscode.l10n.t('User Constants (ProjectManager.UserConstants)'),
+		constName: vscode.l10n.t('Name'),
+		constValue: vscode.l10n.t('Value'),
+		constNamePlaceholder: vscode.l10n.t('Constant name'),
+		constValuePlaceholder: vscode.l10n.t('Value'),
+		addConst: vscode.l10n.t('+ Add Constant'),
+		confirmDeleteKey: vscode.l10n.t('Delete key "{0}"?'),
 		// Add/Edit pin dialogs
-		addPinTitle: vscode.l10n.t('ピンを追加'),
-		addPinLabel: vscode.l10n.t('ピン名 (PA0 — PK15)'),
-		addPinPlaceholder: vscode.l10n.t('例: PA5'),
-		modeLabel: vscode.l10n.t('モード'),
-		enterPinFirst: vscode.l10n.t('ピンを入力してください'),
-		noModesAvailable: vscode.l10n.t('選択可能なモードがありません'),
-		validPinRequired: vscode.l10n.t('有効なピンを入力してください'),
-		pinFormatError: vscode.l10n.t('形式エラー: PA0–PK15 の形式で入力してください'),
-		enterValidPin: vscode.l10n.t('有効なピン名を入力してください。'),
-		selectModeForPin: vscode.l10n.t('このピンで使用可能なモードを選択してください。'),
-		editPinTitle: vscode.l10n.t('ピン編集'),
-		editPinTitleWith: vscode.l10n.t('ピン編集 — {0}'),
-		currentMode: vscode.l10n.t('現在のモード: {0}'),
-		currentModeNone: vscode.l10n.t('現在のモード: —'),
-		modeSearch: vscode.l10n.t('モードを検索...'),
-		modeSearchAriaLabel: vscode.l10n.t('モード検索'),
+		addPinTitle: vscode.l10n.t('Add Pin'),
+		addPinLabel: vscode.l10n.t('Pin name (PA0 — PK15)'),
+		addPinPlaceholder: vscode.l10n.t('e.g. PA5'),
+		modeLabel: vscode.l10n.t('Mode'),
+		enterPinFirst: vscode.l10n.t('Enter a pin first'),
+		noModesAvailable: vscode.l10n.t('No modes available'),
+		validPinRequired: vscode.l10n.t('Enter a valid pin'),
+		pinFormatError: vscode.l10n.t('Format error: use PA0–PK15'),
+		enterValidPin: vscode.l10n.t('Enter a valid pin name.'),
+		selectModeForPin: vscode.l10n.t('Select an available mode for this pin.'),
+		editPinTitle: vscode.l10n.t('Edit Pin'),
+		editPinTitleWith: vscode.l10n.t('Edit Pin — {0}'),
+		currentMode: vscode.l10n.t('Current mode: {0}'),
+		currentModeNone: vscode.l10n.t('Current mode: —'),
+		modeSearch: vscode.l10n.t('Search modes...'),
+		modeSearchAriaLabel: vscode.l10n.t('Search modes'),
 		// Peripheral Workbench
-		peripheralWorkbenchTitle: vscode.l10n.t('STM32 ペリフェラルワークベンチ'),
-		peripheralWorkbenchSub: vscode.l10n.t('説明書を読む前提をやめ、シナリオ選択 -> 実行ステップ -> コード生成までを1画面に統合しました。'),
-		pwmPresetTitle: vscode.l10n.t('PWM: 可変Duty'),
-		pwmPresetDesc: vscode.l10n.t('TIMで周波数調整しながらDutyスイープ'),
-		servoPresetTitle: vscode.l10n.t('Servo: 50Hz角度制御'),
-		servoPresetDesc: vscode.l10n.t('0-180度を1本の式で制御'),
-		uartPresetTitle: vscode.l10n.t('UART: 割込み受信'),
-		uartPresetDesc: vscode.l10n.t('受信コールバックと再受信の定型'),
+		peripheralWorkbenchTitle: vscode.l10n.t('STM32 Peripheral Workbench'),
+		peripheralWorkbenchSub: vscode.l10n.t('Scenario selection, execution steps, and code generation in one screen.'),
+		pwmPresetTitle: vscode.l10n.t('PWM: Variable Duty'),
+		pwmPresetDesc: vscode.l10n.t('Sweep duty cycle while adjusting frequency via TIM'),
+		servoPresetTitle: vscode.l10n.t('Servo: 50Hz Angle Control'),
+		servoPresetDesc: vscode.l10n.t('Control 0-180 degrees with a single formula'),
+		uartPresetTitle: vscode.l10n.t('UART: Interrupt RX'),
+		uartPresetDesc: vscode.l10n.t('RX callback template with auto-restart'),
 		i2cPresetTitle: vscode.l10n.t('I2C: MPU6050'),
-		i2cPresetDesc: vscode.l10n.t('初期化・補正・周期取得の最短構成'),
-		execSteps: vscode.l10n.t('実行ステップ'),
-		stepLead: vscode.l10n.t('現在のモードに必要な作業のみ表示します。'),
-		openMcpDesk: vscode.l10n.t('MCP操作デスク'),
-		commandCenter: vscode.l10n.t('コマンドセンター'),
-		designParams: vscode.l10n.t('設計パラメータ'),
-		codeGeneration: vscode.l10n.t('コード生成'),
-		calcWaiting: vscode.l10n.t('計算待ち'),
-		formulaNote: vscode.l10n.t('式: fPWM = fTIM / ((PSC + 1) * (ARR + 1))'),
-		formulaNotNA: vscode.l10n.t('このモードではタイマ周波数式は不要です。'),
-		calcArrBtn: vscode.l10n.t('ARR再計算'),
-		calcFreqBtn: vscode.l10n.t('実周波数を計算'),
-		genCodeBtn: vscode.l10n.t('コード生成'),
-		copyBtn: vscode.l10n.t('コピー'),
-		pinView: vscode.l10n.t('ピンビュー'),
-		boardSettings: vscode.l10n.t('ボード設定'),
-		freqResult: vscode.l10n.t('実PWM周波数: {0} Hz / 周期: {1} ms'),
-		timerCalcNA: vscode.l10n.t('{0} モードではタイマ計算は不要です。'),
-		runStep: vscode.l10n.t('実行'),
+		i2cPresetDesc: vscode.l10n.t('Minimal init/calibration/periodic read setup'),
+		execSteps: vscode.l10n.t('Execution Steps'),
+		stepLead: vscode.l10n.t('Shows only the steps required for the current mode.'),
+		openMcpDesk: vscode.l10n.t('MCP Operation Desk'),
+		commandCenter: vscode.l10n.t('Command Center'),
+		designParams: vscode.l10n.t('Design Parameters'),
+		codeGeneration: vscode.l10n.t('Code Generation'),
+		calcWaiting: vscode.l10n.t('Waiting for input'),
+		formulaNote: vscode.l10n.t('Formula: fPWM = fTIM / ((PSC + 1) * (ARR + 1))'),
+		formulaNotNA: vscode.l10n.t('Timer frequency formula not needed for this mode.'),
+		calcArrBtn: vscode.l10n.t('Recalculate ARR'),
+		calcFreqBtn: vscode.l10n.t('Calculate Actual Frequency'),
+		genCodeBtn: vscode.l10n.t('Generate Code'),
+		copyBtn: vscode.l10n.t('Copy'),
+		pinView: vscode.l10n.t('Pin View'),
+		boardSettings: vscode.l10n.t('Board Settings'),
+		freqResult: vscode.l10n.t('Actual PWM: {0} Hz / Period: {1} ms'),
+		timerCalcNA: vscode.l10n.t('Timer calculation not needed for {0} mode.'),
+		runStep: vscode.l10n.t('Run'),
 		// Workflow Studio extra
-		wsCard1Title: vscode.l10n.t('1) 新規作成'),
-		wsCard1Desc: vscode.l10n.t('ボード選択、クロック、ミドルウェア、メモリ設定までを1画面で実施します。必要ならCubeMX DBからMCUカタログを同期します。'),
-		wsCard2Title: vscode.l10n.t('2) コーディング'),
-		wsCard2Desc: vscode.l10n.t('ビルド/書き込み/AI支援/ピン編集へ直接アクセスし、実装作業に集中します。'),
-		wsCard3Title: vscode.l10n.t('3) 設定'),
-		wsCard3Desc: vscode.l10n.t('ツール検出、パス確認、環境診断を実行し、開発環境の不整合を即時解決します。'),
-		wsTip: vscode.l10n.t('最初に迷ったら「新規作成」から開始すると、CubeMX相当の初期設定フローへ移動します。'),
+		wsCard1Title: vscode.l10n.t('1) Create New'),
+		wsCard1Desc: vscode.l10n.t('Board selection, clock, middleware, and memory settings in one screen. Sync MCU catalog from CubeMX DB if needed.'),
+		wsCard2Title: vscode.l10n.t('2) Coding'),
+		wsCard2Desc: vscode.l10n.t('Direct access to build, flash, AI assist, and pin editor to focus on implementation.'),
+		wsCard3Title: vscode.l10n.t('3) Settings'),
+		wsCard3Desc: vscode.l10n.t('Run tool detection, path verification, and environment diagnostics to resolve toolchain issues.'),
+		wsTip: vscode.l10n.t('If unsure, start with "Create New" to enter the CubeMX-equivalent initial setup flow.'),
 		// MCP desk extra
-		mcpStartServer: vscode.l10n.t('MCPサーバー起動'),
-		mcpStartSseServer: vscode.l10n.t('SSE MCPサーバー起動'),
-		mcpStopServer: vscode.l10n.t('MCPサーバー停止'),
-		mcpExportConfig: vscode.l10n.t('MCP設定JSONを出力'),
-		mcpComposeRpc: vscode.l10n.t('カスタムRPC JSON生成'),
-		regenerateCode: vscode.l10n.t('コード再生成'),
+		mcpStartServer: vscode.l10n.t('Start MCP Server'),
+		mcpStartSseServer: vscode.l10n.t('Start SSE MCP Server'),
+		mcpStopServer: vscode.l10n.t('Stop MCP Server'),
+		mcpExportConfig: vscode.l10n.t('Export MCP Config JSON'),
+		mcpComposeRpc: vscode.l10n.t('Compose Custom RPC JSON'),
+		regenerateCode: vscode.l10n.t('Regenerate Code'),
 		// import
-		import: vscode.l10n.t('インポート'),
-		openAction: vscode.l10n.t('開く'),
-		startAction: vscode.l10n.t('開始'),
-		openStudioAction: vscode.l10n.t('スタジオを開く'),
-		syncCatalogAction: vscode.l10n.t('カタログ同期'),
-		buildAction: vscode.l10n.t('ビルド'),
-		flashAction: vscode.l10n.t('書込み'),
-		debugAction: vscode.l10n.t('デバッグ'),
+		import: vscode.l10n.t('Import'),
+		openAction: vscode.l10n.t('Open'),
+		startAction: vscode.l10n.t('Start'),
+		openStudioAction: vscode.l10n.t('Open Studio'),
+		syncCatalogAction: vscode.l10n.t('Sync Catalog'),
+		buildAction: vscode.l10n.t('Build'),
+		flashAction: vscode.l10n.t('Flash'),
+		debugAction: vscode.l10n.t('Debug'),
 		// Peripheral Workbench — form labels
-		timClkLabel: vscode.l10n.t('タイマクロック fTIM (Hz)'),
-		targetPwmLabel: vscode.l10n.t('目標周波数 (Hz)'),
-		channelLabel: vscode.l10n.t('チャネル'),
-		timerHandleLabel: vscode.l10n.t('タイマハンドル名'),
-		uartHandleLabel: vscode.l10n.t('UART ハンドル'),
-		i2cHandleLabel: vscode.l10n.t('I2C ハンドル'),
-		slaveAddrLabel: vscode.l10n.t('スレーブアドレス'),
-		dutyMinLabel: vscode.l10n.t('Duty 最小 (%)'),
-		dutyMaxLabel: vscode.l10n.t('Duty 最大 (%)'),
-		dutyStepLabel: vscode.l10n.t('ステップ (%)'),
-		delayMsLabel: vscode.l10n.t('遅延 (ms)'),
+		timClkLabel: vscode.l10n.t('Timer Clock fTIM (Hz)'),
+		targetPwmLabel: vscode.l10n.t('Target Frequency (Hz)'),
+		channelLabel: vscode.l10n.t('Channel'),
+		timerHandleLabel: vscode.l10n.t('Timer Handle Name'),
+		uartHandleLabel: vscode.l10n.t('UART Handle'),
+		i2cHandleLabel: vscode.l10n.t('I2C Handle'),
+		slaveAddrLabel: vscode.l10n.t('Slave Address'),
+		dutyMinLabel: vscode.l10n.t('Duty Min (%)'),
+		dutyMaxLabel: vscode.l10n.t('Duty Max (%)'),
+		dutyStepLabel: vscode.l10n.t('Step (%)'),
+		delayMsLabel: vscode.l10n.t('Delay (ms)'),
 		// Peripheral Workbench — PWM steps
-		pwmStep1T: vscode.l10n.t('ボードを選んでプロジェクト作成'),
-		pwmStep1D: vscode.l10n.t('最初に .ioc を作成'),
-		pwmStep2T: vscode.l10n.t('タイマCHをPWMに設定'),
-		pwmStep2D: vscode.l10n.t('CHxNではなくCHxを優先'),
-		pwmStep3T: vscode.l10n.t('ARR/PSCを入力して周波数確認'),
-		pwmStep3D: vscode.l10n.t('実周波数をUIで即計算'),
-		pwmStep4T: vscode.l10n.t('USER CODEへ貼り付け'),
-		pwmStep4D: vscode.l10n.t('START と SET_COMPARE の最小コード'),
-		pwmStep5T: vscode.l10n.t('ビルドして書込み'),
-		pwmStep5D: vscode.l10n.t('そのまま実機へ反映'),
-		pwmStep6T: vscode.l10n.t('デバッグ開始'),
-		pwmStep6D: vscode.l10n.t('波形/状態確認'),
+		pwmStep1T: vscode.l10n.t('Select board and create project'),
+		pwmStep1D: vscode.l10n.t('Create .ioc first'),
+		pwmStep2T: vscode.l10n.t('Set timer CH to PWM mode'),
+		pwmStep2D: vscode.l10n.t('Prefer CHx over CHxN'),
+		pwmStep3T: vscode.l10n.t('Enter ARR/PSC and verify frequency'),
+		pwmStep3D: vscode.l10n.t('Calculate actual frequency in UI'),
+		pwmStep4T: vscode.l10n.t('Paste into USER CODE section'),
+		pwmStep4D: vscode.l10n.t('Minimal START and SET_COMPARE code'),
+		pwmStep5T: vscode.l10n.t('Build and flash'),
+		pwmStep5D: vscode.l10n.t('Deploy to hardware'),
+		pwmStep6T: vscode.l10n.t('Start debug'),
+		pwmStep6D: vscode.l10n.t('Check waveform/state'),
 		// Peripheral Workbench — Servo steps
-		servoStep1T: vscode.l10n.t('ボード作成'),
-		servoStep1D: vscode.l10n.t('50Hz前提のタイマを使う'),
-		servoStep2T: vscode.l10n.t('PWM周波数を50Hzに固定'),
-		servoStep2D: vscode.l10n.t('ARR=999推奨で角度換算が簡単'),
-		servoStep3T: vscode.l10n.t('角度式コードを生成'),
-		servoStep3D: vscode.l10n.t('0-180度をcompareへ変換'),
-		servoStep4T: vscode.l10n.t('実機書込み'),
-		servoStep4D: vscode.l10n.t('サーボ挙動を確認'),
+		servoStep1T: vscode.l10n.t('Create project'),
+		servoStep1D: vscode.l10n.t('Use a timer suited for 50Hz'),
+		servoStep2T: vscode.l10n.t('Set PWM frequency to 50Hz'),
+		servoStep2D: vscode.l10n.t('ARR=999 recommended for easy angle conversion'),
+		servoStep3T: vscode.l10n.t('Generate angle formula code'),
+		servoStep3D: vscode.l10n.t('Map 0-180 degrees to compare value'),
+		servoStep4T: vscode.l10n.t('Flash to hardware'),
+		servoStep4D: vscode.l10n.t('Verify servo movement'),
 		// Peripheral Workbench — UART steps
-		uartStep1T: vscode.l10n.t('USARTをAsynchronousに設定'),
-		uartStep1D: vscode.l10n.t('RX/TXピンを割当'),
-		uartStep2T: vscode.l10n.t('受信割込みを有効化'),
-		uartStep2D: vscode.l10n.t('NVICでUSART IRQ ON'),
-		uartStep3T: vscode.l10n.t('受信コールバックを生成'),
-		uartStep3D: vscode.l10n.t('再受信を必ず再開'),
-		uartStep4T: vscode.l10n.t('ビルドして確認'),
-		uartStep4D: vscode.l10n.t('シリアル通信テスト'),
+		uartStep1T: vscode.l10n.t('Set USART to Asynchronous mode'),
+		uartStep1D: vscode.l10n.t('Assign RX/TX pins'),
+		uartStep2T: vscode.l10n.t('Enable RX interrupt'),
+		uartStep2D: vscode.l10n.t('Enable USART IRQ in NVIC'),
+		uartStep3T: vscode.l10n.t('Generate RX callback'),
+		uartStep3D: vscode.l10n.t('Always restart receive'),
+		uartStep4T: vscode.l10n.t('Build and verify'),
+		uartStep4D: vscode.l10n.t('Serial communication test'),
 		// Peripheral Workbench — I2C steps
-		i2cStep1T: vscode.l10n.t('I2Cを有効化'),
-		i2cStep1D: vscode.l10n.t('SCL/SDA ピン割当'),
-		i2cStep2T: vscode.l10n.t('MPU6050ファイルを配置'),
-		i2cStep2D: vscode.l10n.t('Core/Inc と Core/Src へ追加'),
-		i2cStep3T: vscode.l10n.t('初期化/補正コードを生成'),
-		i2cStep3D: vscode.l10n.t('BEGIN 2 と WHILE に配置'),
-		i2cStep4T: vscode.l10n.t('書込みして値確認'),
-		i2cStep4D: vscode.l10n.t('角度ログを確認'),
+		i2cStep1T: vscode.l10n.t('Enable I2C'),
+		i2cStep1D: vscode.l10n.t('Assign SCL/SDA pins'),
+		i2cStep2T: vscode.l10n.t('Place MPU6050 files'),
+		i2cStep2D: vscode.l10n.t('Add to Core/Inc and Core/Src'),
+		i2cStep3T: vscode.l10n.t('Generate init/calibration code'),
+		i2cStep3D: vscode.l10n.t('Place in BEGIN 2 and WHILE'),
+		i2cStep4T: vscode.l10n.t('Flash and verify values'),
+		i2cStep4D: vscode.l10n.t('Check angle log'),
 		// Board Configurator
-		boardStudioTitle: vscode.l10n.t('TovaIDE-STM ボード設定スタジオ'),
-		boardStudioSub: vscode.l10n.t('この画面は「プロジェクト作成専用」です。Clock Tree / Parameter Settings / NVIC / DMA / GPIO はプロジェクト生成後に .ioc 編集（ピンビジュアライザまたはCubeMX）で行います。'),
-		boardStudioNotice: vscode.l10n.t('CubeMXと件数を合わせるには、先に <b>CubeMXカタログ同期</b> を実行してください。<br/>この画面は Board DB と MCU DB を別々に読み込みます。'),
-		createMode: vscode.l10n.t('作成モード'),
-		modeFromBoard: vscode.l10n.t('Board から作成'),
-		modeFromMcu: vscode.l10n.t('MCU/MPU Selector から作成'),
-		boardSearchLabel: vscode.l10n.t('Board 検索 (Board 名 / 説明 / CPN)'),
-		boardSearchPlaceholder: vscode.l10n.t('例: NUCLEO / DISCOVERY / STM32F446RE'),
-		mcuSearchLabel: vscode.l10n.t('MCU/MPU Selector 検索 (Commercial Part Number)'),
-		mcuSearchPlaceholder: vscode.l10n.t('例: STM32F446RETX'),
-		projectNameLabel: vscode.l10n.t('プロジェクト名'),
-		openPinGuiLabel: vscode.l10n.t('作成後にピン設定GUIを開く'),
-		createProject: vscode.l10n.t('プロジェクト作成'),
-		noBoardMatch: vscode.l10n.t('一致する Board がありません'),
-		boardDbSuffix: vscode.l10n.t('件 (Board DB)'),
-		mcuDbSuffix: vscode.l10n.t('件 (MCU DB)'),
+		boardStudioTitle: vscode.l10n.t('TovaIDE-STM Board Config Studio'),
+		boardStudioSub: vscode.l10n.t('This screen is for project creation only. Clock Tree / NVIC / DMA / GPIO are configured in .ioc after generation.'),
+		boardStudioNotice: vscode.l10n.t('Run <b>CubeMX Catalog Sync</b> first to match CubeMX MCU counts.<br/>This screen loads Board DB and MCU DB separately.'),
+		createMode: vscode.l10n.t('Creation Mode'),
+		modeFromBoard: vscode.l10n.t('From Board'),
+		modeFromMcu: vscode.l10n.t('From MCU/MPU Selector'),
+		boardSearchLabel: vscode.l10n.t('Board Search (name / description / CPN)'),
+		boardSearchPlaceholder: vscode.l10n.t('e.g. NUCLEO / DISCOVERY / STM32F446RE'),
+		mcuSearchLabel: vscode.l10n.t('MCU/MPU Search (Commercial Part Number)'),
+		mcuSearchPlaceholder: vscode.l10n.t('e.g. STM32F446RETX'),
+		projectNameLabel: vscode.l10n.t('Project Name'),
+		openPinGuiLabel: vscode.l10n.t('Open pin config GUI after creation'),
+		createProject: vscode.l10n.t('Create Project'),
+		noBoardMatch: vscode.l10n.t('No matching boards'),
+		boardDbSuffix: vscode.l10n.t('(Board DB)'),
+		mcuDbSuffix: vscode.l10n.t('(MCU DB)'),
 		// MCP desk status
-		mcpRunning: vscode.l10n.t('MCP起動中: {0}'),
-		mcpStopped: vscode.l10n.t('MCP停止中: {0}'),
-		mcpNoConnection: vscode.l10n.t('接続不可'),
+		mcpRunning: vscode.l10n.t('MCP running: {0}'),
+		mcpStopped: vscode.l10n.t('MCP stopped: {0}'),
+		mcpNoConnection: vscode.l10n.t('Not connected'),
 	};
 }
 
@@ -5061,9 +5061,9 @@ function getMcpOperationDeskHtml(webview: vscode.Webview): string {
 		<button id="startMcp"><div class="t" data-i18n="mcpStartServer"></div><div class="d">stm32ai.startMcpServer</div></button>
 		<button id="startSseMcp"><div class="t" data-i18n="mcpStartSseServer"></div><div class="d">http://127.0.0.1:3737/sse</div></button>
 		<button id="stopMcp"><div class="t" data-i18n="mcpStopServer"></div><div class="d">stm32ai.stopMcpServer</div></button>
-		<button id="envSettings"><div class="t" data-i18n="envSettings"></div><div class="d">make / CubeMX パス設定</div></button>
+		<button id="envSettings"><div class="t" data-i18n="envSettings"></div><div class="d">make / CubeMX path settings</div></button>
 		<button id="exportConfig"><div class="t" data-i18n="mcpExportConfig"></div><div class="d">.vscode/stm32-mcp.config.json</div></button>
-		<button id="composeRpc"><div class="t" data-i18n="mcpComposeRpc"></div><div class="d">任意method/paramsで生成</div></button>
+		<button id="composeRpc"><div class="t" data-i18n="mcpComposeRpc"></div><div class="d">Generate with any method/params</div></button>
 		<button id="build"><div class="t" data-i18n="buildDebug"></div><div class="d">method: stm32.build</div></button>
 		<button id="flash"><div class="t" data-i18n="flash"></div><div class="d">method: stm32.flash</div></button>
 		<button id="regen"><div class="t" data-i18n="regenerateCode"></div><div class="d">method: stm32.regenerateCode</div></button>
@@ -5380,8 +5380,8 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 		};
 
 		const presets = {
-			PWM: { timClk: 80000000, targetPwm: 30000, psc: 0, arr: 255, timerHandle: 'htim15' },
-			Servo: { timClk: 80000000, targetPwm: 50, psc: 1599, arr: 999, timerHandle: 'htim2' },
+			PWM: { timClk: 16000000, targetPwm: 10000, psc: 15, arr: 99, timerHandle: 'htim15' },
+			Servo: { timClk: 16000000, targetPwm: 50, psc: 1599, arr: 199, timerHandle: 'htim2' },
 			UART: { baudRate: 115200, uartHandle: 'huart1' },
 			I2C: { i2cHandle: 'hi2c1', slaveAddr: '0x68' }
 		};
@@ -5488,16 +5488,28 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 			].join('\\n');
 
 			if (mode === 'Servo') {
-				const minCmp = mapDutyToCompare(p.arr, 2.5);
-				const maxCmp = mapDutyToCompare(p.arr, 12.5);
+				// Servo: 50Hz (20ms period). 1ms pulse = 0deg, 2ms pulse = 180deg
+				// CCR_min = (ARR+1)/20,  CCR_max = (ARR+1)/10
+				const ccrMin = Math.round((p.arr + 1) / 20); // 1ms
+				const ccrMax = Math.round((p.arr + 1) / 10); // 2ms
 				code = [
 					'/* USER CODE BEGIN 2 */',
 					'HAL_TIM_PWM_Start(&' + p.timerHandle + ', ' + p.channel + ');',
 					'/* USER CODE END 2 */',
 					'',
-					'int angle = 90; // 0..180',
-					'uint32_t compare = (uint32_t)(' + minCmp + ' + (((' + maxCmp + ' - ' + minCmp + ') * angle) / 180));',
-					'__HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', compare);'
+					'/* USER CODE BEGIN WHILE */',
+					'/* Servo sweep 0->180->0 deg. PSC=' + p.psc + ' ARR=' + p.arr + ' -> 50Hz */',
+					'for (int angle = 0; angle <= 180; angle += 2) {',
+					'  uint32_t ccr = ' + ccrMin + ' + (uint32_t)((' + (ccrMax - ccrMin) + 'U * (uint32_t)angle) / 180U);',
+					'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', ccr);',
+					'  HAL_Delay(20);',
+					'}',
+					'for (int angle = 180; angle >= 0; angle -= 2) {',
+					'  uint32_t ccr = ' + ccrMin + ' + (uint32_t)((' + (ccrMax - ccrMin) + 'U * (uint32_t)angle) / 180U);',
+					'  __HAL_TIM_SET_COMPARE(&' + p.timerHandle + ', ' + p.channel + ', ccr);',
+					'  HAL_Delay(20);',
+					'}',
+					'/* USER CODE END WHILE */'
 				].join('\\n');
 			}
 
@@ -5518,7 +5530,7 @@ function getPeripheralWorkbenchHtml(webview: vscode.Webview): string {
 					'void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {',
 					'  if (huart == &' + p.uartHandle + ') {',
 					'    if (rxBuf[0] == 255U) {',
-					'      // rxBuf[1..5] を用途別に処理',
+					'      // process rxBuf[1..5] by purpose',
 					'    }',
 					'    HAL_UART_Receive_IT(&' + p.uartHandle + ', rxBuf, sizeof(rxBuf));',
 					'  }',
@@ -5773,9 +5785,9 @@ function getTutorialHtml(webview: vscode.Webview): string {
 	<h1 id="tutTitle"></h1>
 	<p class="sub" id="tutSub"></p>
 
-	<div class="tracker" id="tracker" aria-label="進捗"></div>
+	<div class="tracker" id="tracker" aria-label="Progress"></div>
 
-	<div class="step-card" role="region" aria-label="現在のステップ">
+	<div class="step-card" role="region" aria-label="Current Step">
 		<div class="step-num" id="stepNum"></div>
 		<div class="step-text" id="stepText" role="status" aria-live="polite"></div>
 	</div>
@@ -5850,21 +5862,21 @@ function getTemplateGalleryHtml(webview: vscode.Webview): string {
 	const lang = vscode.env.language.split('-')[0] ?? 'en';
 
 	const categories: Record<string, { icon: string; items: string[] }> = {
-		'初級 — GPIO / UART': { icon: '🌱', items: ['GPIO Blinky (F4)', 'UART Hello (F4)', 'EXTI Button IRQ', 'ADC Polling', 'DAC Wave Output'] },
-		'中級 — 通信 / タイマー': { icon: '⚙', items: ['I2C Sensor Read (F4)', 'SPI IMU (F4)', 'Timer PWM Basic', 'ADC + DMA', 'CAN Loopback', 'RTC Calendar'] },
-		'上級 — USB / RTOS': { icon: '🚀', items: ['USB CDC Device', 'USB HID Device', 'FreeRTOS 2 Tasks', 'FreeRTOS Queue', 'FreeRTOS Mutex', 'LwIP TCP Echo', 'LwIP HTTP Basic'] },
-		'ストレージ / フラッシュ': { icon: '💾', items: ['FatFS SD Card', 'QSPI External Flash', 'Bootloader UART'] },
-		'電源 / セキュリティ': { icon: '🔒', items: ['Low Power STOP Mode', 'Watchdog IWDG', 'Crypto AES (L5)', 'CMSIS-DSP FIR'] },
-		'産業 / モーター': { icon: '🔧', items: ['Modbus RTU Slave', 'Motor PWM + Encoder', 'Hall Sensor Capture'] },
-		'ワイヤレス / マルチボード': { icon: '📡', items: ['BLE UART Bridge (WB)', 'Multi-board Workspace Sample'] },
-		'H7 / L4 / WB ターゲット': { icon: '🎯', items: ['Ethernet TCP (H7)', 'FMC SDRAM (H7)', 'Low Power LPUART (L4)', 'Touch Sense (L4)', 'BLE Custom Profile (WB)'] },
-		'F1 / G0 エントリ': { icon: '🔵', items: ['Blue Pill Blinky (F1)', 'Blue Pill UART (F1)', 'G0 Nucleo Blinky', 'G0 Low Power'] },
-		'U5 / C0 最新シリーズ': { icon: '⚡', items: ['U5 TrustZone Blinky', 'U5 Low Power LPUART', 'C0 Minimal Blinky', 'C0 UART Echo'] },
+		'Beginner — GPIO / UART': { icon: '🌱', items: ['GPIO Blinky (F4)', 'UART Hello (F4)', 'EXTI Button IRQ', 'ADC Polling', 'DAC Wave Output'] },
+		'Intermediate — Comms / Timer': { icon: '⚙', items: ['I2C Sensor Read (F4)', 'SPI IMU (F4)', 'Timer PWM Basic', 'ADC + DMA', 'CAN Loopback', 'RTC Calendar'] },
+		'Advanced — USB / RTOS': { icon: '🚀', items: ['USB CDC Device', 'USB HID Device', 'FreeRTOS 2 Tasks', 'FreeRTOS Queue', 'FreeRTOS Mutex', 'LwIP TCP Echo', 'LwIP HTTP Basic'] },
+		'Storage / Flash': { icon: '💾', items: ['FatFS SD Card', 'QSPI External Flash', 'Bootloader UART'] },
+		'Power / Security': { icon: '🔒', items: ['Low Power STOP Mode', 'Watchdog IWDG', 'Crypto AES (L5)', 'CMSIS-DSP FIR'] },
+		'Industrial / Motor': { icon: '🔧', items: ['Modbus RTU Slave', 'Motor PWM + Encoder', 'Hall Sensor Capture'] },
+		'Wireless / Multi-board': { icon: '📡', items: ['BLE UART Bridge (WB)', 'Multi-board Workspace Sample'] },
+		'H7 / L4 / WB Targets': { icon: '🎯', items: ['Ethernet TCP (H7)', 'FMC SDRAM (H7)', 'Low Power LPUART (L4)', 'Touch Sense (L4)', 'BLE Custom Profile (WB)'] },
+		'F1 / G0 Entry': { icon: '🔵', items: ['Blue Pill Blinky (F1)', 'Blue Pill UART (F1)', 'G0 Nucleo Blinky', 'G0 Low Power'] },
+		'U5 / C0 Latest Series': { icon: '⚡', items: ['U5 TrustZone Blinky', 'U5 Low Power LPUART', 'C0 Minimal Blinky', 'C0 UART Echo'] },
 	};
 
 	const sections = Object.entries(categories).map(([cat, { icon, items }]) => {
 		const cards = items.map(name =>
-			`<button class="tcard" data-template="${escapeHtml(name)}" aria-label="テンプレート ${escapeHtml(name)} を選択">${escapeHtml(name)}</button>`
+			`<button class="tcard" data-template="${escapeHtml(name)}" aria-label="Select template ${escapeHtml(name)}">${escapeHtml(name)}</button>`
 		).join('');
 		return `<div class="cat-section"><div class="cat-hd"><span class="cat-ic">${icon}</span>${escapeHtml(cat)}</div><div class="tgrid">${cards}</div></div>`;
 	}).join('');
@@ -5990,7 +6002,7 @@ function buildLqfpSvg(
 			const editable = /^P[A-K][0-9]{1,2}$/i.test(item.pin) && !fixedByPin[item.pin.toUpperCase()];
 			const usage = usageByPin[item.pin.toUpperCase()] ?? '';
 			const sideLabelText = usage;
-			const isUnused = item.mode === '未使用';
+			const isUnused = item.mode === 'Unused';
 			const fill = isUnused ? '#1a1d2e' : colorForMode(item.mode);
 			const stroke = isUnused ? '#374151' : colorForModeBorder(item.mode);
 
@@ -6035,7 +6047,7 @@ function buildLqfpSvg(
 		}
 	}
 
-	return `<svg viewBox="0 0 ${TOTAL} ${TOTAL}" width="${TOTAL}" height="${TOTAL}" aria-label="LQFP チップ図" role="img">${elements}</svg>`;
+	return `<svg viewBox="0 0 ${TOTAL} ${TOTAL}" width="${TOTAL}" height="${TOTAL}" aria-label="LQFP chip diagram" role="img">${elements}</svg>`;
 }
 
 function comparePinNames(a: { pin: string }, b: { pin: string }): number {
@@ -6765,8 +6777,8 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 
 		function openDialog(pin, currentMode, groups) {
 			dlgPin = pin; dlgSelected = '';
-			dlgTitle.textContent = 'ピン編集 — ' + pin;
-			dlgCur.textContent = '現在のモード: ' + (currentMode || '未設定');
+			dlgTitle.textContent = 'Edit Pin — ' + pin;
+			dlgCur.textContent = 'Current mode: ' + (currentMode || 'not set');
 			dlgSearch.value = '';
 			dlgApply.disabled = true;
 			dlgGroups.innerHTML = '';
@@ -6848,7 +6860,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 				addModeSelect.appendChild(og);
 			}
 			if (count === 0) {
-				addModeSelect.innerHTML = '<option value="">選択可能なモードがありません</option>';
+				addModeSelect.innerHTML = '<option value="">No modes available</option>';
 				addModeSelect.disabled = true;
 			} else {
 				addModeSelect.disabled = false;
@@ -6857,7 +6869,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		function openAddDialog() {
 			addPinInput.value = ''; addPinErr.textContent = '';
 			addPinInput.classList.remove('invalid');
-			addModeSelect.innerHTML = '<option value="">ピンを入力してください</option>';
+			addModeSelect.innerHTML = '<option value="">Enter a pin first</option>';
 			addModeSelect.disabled = true;
 			addDlgBackdrop.classList.add('open');
 			setTimeout(() => addPinInput.focus(), 60);
@@ -6869,9 +6881,9 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 			const pin = addPinInput.value.trim().toUpperCase();
 			const ok = PIN_RE.test(pin);
 			addPinInput.classList.toggle('invalid', addPinInput.value.length > 0 && !ok);
-			addPinErr.textContent = (addPinInput.value.length > 0 && !ok) ? '形式エラー: PA0–PK15 の形式で入力してください' : '';
+			addPinErr.textContent = (addPinInput.value.length > 0 && !ok) ? 'Format error: enter in PA0–PK15 format' : '';
 			if (!ok) {
-				addModeSelect.innerHTML = '<option value="">有効なピンを入力してください</option>';
+				addModeSelect.innerHTML = '<option value="">Enter a valid pin</option>';
 				addModeSelect.disabled = true;
 				return;
 			}
@@ -6883,8 +6895,8 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 		});
 		addDlgApply.addEventListener('click', () => {
 			const pin = addPinInput.value.trim().toUpperCase();
-			if (!PIN_RE.test(pin)) { addPinErr.textContent = '有効なピン名を入力してください。'; addPinInput.classList.add('invalid'); return; }
-			if (!addModeSelect.value) { addPinErr.textContent = 'このピンで使用可能なモードを選択してください。'; return; }
+			if (!PIN_RE.test(pin)) { addPinErr.textContent = 'Enter a valid pin name.'; addPinInput.classList.add('invalid'); return; }
+			if (!addModeSelect.value) { addPinErr.textContent = 'Select an available mode for this pin.'; return; }
 			vscode.postMessage({ type: 'addPin', pin, mode: addModeSelect.value });
 			closeAddDialog();
 		});
@@ -6937,7 +6949,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 				g.classList.toggle('dim', hasQ && !matches);
 				g.classList.toggle('match', hasQ && matches);
 			}
-			pinCountEl.textContent = q ? visible + ' ピン (絞込み中)' : visible + ' ピン';
+			pinCountEl.textContent = q ? visible + ' pins (filtered)' : visible + ' pins';
 		}
 		filterInput.addEventListener('input', () => applyFilter(filterInput.value.trim().toLowerCase()));
 		window.addEventListener('message', event => {
@@ -6953,7 +6965,7 @@ function getPinVisualizerHtml(webview: vscode.Webview, pins: Array<{ pin: string
 
 function colorForMode(mode: string): string {
 	const value = mode.toLowerCase();
-	if (value === '未使用') { return '#1a1d2e'; }
+	if (value === 'unused') { return '#1a1d2e'; }
 	if (value.includes('gpio_output')) { return '#0f4c5c'; }
 	if (value.includes('gpio_input')) { return '#1a4731'; }
 	if (value.includes('swdio') || value.includes('swclk') || value.includes('sys_sw')) { return '#3b1f6e'; }
@@ -6970,7 +6982,7 @@ function colorForMode(mode: string): string {
 
 function colorForModeBorder(mode: string): string {
 	const value = mode.toLowerCase();
-	if (value === '未使用') { return '#374151'; }
+	if (value === 'unused') { return '#374151'; }
 	if (value.includes('gpio_output')) { return '#14b8a6'; }
 	if (value.includes('gpio_input')) { return '#22c55e'; }
 	if (value.includes('swdio') || value.includes('swclk') || value.includes('sys_sw')) { return '#a78bfa'; }
