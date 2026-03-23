@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TovaIDE-STM - STM32 Development Environment User Guide</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  font-family: "Segoe UI", "Yu Gothic UI", "Meiryo UI", sans-serif;
+  line-height: 1.8;
+  color: #000;
+  background: #fff;
+  padding: 40px 60px;
+  max-width: 100%;
+}
+h1 {
+  font-size: 32px;
+  font-weight: 600;
+  margin-bottom: 40px;
+  color: #000;
+}
+h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-top: 50px;
+  margin-bottom: 20px;
+  color: #000;
+}
+h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 30px;
+  margin-bottom: 15px;
+  color: #000;
+}
+p {
+  margin-bottom: 15px;
+  color: #000;
+}
+ul, ol {
+  margin-left: 25px;
+  margin-bottom: 15px;
+}
+li {
+  margin-bottom: 8px;
+  color: #000;
+}
+code {
+  font-family: "Consolas", "Courier New", monospace;
+  background: #f5f5f5;
+  padding: 2px 6px;
+  color: #000;
+}
+pre {
+  background: #f5f5f5;
+  padding: 15px;
+  margin: 15px 0;
+  overflow-x: auto;
+  color: #000;
+}
+pre code {
+  background: none;
+  padding: 0;
+}
+table {
+  width: 100%;
+  margin: 20px 0;
+  border-collapse: collapse;
+}
+th, td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+  color: #000;
+}
+th {
+  font-weight: 600;
+  background: #f5f5f5;
+}
+.section {
+  margin-bottom: 40px;
+}
+.command {
+  background: #f5f5f5;
+  padding: 3px 8px;
+  font-family: "Consolas", monospace;
+  color: #000;
+}
+.note {
+  background: #f9f9f9;
+  padding: 15px;
+  margin: 15px 0;
+  color: #000;
+}
+</style>
+</head>
+<body>
+
+<h1>TovaIDE-STM - STM32 Development Environment User Guide</h1>
+
+<div class="section">
+<h2>Overview</h2>
+<p>TovaIDE-STM is an integrated development environment for STM32 microcontroller development on Visual Studio Code. It integrates CubeMX, build system, flash programming, debugging, and hardware configuration tools for efficient embedded development.</p>
+</div>
+
+<div class="section">
+<h2>Key Features</h2>
+<ul>
+<li>STM32CubeMX Integration - Code generation from IOC files</li>
+<li>Build System - Makefile-based automatic builds</li>
+<li>Flash Programming - Program writing via ST-LINK</li>
+<li>Debug Features - GDB integrated debugger, register view, Live Expressions</li>
+<li>Pin Visualizer - Visual confirmation of IOC configuration</li>
+<li>Code Size Analysis - Memory usage visualization via MAP file analysis</li>
+<li>SWV/ITM Trace - Real-time log output</li>
+<li>Environment Settings - Configure tools and paths</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>Initial Setup</h2>
+
+<h3>1. Install Required Tools</h3>
+<p>Install the following tools before starting:</p>
+<ul>
+<li>STM32CubeMX - Download from STMicroelectronics official website</li>
+<li>STM32CubeCLT - Command-line tools (includes GCC, GDB, ST-LINK)</li>
+<li>arm-none-eabi-gcc - ARM embedded GCC compiler (required for building)</li>
+<li>GNU Make - For Windows, use MinGW/MSYS or the version included with CubeCLT</li>
+</ul>
+
+<h3>2. Environment Check</h3>
+<p>From the command palette (Ctrl+Shift+P), run:</p>
+<p class="command">STM32: Run Environment Check</p>
+<p>This verifies installation status and configuration, highlighting any missing tools.</p>
+
+<h3>3. Detect CubeCLT Metadata</h3>
+<p>After installing CubeCLT, auto-detect it with:</p>
+<p class="command">STM32: Detect CubeCLT Metadata</p>
+
+<h3>4. Configure Environment Settings</h3>
+<p>Open environment settings with:</p>
+<p class="command">STM32: Open STM32 Environment Settings</p>
+<p>Configure paths to CubeMX, GCC, GDB, and ST-LINK tools.</p>
+</div>
+
+<div class="section">
+<h2>Creating a Project</h2>
+
+<h3>Method 1: Create New Project</h3>
+<ol>
+<li>From the command palette, run <span class="command">STM32: New Project</span></li>
+<li>Select Board or MCU(e.g., STM32F401RE)</li>
+<li>Enter project name</li>
+<li>Select destination folder</li>
+<li>CubeMX will launch automatically and create the IOC file</li>
+</ol>
+
+<h3>Method 2: Import CubeIDE Project</h3>
+<ol>
+<li>From the command palette, run <span class="command">STM32: Import CubeIDE Project</span></li>
+<li>Select an existing CubeIDE project folder</li>
+<li>Choose "Open Folder" or "Add to Workspace"</li>
+</ol>
+
+<h3>Method 3: Create from Board Config Studio</h3>
+<ol>
+<li>Open "TovaIDE-STM Dashboard" in the sidebar</li>
+<li>Click "Open Board Config Studio"</li>
+<li>Select a board and configure pin assignments</li>
+<li>Create project</li>
+</ol>
+</div>
+
+<div class="section">
+<h2>Basic Development Flow</h2>
+
+<h3>1. Hardware Configuration (IOC File Editing)</h3>
+<ol>
+<li>Double-click the <code>.ioc</code> file in your project</li>
+<li>The IOC editor opens (or CubeMX if configured)</li>
+<li>Configure pin assignments, clock settings, and peripherals</li>
+<li>Code generation runs automatically after saving</li>
+</ol>
+
+<h3>2. Code Generation</h3>
+<p>Code generation runs automatically when saving the IOC file. To manually regenerate:</p>
+<p class="command">STM32: Regenerate Code from IOC</p>
+<p class="note">Note: Code within USER CODE sections is automatically protected and restored.</p>
+
+<h3>3. Write User Code</h3>
+<p>Write your code in the generated source files (e.g., <code>Core/Src/main.c</code>) within the USER CODE sections:</p>
+<pre><code>/* USER CODE BEGIN 0 */
+// Global variables and function declarations
+/* USER CODE END 0 */
+
+int main(void) {
+  /* USER CODE BEGIN 1 */
+  // Pre-initialization code
+  /* USER CODE END 1 */
+
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
+
+  /* USER CODE BEGIN 2 */
+  // Post-initialization code
+  /* USER CODE END 2 */
+
+  while (1) {
+    /* USER CODE BEGIN 3 */
+    // Main loop
+    /* USER CODE END 3 */
+  }
+}</code></pre>
+
+<h3>4. Build</h3>
+<p>Build using one of these methods:</p>
+<ul>
+<li>Command palette: <span class="command">STM32: Build (Debug)</span></li>
+<li>Sidebar "Build Quick Actions" - click "Build (Debug)"</li>
+<li>Keyboard shortcut (if configured)</li>
+</ul>
+<p>Build output appears in the output panel. If errors occur, use <span class="command">STM32: Jump to First Build Error</span> to navigate to the error location.</p>
+
+<h3>4a. If Build Fails - Use CubeMX Makefile Generation</h3>
+<p>If the build fails and you need to regenerate the Makefile:</p>
+<ol>
+<li>Run <span class="command">STM32: Open STM32 Environment Settings</span> and verify tool paths</li>
+<li>Open the IOC file in CubeMX: <span class="command">STM32: Open CubeMX</span></li>
+<li>In CubeMX, go to Project &gt; Generate Code</li>
+<li>Ensure "Makefile" is selected as the toolchain</li>
+<li>Click Generate</li>
+<li>Return to VS Code and retry the build</li>
+</ol>
+
+<h3>5. Flash Programming</h3>
+<ol>
+<li>Connect ST-LINK to PC and board</li>
+<li>From command palette, run <span class="command">STM32: Flash</span></li>
+<li>Or use <span class="command">STM32: Build and Flash</span> to build and program in one step</li>
+</ol>
+
+<h3>6. Debugging</h3>
+<ol>
+<li>Set breakpoints by clicking on line numbers in the editor</li>
+<li>Press F5 or run <span class="command">STM32: Start Debug</span></li>
+<li>Use the debug toolbar for step execution, variable inspection, etc.</li>
+<li>Stop debugging: <span class="command">STM32: Stop Debug</span> or Shift+F5</li>
+</ol>
+</div>
+
+<div class="section">
+<h2>Useful Features</h2>
+
+<h3>Pin Visualizer</h3>
+<p>Visually confirm pin assignments configured in the IOC file:</p>
+<p class="command">STM32: Open Pin Visualizer</p>
+<p>Pin functions are displayed on the MCU package diagram.</p>
+
+<h3>Code Size Analysis</h3>
+<p>Analyze memory usage in detail after building:</p>
+<p class="command">STM32: Show Code Size Analysis</p>
+<p>Sizes are displayed in table format by section and symbol.</p>
+
+<h3>Fault Analyzer</h3>
+<p>Analyze register values when a HardFault occurs:</p>
+<ol>
+<li>Run <span class="command">STM32: Show Fault Analyzer</span></li>
+<li>Enter CFSR register value (e.g., 0x00008200)</li>
+<li>Enter HFSR register value (e.g., 0x40000000)</li>
+<li>Fault cause is displayed with detailed explanation</li>
+</ol>
+
+<h3>Live Expressions (Real-time Variable Monitoring During Debug)</h3>
+<ol>
+<li>Open the "Live Expressions" view in the sidebar</li>
+<li>Click the "+" button to add an expression (e.g., <code>*((uint32_t*)0x40021000)</code>)</li>
+<li>Values update automatically during debugging</li>
+</ol>
+
+<h3>SVD Register View</h3>
+<p>View peripheral registers in a hierarchy during debugging:</p>
+<ol>
+<li>Open the "SVD Registers" view in the sidebar</li>
+<li>Expand peripheral names to view register values</li>
+<li>Click refresh to get the latest values</li>
+</ol>
+
+<h3>SWV/ITM Trace</h3>
+<p>Display printf output in real-time via SWO:</p>
+<ol>
+<li>Configure <code>stm32.debug.swv.startCommands</code> in settings</li>
+<li>After starting debug, run <span class="command">STM32: SWV Start</span></li>
+<li>Logs appear in the "STM32 SWV/ITM" output panel</li>
+<li>Stop with: <span class="command">STM32: SWV Stop</span></li>
+</ol>
+</div>
+
+
+<div class="section">
+<h2>Command Reference</h2>
+
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>STM32: New Project</td><td>Create a new STM32 project</td></tr>
+<tr><td>STM32: Import CubeIDE Project</td><td>Import an existing CubeIDE project</td></tr>
+<tr><td>STM32: Build (Debug)</td><td>Execute a Debug build</td></tr>
+<tr><td>STM32: Flash</td><td>Program the device via ST-LINK</td></tr>
+<tr><td>STM32: Build and Flash</td><td>Build and program in one step</td></tr>
+<tr><td>STM32: Start Debug</td><td>Start a debug session</td></tr>
+<tr><td>STM32: Stop Debug</td><td>Stop the debug session</td></tr>
+<tr><td>STM32: Regenerate Code from IOC</td><td>Regenerate code from IOC file</td></tr>
+<tr><td>STM32: Open IOC Editor</td><td>Open the IOC editor</td></tr>
+<tr><td>STM32: Open Pin Visualizer</td><td>Open the pin visualizer</td></tr>
+<tr><td>STM32: Show Code Size Analysis</td><td>Display code size analysis</td></tr>
+<tr><td>STM32: Show Fault Analyzer</td><td>Open the HardFault analyzer tool</td></tr>
+<tr><td>STM32: Run Environment Check</td><td>Verify development environment configuration</td></tr>
+<tr><td>STM32: Detect CubeCLT Metadata</td><td>Auto-detect CubeCLT installation</td></tr>
+<tr><td>STM32: Open STM32 Environment Settings</td><td>Configure tool paths and settings</td></tr>
+<tr><td>STM32: Jump to First Build Error</td><td>Navigate to the first build error</td></tr>
+<tr><td>STM32: Open CubeMX</td><td>Launch CubeMX for the current project</td></tr>
+<tr><td>STM32: SWV Start</td><td>Start SWV/ITM trace</td></tr>
+<tr><td>STM32: SWV Stop</td><td>Stop SWV/ITM trace</td></tr>
+<tr><td>STM32: SWV Show Log</td><td>Display SWV log</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="section">
+<h2>Configuration</h2>
+
+<h3>Key Settings (settings.json)</h3>
+<pre><code>{
+  "stm32.cubemx.executable": "C:/ST/STM32CubeMX/STM32CubeMX.exe",
+  "stm32.cubeclt.gccPath": "C:/ST/STM32CubeCLT/GNU-tools-for-STM32/bin/arm-none-eabi-gcc.exe",
+  "stm32.cubeclt.gdbPath": "C:/ST/STM32CubeCLT/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+  "stm32.cubeclt.stlinkPath": "C:/ST/STM32CubeCLT/STLink-gdb-server/bin/ST-LINK_gdbserver.exe",
+  "stm32.build.makeExecutable": "make",
+  "stm32.debug.svdPath": "${workspaceFolder}/STM32F401.svd",
+  "stm32.debug.liveExpressions": [
+    "*((uint32_t*)0x40021000)",
+    "SystemCoreClock"
+  ],
+  "stm32.debug.swv.startCommands": [
+    "monitor SWV port 0 on",
+    "monitor SWV start"
+  ],
+  "stm32.debug.swv.stopCommands": [
+    "monitor SWV stop"
+  ]
+}</code></pre>
+</div>
+
+<div class="section">
+<h2>Troubleshooting</h2>
+
+<h3>Build Fails</h3>
+<ul>
+<li>Run environment check: <span class="command">STM32: Run Environment Check</span></li>
+<li>Verify Makefile exists in the project</li>
+<li>Verify GCC path is correctly configured</li>
+<li>Check error messages in the output panel</li>
+<li>If Makefile is missing, launch CubeMX: <span class="command">STM32: Open CubeMX</span>, go to Project &gt; Generate Code, ensure "Makefile" toolchain is selected, and click Generate</li>
+<li>Verify arm-none-eabi-gcc is installed and in the configured path</li>
+</ul>
+
+<h3>Flash Programming Fails</h3>
+<ul>
+<li>Verify ST-LINK driver is installed</li>
+<li>Verify ST-LINK is properly connected (check Device Manager)</li>
+<li>Ensure no other tool is using ST-LINK</li>
+<li>Verify board power is on</li>
+<li>Check ST-LINK firmware is up to date</li>
+</ul>
+
+<h3>Debug Session Won't Start</h3>
+<ul>
+<li>Verify GDB path is correctly configured</li>
+<li>Verify ST-LINK GDB Server path is correct</li>
+<li>Verify launch.json is properly generated</li>
+<li>Check firewall is not blocking GDB server</li>
+<li>Verify arm-none-eabi-gdb is installed</li>
+</ul>
+
+<h3>USER CODE Disappears After Code Generation</h3>
+<ul>
+<li>Ensure code is written only within USER CODE sections</li>
+<li>Verify comment format is correct: <code>/* USER CODE BEGIN n */</code> and <code>/* USER CODE END n */</code></li>
+<li>Develop a habit of backing up files manually</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>Frequently Asked Questions</h2>
+
+<h3>Q: What is the difference between CubeMX and CubeCLT?</h3>
+<p>A: CubeMX is a GUI-based configuration tool (IOC file editing, code generation). CubeCLT is a command-line tool suite (GCC, GDB, ST-LINK). Both are required.</p>
+
+<h3>Q: How do I build Release instead of Debug?</h3>
+<p>A: Currently only Debug builds are supported. For Release builds, edit the Makefile directly.</p>
+
+<h3>Q: How do I switch between multiple STM32 boards?</h3>
+<p>A: Add multiple project folders to your workspace and switch between them as needed.</p>
+
+<h3>Q: What if arm-none-eabi-gcc is not found?</h3>
+<p>A: Ensure it is installed as part of CubeCLT or separately. Configure the correct path in STM32 Environment Settings.</p>
+
+<h3>Q: Can I use this offline?</h3>
+<p>A: Yes. Build, flash programming, and debugging all work offline. No internet connection is required.</p>
+</div>
+
+<div class="section">
+<h2>Support</h2>
+<p>If you encounter issues:</p>
+<ul>
+<li>Check logs in the "STM32" output panel</li>
+<li>Check errors in Developer Tools (Help &gt; Toggle Developer Tools)</li>
+<li>Report issues on the GitHub repository</li>
+</ul>
+</div>
+
+</body>
+</html>
