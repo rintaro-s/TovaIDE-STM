@@ -106,6 +106,9 @@ th {
 <div class="section">
 <h2>Overview</h2>
 <p>TovaIDE-STM is an integrated development environment for STM32 microcontroller development on Visual Studio Code. It integrates CubeMX, build system, flash programming, debugging, and hardware configuration tools for efficient embedded development.</p>
+<p>If you're unfamiliar with STM32, all I can say is "good luck."</p>
+<p>This was created to be easy to use for those familiar with CubeIDE.</p>
+<img src="images/main.png" alt="Main interface" style="max-width: 100%; height: auto;">
 </div>
 
 <div class="section">
@@ -123,6 +126,23 @@ th {
 </div>
 
 <div class="section">
+<h2>Installation</h2>
+<h3>1. Quick Installation</h3>
+<ul>
+<li>Download the VS Code extension from the releases page (<a href="https://github.com/rintaro-s/TovaIDE-STM/releases">https://github.com/rintaro-s/TovaIDE-STM/releases</a>) and install it in VS Code</li>
+<img src="images/addon.png" alt="Addon installation" style="max-width: 100%; height: auto;">
+</ul>
+<h3>2. Use the stable version</h3>
+<ul>
+<li>git clone https://github.com/rintaro-s/TovaIDE-STM.git</li>
+<li>cd TovaIDE-STM</li>
+<li>npm install</li>
+<li>Open the codebase in VS Code and run the `VS Code - Build` task</li>
+<li>./scripts/code.bat</li>
+</ul>
+</div>
+
+<div class="section">
 <h2>Initial Setup</h2>
 
 <h3>1. Install Required Tools</h3>
@@ -133,20 +153,21 @@ th {
 <li>arm-none-eabi-gcc - ARM embedded GCC compiler (required for building)</li>
 <li>GNU Make - For Windows, use MinGW/MSYS or the version included with CubeCLT</li>
 </ul>
-
-<h3>2. Environment Check</h3>
+<h3>2. Configure Environment Settings</h3>
 <p>From the command palette (Ctrl+Shift+P), run:</p>
-<p class="command">STM32: Run Environment Check</p>
-<p>This verifies installation status and configuration, highlighting any missing tools.</p>
-
-<h3>3. Detect CubeCLT Metadata</h3>
-<p>After installing CubeCLT, auto-detect it with:</p>
-<p class="command">STM32: Detect CubeCLT Metadata</p>
-
-<h3>4. Configure Environment Settings</h3>
 <p>Open environment settings with:</p>
 <p class="command">STM32: Open STM32 Environment Settings</p>
 <p>Configure paths to CubeMX, GCC, GDB, and ST-LINK tools.</p>
+<h3>3. Environment Check</h3>
+<p class="command">STM32: Run Environment Check</p>
+<p>This verifies installation status and configuration, highlighting any missing tools.</p>
+<img src="images/env.png" alt="Environment check results">
+<h3>4. Detect CubeCLT Metadata</h3>
+<p>After installing CubeCLT, auto-detect it with:</p>
+<p class="command">STM32: Detect CubeCLT Metadata</p>
+<p>Alternatively, click CubeMX Catalog Sync from the Dashboard.</p>
+
+
 </div>
 
 <div class="section">
@@ -168,12 +189,13 @@ th {
 <li>Choose "Open Folder" or "Add to Workspace"</li>
 </ol>
 
-<h3>Method 3: Create from Board Config Studio</h3>
+<h3>Method 3: Create from Board Config Studio (recommended)</h3>
 <ol>
 <li>Open "TovaIDE-STM Dashboard" in the sidebar</li>
 <li>Click "Open Board Config Studio"</li>
 <li>Select a board and configure pin assignments</li>
 <li>Create project</li>
+<img src="images/bord.png" alt="Board config studio" style="max-width: 100%; height: auto;">
 </ol>
 </div>
 
@@ -182,8 +204,10 @@ th {
 
 <h3>1. Hardware Configuration (IOC File Editing)</h3>
 <ol>
-<li>Double-click the <code>.ioc</code> file in your project</li>
+<li>Click the <code>.ioc</code> file in your project, then click "Launch CubeMX"</li>
+<img src="images/ioc.png" alt="Launch CubeMX" style="max-width: 100%; height: auto;">
 <li>The IOC editor opens (or CubeMX if configured)</li>
+<img src="images/mx.png" alt="CubeMX" style="max-width: 100%; height: auto;">
 <li>Configure pin assignments, clock settings, and peripherals</li>
 <li>Code generation runs automatically after saving</li>
 </ol>
@@ -233,8 +257,9 @@ int main(void) {
 <ol>
 <li>Run <span class="command">STM32: Open STM32 Environment Settings</span> and verify tool paths</li>
 <li>Open the IOC file in CubeMX: <span class="command">STM32: Open CubeMX</span></li>
-<li>In CubeMX, go to Project &gt; Generate Code</li>
+<li>In CubeMX, go to Project Manager &gt; Project</li>
 <li>Ensure "Makefile" is selected as the toolchain</li>
+<img src="images/makefile.png" alt="Makefile selection in CubeMX">
 <li>Click Generate</li>
 <li>Return to VS Code and retry the build</li>
 </ol>
@@ -262,6 +287,7 @@ int main(void) {
 <p>Visually confirm pin assignments configured in the IOC file:</p>
 <p class="command">STM32: Open Pin Visualizer</p>
 <p>Pin functions are displayed on the MCU package diagram.</p>
+<img src="images/pinas.png" alt="Pin visualizer" style="max-width: 100%; height: auto;">
 
 <h3>Code Size Analysis</h3>
 <p>Analyze memory usage in detail after building:</p>
@@ -419,16 +445,6 @@ int main(void) {
 
 <h3>Q: Can I use this offline?</h3>
 <p>A: Yes. Build, flash programming, and debugging all work offline. No internet connection is required.</p>
-</div>
-
-<div class="section">
-<h2>Support</h2>
-<p>If you encounter issues:</p>
-<ul>
-<li>Check logs in the "STM32" output panel</li>
-<li>Check errors in Developer Tools (Help &gt; Toggle Developer Tools)</li>
-<li>Report issues on the GitHub repository</li>
-</ul>
 </div>
 
 </body>
